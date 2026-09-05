@@ -1,21 +1,50 @@
-name: Build Android APK
-on: push
+name: Build and Release AI App
+
+on:
+  push:
+    tags:
+      - 'v*.*.*' # Triggers on semantic version tags like v1.0.0
+
+permissions:
+  contents: write # Required to create releases and upload assets
+
 jobs:
-  build:
+  build-and-release:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
-      - name: Make Gradle Executable
-        run: chmod +x gradlew
-      - name: Build APK
-        run: ./gradlew assembleDebug
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+          node-version: 20
+          cache: 'npm' # Change to 'yarn' or 'pnpm' if using another manager
+
+      - name: Install Dependencies
+        run: npm ci
+
+      # Injects your Gemini API key at build time (e.g., VITE_GEMINI_API_KEY or NEXT_PUBLIC_GEMINI_API_KEY)
+      - name: Build Application
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          VITE_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: npm run build
+
+      # Packages the build output (adjust 'dist' to 'build' or 'out' depending on your framework)
+      - name: Package Build Artifact
+        run: |
+          cd dist
+          zip -r ../app-dist-${{ github.ref_name }}.zip .
+          cd ..
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: app-debug
-          path: app/build/outputs/apk/debug/*.apk
+          files: app-dist-${{ github.ref_name }}.zip
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
