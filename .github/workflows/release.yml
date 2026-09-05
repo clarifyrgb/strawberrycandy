@@ -1,40 +1,55 @@
-name: Build Android APK
+name: Build and Release Android APK
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - 'v*.*.*' # Triggers when you push a tag like v1.0.0
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
 
 permissions:
   contents: write
 
 jobs:
-  build:
+  build-and-release:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
           distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+      - name: Make Gradlew Executable
+        run: chmod +x ./gradlew
 
-      - name: Generate Debug Keystore
+      # Injects your Gemini API key into local.properties and .env so secrets-gradle-plugin finds it
+      - name: Configure Gemini API Key
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          mkdir -p app
-          keytool -genkey -v -keystore app/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          echo "GEMINI_API_KEY=$GEMINI_API_KEY" >> local.properties
+          echo "GEMINI_API_KEY=$GEMINI_API_KEY" >> .env
 
-      - name: Build APK with Gradle
-        run: gradle assembleDebug
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --no-daemon
 
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
+      # Renames the output APK so the version/tag appears cleanly in GitHub Releases
+      - name: Prepare APK Asset
+        run: |
+          mkdir -p release-assets
+          cp app/build/outputs/apk/debug/*.apk release-assets/Strawberrycandy-${{ github.ref_name }}.apk
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: app-debug
-          path: app/build/outputs/apk/debug/*.apk
+          files: release-assets/*.apk
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
