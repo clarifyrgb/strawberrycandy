@@ -1,0 +1,7 @@
+{
+  "name": "Strawberrycandy",
+  "description": "Literary reader and curatorial translator archive for strawberrycandy and 4 permitted translators, featuring customizable profile covers, manuscript publishing, search, and sorting.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

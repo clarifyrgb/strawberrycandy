@@ -1,0 +1,817 @@
+package com.example.ui.components
+
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowForward
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
+import androidx.compose.material.icons.outlined.AddPhotoAlternate
+import androidx.compose.material.icons.outlined.AdminPanelSettings
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Key
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.LockOpen
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Upload
+import androidx.compose.material.icons.outlined.WorkspacePremium
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import coil.compose.AsyncImage
+import com.example.data.local.AuthorSlotEntity
+import com.example.model.NovelWithState
+import com.example.ui.theme.AntiqueGold
+import com.example.ui.theme.CharcoalSecondary
+import com.example.ui.theme.CharcoalTertiary
+import com.example.ui.theme.CharcoalText
+import com.example.ui.theme.SoftCreamPaper
+import com.example.ui.theme.SubtleBorder
+import java.io.File
+import java.io.FileOutputStream
+
+enum class UserRoleView {
+  READER,
+  ADMIN_OWNER,
+  TRANSLATOR
+}
+
+@Composable
+fun AuthorRoomsModal(
+  authorSlots: List<AuthorSlotEntity>,
+  novels: List<NovelWithState>,
+  onDismiss: () -> Unit,
+  onOpenUploadForSlot: (Int) -> Unit,
+  onUpdateSlot: (slotNumber: Int, name: String, penName: String, bio: String) -> Unit,
+  onUpdateSlotCover: (slotNumber: Int, imagePath: String) -> Unit,
+  onToggleSlotPermission: (slotNumber: Int, isGranted: Boolean) -> Unit,
+  onViewTranslatorArchive: (AuthorSlotEntity) -> Unit,
+) {
+  val context = LocalContext.current
+  var activeRoleView by remember { mutableStateOf(UserRoleView.ADMIN_OWNER) }
+  var editingSlotNumber by remember { mutableIntStateOf(-1) }
+  var editPenName by remember { mutableStateOf("") }
+  var editBio by remember { mutableStateOf("") }
+  var targetPhotoSlot by remember { mutableIntStateOf(-1) }
+
+  val photoPickerLauncher = rememberLauncherForActivityResult(
+    contract = ActivityResultContracts.PickVisualMedia()
+  ) { uri: Uri? ->
+    val slotNum = targetPhotoSlot
+    if (uri != null && slotNum >= 0) {
+      try {
+        val coversDir = File(context.filesDir, "translator_covers").apply { mkdirs() }
+        val destFile = File(coversDir, "translator_${slotNum}_${System.currentTimeMillis()}.jpg")
+        context.contentResolver.openInputStream(uri)?.use { input ->
+          FileOutputStream(destFile).use { output ->
+            input.copyTo(output)
+          }
+        }
+        onUpdateSlotCover(slotNum, destFile.absolutePath)
+      } catch (e: Exception) {
+        onUpdateSlotCover(slotNum, uri.toString())
+      }
+    }
+    targetPhotoSlot = -1
+  }
+
+  // Ensure slot 0 (strawberrycandy) exists
+  val ownerSlot = authorSlots.find { it.slotNumber == 0 } ?: AuthorSlotEntity(
+    slotNumber = 0,
+    authorName = "strawberrycandy",
+    penName = "strawberrycandy",
+    bio = "Founder & Curator at Strawberrycandy Archive. Permanent editorial administrator.",
+    avatarColorHex = 0xFF8C2D48,
+    accessCode = "ARCHIVE-OWNER-0",
+    isClaimed = true,
+    isPermissionGranted = true
+  )
+
+  Dialog(
+    onDismissRequest = onDismiss,
+    properties = DialogProperties(usePlatformDefaultWidth = false)
+  ) {
+    Card(
+      shape = RoundedCornerShape(26.dp),
+      colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
+      border = BorderStroke(1.dp, SubtleBorder),
+      elevation = CardDefaults.cardElevation(defaultElevation = 12.dp),
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(horizontal = 14.dp, vertical = 20.dp)
+        .testTag("author_rooms_modal")
+    ) {
+      Column(
+        modifier = Modifier
+          .fillMaxWidth()
+          .verticalScroll(rememberScrollState())
+          .padding(20.dp)
+      ) {
+        // Header
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+              imageVector = Icons.Outlined.WorkspacePremium,
+              contentDescription = null,
+              tint = AntiqueGold,
+              modifier = Modifier.size(19.dp)
+            )
+            Spacer(modifier = Modifier.width(7.dp))
+            Text(
+              text = "TRANSLATOR ARCHIVE",
+              style = MaterialTheme.typography.labelSmall.copy(
+                letterSpacing = 1.8.sp,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp
+              ),
+              color = AntiqueGold
+            )
+          }
+
+          IconButton(
+            onClick = onDismiss,
+            modifier = Modifier.size(28.dp)
+          ) {
+            Icon(
+              imageVector = Icons.Outlined.Close,
+              contentDescription = "Close",
+              tint = CharcoalSecondary,
+              modifier = Modifier.size(18.dp)
+            )
+          }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        val permittedTranslators = remember(authorSlots) {
+          (1..10).mapNotNull { slotNum ->
+            val slot = authorSlots.find { it.slotNumber == slotNum }
+            if (slot != null && slot.isPermissionGranted) slot else null
+          }
+        }
+        val totalCurators = permittedTranslators.size + 1 // +1 for strawberrycandy (Founder)
+
+        Text(
+          text = if (activeRoleView == UserRoleView.READER) {
+            "Curatorial Collective of $totalCurators"
+          } else {
+            "Translator Administration (10 Slots)"
+          },
+          style = MaterialTheme.typography.headlineSmall.copy(
+            fontFamily = FontFamily.Serif,
+            fontWeight = FontWeight.Bold
+          ),
+          color = CharcoalText
+        )
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Text(
+          text = if (activeRoleView == UserRoleView.READER) {
+            "An exclusive archive featuring $totalCurators curators: strawberrycandy (Founder) and ${permittedTranslators.size} permitted translators who publish translated manuscripts."
+          } else {
+            "Founder (strawberrycandy) plus 10 configurable translator slots. Readers currently view the $totalCurators active curators."
+          },
+          style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 16.sp),
+          color = CharcoalSecondary
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Role View Mode Switcher (Demonstrates Owner vs Reader vs Translator permissions)
+        Surface(
+          shape = RoundedCornerShape(14.dp),
+          color = AntiqueGold.copy(alpha = 0.08f),
+          border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.25f)),
+          modifier = Modifier.fillMaxWidth()
+        ) {
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .padding(horizontal = 10.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Text(
+              text = "View Mode:",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = FontWeight.Bold,
+                fontSize = 10.5.sp
+              ),
+              color = AntiqueGold
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+              RoleChip(
+                label = "Owner (Admin)",
+                selected = activeRoleView == UserRoleView.ADMIN_OWNER,
+                onClick = { activeRoleView = UserRoleView.ADMIN_OWNER }
+              )
+              RoleChip(
+                label = "Reader Mode",
+                selected = activeRoleView == UserRoleView.READER,
+                onClick = { activeRoleView = UserRoleView.READER }
+              )
+            }
+          }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // 1. OWNER / FOUNDER ARCHIVE PROFILE (Strawberrycandy - Slot 0)
+        val ownerNovels = novels.filter { it.authorSlot == 0 }
+        TranslatorCardItem(
+          slot = ownerSlot,
+          worksCount = ownerNovels.size,
+          roleView = activeRoleView,
+          isOwner = true,
+          isEditing = editingSlotNumber == 0,
+          editPenName = editPenName,
+          editBio = editBio,
+          onEditStart = {
+            editingSlotNumber = 0
+            editPenName = ownerSlot.penName
+            editBio = ownerSlot.bio
+          },
+          onEditCancel = { editingSlotNumber = -1 },
+          onEditSave = { penName, bio ->
+            onUpdateSlot(0, penName, penName, bio)
+            editingSlotNumber = -1
+          },
+          onPenNameChange = { editPenName = it },
+          onBioChange = { editBio = it },
+          onPickPhoto = {
+            targetPhotoSlot = 0
+            photoPickerLauncher.launch(
+              PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+            )
+          },
+          onTogglePermission = { /* Slot 0 is always permitted */ },
+          onOpenUpload = {
+            onDismiss()
+            onOpenUploadForSlot(0)
+          },
+          onViewArchive = {
+            onDismiss()
+            onViewTranslatorArchive(ownerSlot)
+          }
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+          text = if (activeRoleView == UserRoleView.READER) {
+            "PERMITTED TRANSLATORS (${permittedTranslators.size})"
+          } else {
+            "ALL TRANSLATOR SLOTS (${permittedTranslators.size} / 10 ACTIVE)"
+          },
+          style = MaterialTheme.typography.labelSmall.copy(
+            fontSize = 9.5.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.2.sp
+          ),
+          color = CharcoalTertiary
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        val slotsToDisplay = if (activeRoleView == UserRoleView.READER) {
+          permittedTranslators
+        } else {
+          (1..10).map { slotNum ->
+            authorSlots.find { it.slotNumber == slotNum } ?: AuthorSlotEntity(
+              slotNumber = slotNum,
+              authorName = "Translator $slotNum",
+              penName = "Translator $slotNum",
+              bio = "Contributing translator at Strawberrycandy Archive",
+              avatarColorHex = 0xFF353C48,
+              accessCode = "AUTH-ROOM-$slotNum",
+              isClaimed = false,
+              isPermissionGranted = slotNum <= 4
+            )
+          }
+        }
+
+        slotsToDisplay.forEach { slot ->
+          val slotNum = slot.slotNumber
+          val slotNovels = novels.filter { it.authorSlot == slotNum }
+          val isEditingThis = editingSlotNumber == slotNum
+
+          TranslatorCardItem(
+            slot = slot,
+            worksCount = slotNovels.size,
+            roleView = activeRoleView,
+            isOwner = false,
+            isEditing = isEditingThis,
+            editPenName = editPenName,
+            editBio = editBio,
+            onEditStart = {
+              editingSlotNumber = slotNum
+              editPenName = slot.penName
+              editBio = slot.bio
+            },
+            onEditCancel = { editingSlotNumber = -1 },
+            onEditSave = { penName, bio ->
+              onUpdateSlot(slotNum, penName, penName, bio)
+              editingSlotNumber = -1
+            },
+            onPenNameChange = { editPenName = it },
+            onBioChange = { editBio = it },
+            onPickPhoto = {
+              targetPhotoSlot = slotNum
+              photoPickerLauncher.launch(
+                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+              )
+            },
+            onTogglePermission = { isGranted ->
+              onToggleSlotPermission(slotNum, isGranted)
+            },
+            onOpenUpload = {
+              onDismiss()
+              onOpenUploadForSlot(slotNum)
+            },
+            onViewArchive = {
+              onDismiss()
+              onViewTranslatorArchive(slot)
+            }
+          )
+
+          Spacer(modifier = Modifier.height(10.dp))
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun RoleChip(
+  label: String,
+  selected: Boolean,
+  onClick: () -> Unit
+) {
+  FilterChip(
+    selected = selected,
+    onClick = onClick,
+    label = {
+      Text(
+        text = label,
+        style = MaterialTheme.typography.labelSmall.copy(
+          fontSize = 10.sp,
+          fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+        )
+      )
+    },
+    colors = FilterChipDefaults.filterChipColors(
+      selectedContainerColor = CharcoalText,
+      selectedLabelColor = SoftCreamPaper,
+      containerColor = SoftCreamPaper,
+      labelColor = CharcoalSecondary
+    ),
+    border = BorderStroke(1.dp, if (selected) CharcoalText else SubtleBorder),
+    shape = RoundedCornerShape(8.dp)
+  )
+}
+
+/**
+ * Individual Translator Archive Card in the Collective Archive Modal.
+ */
+@Composable
+private fun TranslatorCardItem(
+  slot: AuthorSlotEntity,
+  worksCount: Int,
+  roleView: UserRoleView,
+  isOwner: Boolean,
+  isEditing: Boolean,
+  editPenName: String,
+  editBio: String,
+  onEditStart: () -> Unit,
+  onEditCancel: () -> Unit,
+  onEditSave: (String, String) -> Unit,
+  onPenNameChange: (String) -> Unit,
+  onBioChange: (String) -> Unit,
+  onPickPhoto: () -> Unit,
+  onTogglePermission: (Boolean) -> Unit,
+  onOpenUpload: () -> Unit,
+  onViewArchive: () -> Unit,
+) {
+  val isReader = roleView == UserRoleView.READER
+  val canManage = !isReader // Owner or Translator can manage
+
+  Card(
+    shape = RoundedCornerShape(18.dp),
+    colors = CardDefaults.cardColors(
+      containerColor = if (isOwner) AntiqueGold.copy(alpha = 0.07f) else SoftCreamPaper
+    ),
+    border = BorderStroke(
+      1.dp,
+      if (isOwner) AntiqueGold.copy(alpha = 0.4f) else SubtleBorder
+    ),
+    modifier = Modifier
+      .fillMaxWidth()
+      .clickable { onViewArchive() }
+      .testTag("translator_card_slot_${slot.slotNumber}")
+  ) {
+    Column(modifier = Modifier.padding(14.dp)) {
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        // Customizable Profile Picture
+        Box(
+          modifier = Modifier
+            .size(52.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(slot.avatarColorHex))
+            .clickable(enabled = canManage) { onPickPhoto() },
+          contentAlignment = Alignment.Center
+        ) {
+          if (slot.coverImageUri != null) {
+            AsyncImage(
+              model = File(slot.coverImageUri).takeIf { it.exists() } ?: slot.coverImageUri,
+              contentDescription = slot.penName,
+              contentScale = ContentScale.Crop,
+              modifier = Modifier.fillMaxSize()
+            )
+          } else {
+            Text(
+              text = slot.penName.take(2).uppercase(),
+              style = MaterialTheme.typography.titleMedium.copy(
+                fontWeight = FontWeight.Bold,
+                color = SoftCreamPaper,
+                fontFamily = FontFamily.Serif
+              )
+            )
+          }
+
+          if (canManage) {
+            Box(
+              modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .size(18.dp)
+                .background(CharcoalText.copy(alpha = 0.8f), RoundedCornerShape(topStart = 6.dp)),
+              contentAlignment = Alignment.Center
+            ) {
+              Icon(
+                imageVector = Icons.Outlined.AddPhotoAlternate,
+                contentDescription = "Upload Picture",
+                tint = AntiqueGold,
+                modifier = Modifier.size(10.dp)
+              )
+            }
+          }
+        }
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+          ) {
+            Text(
+              text = if (isOwner) "FOUNDER" else "SLOT ${slot.slotNumber}",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
+              ),
+              color = AntiqueGold
+            )
+
+            if (isOwner) {
+              Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = AntiqueGold.copy(alpha = 0.15f)
+              ) {
+                Text(
+                  text = "PERMANENT ACCESS",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 7.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = AntiqueGold
+                  ),
+                  modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                )
+              }
+            } else if (slot.isPermissionGranted) {
+              Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = Color(0xFF2E7D32).copy(alpha = 0.15f)
+              ) {
+                Row(
+                  verticalAlignment = Alignment.CenterVertically,
+                  modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                ) {
+                  Icon(
+                    imageVector = Icons.Outlined.CheckCircle,
+                    contentDescription = null,
+                    tint = Color(0xFF2E7D32),
+                    modifier = Modifier.size(9.dp)
+                  )
+                  Spacer(modifier = Modifier.width(2.dp))
+                  Text(
+                    text = "GRANTED",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontSize = 7.5.sp,
+                      fontWeight = FontWeight.Bold,
+                      color = Color(0xFF2E7D32)
+                    )
+                  )
+                }
+              }
+            } else {
+              Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = Color.Gray.copy(alpha = 0.15f)
+              ) {
+                Row(
+                  verticalAlignment = Alignment.CenterVertically,
+                  modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                ) {
+                  Icon(
+                    imageVector = Icons.Outlined.Lock,
+                    contentDescription = null,
+                    tint = CharcoalTertiary,
+                    modifier = Modifier.size(9.dp)
+                  )
+                  Spacer(modifier = Modifier.width(2.dp))
+                  Text(
+                    text = "LOCKED",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontSize = 7.5.sp,
+                      fontWeight = FontWeight.Bold,
+                      color = CharcoalTertiary
+                    )
+                  )
+                }
+              }
+            }
+          }
+
+          Text(
+            text = slot.penName,
+            style = MaterialTheme.typography.titleMedium.copy(
+              fontWeight = FontWeight.Bold,
+              fontFamily = FontFamily.Serif
+            ),
+            color = CharcoalText
+          )
+
+          Text(
+            text = "$worksCount manuscripts in archive",
+            style = MaterialTheme.typography.bodySmall.copy(
+              fontSize = 10.5.sp,
+              color = CharcoalSecondary
+            )
+          )
+        }
+
+        // Action Buttons
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          if (canManage) {
+            IconButton(
+              onClick = {
+                if (isEditing) onEditCancel() else onEditStart()
+              },
+              modifier = Modifier.size(28.dp)
+            ) {
+              Icon(
+                imageVector = Icons.Outlined.Edit,
+                contentDescription = "Edit Profile",
+                tint = CharcoalSecondary,
+                modifier = Modifier.size(15.dp)
+              )
+            }
+          }
+
+          // Primary "View All Works" button
+          Button(
+            onClick = onViewArchive,
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = CharcoalText),
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+            modifier = Modifier.height(30.dp)
+          ) {
+            Text(
+              text = "Works ($worksCount)",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 10.5.sp,
+                color = SoftCreamPaper,
+                fontWeight = FontWeight.SemiBold
+              )
+            )
+            Spacer(modifier = Modifier.width(3.dp))
+            Icon(
+              imageVector = Icons.AutoMirrored.Outlined.ArrowForward,
+              contentDescription = null,
+              tint = AntiqueGold,
+              modifier = Modifier.size(11.dp)
+            )
+          }
+        }
+      }
+
+      // Inline Editing Form
+      if (isEditing) {
+        Spacer(modifier = Modifier.height(10.dp))
+        OutlinedTextField(
+          value = editPenName,
+          onValueChange = onPenNameChange,
+          label = { Text("Translator Name") },
+          singleLine = true,
+          colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = AntiqueGold,
+            unfocusedBorderColor = SubtleBorder
+          ),
+          modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        OutlinedTextField(
+          value = editBio,
+          onValueChange = onBioChange,
+          label = { Text("Bio & Credentials") },
+          singleLine = true,
+          colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = AntiqueGold,
+            unfocusedBorderColor = SubtleBorder
+          ),
+          modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.End
+        ) {
+          OutlinedButton(
+            onClick = onEditCancel,
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.height(32.dp)
+          ) {
+            Text("Cancel", fontSize = 11.sp)
+          }
+          Spacer(modifier = Modifier.width(8.dp))
+          Button(
+            onClick = { onEditSave(editPenName, editBio) },
+            shape = RoundedCornerShape(8.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = CharcoalText),
+            modifier = Modifier.height(32.dp)
+          ) {
+            Text("Save Profile", fontSize = 11.sp)
+          }
+        }
+      } else {
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+          text = slot.bio,
+          style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 15.sp),
+          color = CharcoalSecondary
+        )
+      }
+
+      // Admin / Owner Controls: Permission toggle & Upload Novel
+      if (canManage && !isOwner) {
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+              imageVector = if (slot.isPermissionGranted) Icons.Outlined.LockOpen else Icons.Outlined.Lock,
+              contentDescription = null,
+              tint = if (slot.isPermissionGranted) Color(0xFF2E7D32) else CharcoalTertiary,
+              modifier = Modifier.size(13.dp)
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+              text = if (slot.isPermissionGranted) "Permission: Granted" else "Permission: Revoked",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 10.sp,
+                color = if (slot.isPermissionGranted) Color(0xFF2E7D32) else CharcoalTertiary,
+                fontWeight = FontWeight.Medium
+              )
+            )
+          }
+
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            // Grant / Revoke switch
+            Switch(
+              checked = slot.isPermissionGranted,
+              onCheckedChange = onTogglePermission,
+              colors = SwitchDefaults.colors(
+                checkedThumbColor = SoftCreamPaper,
+                checkedTrackColor = Color(0xFF2E7D32),
+                uncheckedThumbColor = CharcoalSecondary,
+                uncheckedTrackColor = SubtleBorder
+              ),
+              modifier = Modifier.size(width = 38.dp, height = 22.dp)
+            )
+
+            if (slot.isPermissionGranted) {
+              Spacer(modifier = Modifier.width(10.dp))
+              OutlinedButton(
+                onClick = onOpenUpload,
+                shape = RoundedCornerShape(8.dp),
+                border = BorderStroke(1.dp, SubtleBorder),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                modifier = Modifier.height(28.dp)
+              ) {
+                Icon(
+                  imageVector = Icons.Outlined.Upload,
+                  contentDescription = null,
+                  tint = AntiqueGold,
+                  modifier = Modifier.size(11.dp)
+                )
+                Spacer(modifier = Modifier.width(3.dp))
+                Text("Upload", fontSize = 10.sp, color = CharcoalText)
+              }
+            }
+          }
+        }
+      } else if (canManage && isOwner) {
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.End
+        ) {
+          OutlinedButton(
+            onClick = onOpenUpload,
+            shape = RoundedCornerShape(8.dp),
+            border = BorderStroke(1.dp, SubtleBorder),
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+            modifier = Modifier.height(28.dp)
+          ) {
+            Icon(
+              imageVector = Icons.Outlined.Upload,
+              contentDescription = null,
+              tint = AntiqueGold,
+              modifier = Modifier.size(11.dp)
+            )
+            Spacer(modifier = Modifier.width(3.dp))
+            Text("Upload Novel", fontSize = 10.sp, color = CharcoalText)
+          }
+        }
+      }
+    }
+  }
+}
