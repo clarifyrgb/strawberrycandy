@@ -1,20 +1,16 @@
-name: Build and Release Android APK
+  name: Android Release Build
 
 on:
   push:
     tags:
-      - 'v*.*.*'
-  workflow_dispatch:
-
-permissions:
-  contents: write
+      - 'v*' # Triggers automatically when you push a version tag (e.g., v1.0.0)
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
+    
     steps:
-      - name: Checkout Code
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
@@ -22,45 +18,16 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-          cache: 'gradle'
 
-      - name: Grant Execute Permission to Gradlew
-        run: chmod +x ./gradlew
+      - name: Make Gradle executable
+        run: chmod +x gradlew
 
-      # Create dummy/fallback files to prevent common Gradle build crashes
-      - name: Prepare Build Environment
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: |
-          touch local.properties
-          echo "sdk.dir=$ANDROID_HOME" >> local.properties
-          echo "GEMINI_API_KEY=${GEMINI_API_KEY}" >> local.properties
-          echo "GEMINI_API_KEY=${GEMINI_API_KEY}" > .env
-          
-          # Workaround: remove debugConfig reference if it exists as stated in README
-          if [ -f app/build.gradle.kts ]; then
-            sed -i '/signingConfigs.getByName("debugConfig")/d' app/build.gradle.kts
-          fi
+      - name: Build Release APK
+        run: ./gradlew assembleRelease
 
-      - name: Build Debug APK
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: ./gradlew assembleDebug --stacktrace --no-daemon
-
-      - name: Find and Stage APK
-        run: |
-          mkdir -p staging
-          APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
-          if [ -z "$APK_PATH" ]; then
-            echo "Error: APK not found"
-            exit 1
-          fi
-          cp "$APK_PATH" staging/Strawberrycandy-${{ github.ref_name }}.apk
-
-      - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: Upload APK to GitHub Release
+        uses: softprops/action-gh-release@v1
         with:
-          files: staging/*.apk
-          generate_release_notes: true
+          files: app/build/outputs/apk/release/app-release-unsigned.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
