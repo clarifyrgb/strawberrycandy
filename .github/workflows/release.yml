@@ -1,9 +1,12 @@
-name: Build Android APK
+name: Build and Release Android APK
 
 on:
   push:
     branches:
       - main
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -17,19 +20,83 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
+          cache: 'gradle'
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - name: Install xvfb (Virtual Framebuffer for AWT/KSP)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
 
-      - name: Build APK with Gradle
-        run: gradle assembleDebug
+      - name: Grant Execute Permission to Gradlew
+        run: chmod +x ./gradlew
 
-      - name: Upload APK Artifact
+      - name: Write Clean gradle.properties and Secrets
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          # 1. Overwrite gradle.properties with clean, working settings
+          cat << 'EOF' > gradle.properties
+          org.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8 -Djava.awt.headless=false
+          kotlin.code.style=official
+          android.nonTransitiveRClass=true
+          googleServices.missing.passthrough=true
+          kotlin.compiler.execution.strategy=daemon
+          org.gradle.configuration-cache=false
+          org.gradle.parallel=false
+          org.gradle.caching=false
+          EOF
+
+          # 2. Inject SDK path and GEMINI_API_KEY into local.properties and .env
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          echo "GEMINI_API_KEY=${GEMINI_API_KEY}" >> local.properties
+          echo "GEMINI_API_KEY=${GEMINI_API_KEY}" > .env
+
+          # 3. Remove debugConfig if present (step 5 in project README)
+          if [ -f app/build.gradle.kts ]; then
+            sed -i '/signingConfigs.getByName("debugConfig")/d' app/build.gradle.kts || true
+            sed -i '/debugConfig/d' app/build.gradle.kts || true
+          fi
+
+      - name: Build Debug APK with Virtual Display
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        # xvfb-run provides the dummy display needed by KSP's AWT queue
+        run: xvfb-run --auto-servernum ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Prepare APK Asset
+        run: |
+          mkdir -p release-output
+          APK_FILE=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          if [ -z "$APK_FILE" ]; then
+            echo "Error: APK file not generated."
+            exit 1
+          fi
+
+          TAG_NAME="${{ github.ref_name }}"
+          if [ "${{ github.ref_type }}" != "tag" ]; then
+            TAG_NAME="v1.0.0-${{ github.run_number }}"
+          fi
+
+          cp "$APK_FILE" "release-output/Strawberrycandy-${TAG_NAME}.apk"
+          echo "RELEASE_TAG=$TAG_NAME" >> $GITHUB_ENV
+
+      # Generates a direct download link on the Actions Run page
+      - name: Upload APK to Workflow Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: app/build/outputs/apk/debug/*.apk
+          name: Strawberrycandy-APK
+          path: release-output/*.apk
+
+      # Publishes to the GitHub Releases page
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: release-output/*.apk
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
