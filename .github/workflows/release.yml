@@ -23,4 +23,4 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug
-        working-directory: .
+        working-directory: strawberrycandy
