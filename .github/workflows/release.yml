@@ -3,18 +3,18 @@ name: Build and Release Android APK
 on:
   push:
     tags:
-      - 'v*.*.*' # Triggers when you push a tag like v1.0.0
-  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+      - 'v*.*.*'
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  build-and-release:
+  build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
@@ -24,32 +24,43 @@ jobs:
           java-version: '17'
           cache: 'gradle'
 
-      - name: Make Gradlew Executable
+      - name: Grant Execute Permission to Gradlew
         run: chmod +x ./gradlew
 
-      # Injects your Gemini API key into local.properties and .env so secrets-gradle-plugin finds it
-      - name: Configure Gemini API Key
+      # Create dummy/fallback files to prevent common Gradle build crashes
+      - name: Prepare Build Environment
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          echo "GEMINI_API_KEY=$GEMINI_API_KEY" >> local.properties
-          echo "GEMINI_API_KEY=$GEMINI_API_KEY" >> .env
+          touch local.properties
+          echo "sdk.dir=$ANDROID_HOME" >> local.properties
+          echo "GEMINI_API_KEY=${GEMINI_API_KEY}" >> local.properties
+          echo "GEMINI_API_KEY=${GEMINI_API_KEY}" > .env
+          
+          # Workaround: remove debugConfig reference if it exists as stated in README
+          if [ -f app/build.gradle.kts ]; then
+            sed -i '/signingConfigs.getByName("debugConfig")/d' app/build.gradle.kts
+          fi
 
       - name: Build Debug APK
-        run: ./gradlew assembleDebug --no-daemon
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: ./gradlew assembleDebug --stacktrace --no-daemon
 
-      # Renames the output APK so the version/tag appears cleanly in GitHub Releases
-      - name: Prepare APK Asset
+      - name: Find and Stage APK
         run: |
-          mkdir -p release-assets
-          cp app/build/outputs/apk/debug/*.apk release-assets/Strawberrycandy-${{ github.ref_name }}.apk
+          mkdir -p staging
+          APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            echo "Error: APK not found"
+            exit 1
+          fi
+          cp "$APK_PATH" staging/Strawberrycandy-${{ github.ref_name }}.apk
 
-      - name: Create GitHub Release
+      - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: release-assets/*.apk
+          files: staging/*.apk
           generate_release_notes: true
-          draft: false
-          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
