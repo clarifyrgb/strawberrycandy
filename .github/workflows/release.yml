@@ -1,12 +1,11 @@
-name: Android Release Build
+name: Build Android APK
 
 on:
   push:
-    branches: [ main ]
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
   workflow_dispatch:
-
-permissions:
-  contents: write
 
 jobs:
   build:
@@ -19,35 +18,20 @@ jobs:
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
           java-version: '21'
+          distribution: 'temurin'
+          cache: gradle
 
-      - name: Install Gradle Manually
-        run: |
-          wget https://services.gradle.org/distributions/gradle-9.3.1-bin.zip
-          unzip -q gradle-9.3.1-bin.zip
-          echo "$PWD/gradle-9.3.1/bin" >> $GITHUB_PATH
-
-      - name: Configure Secrets and Fix Signing Config
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: |
-          touch local.properties
-          echo "sdk.dir=$ANDROID_HOME" >> local.properties
-          echo "GEMINI_API_KEY=${GEMINI_API_KEY}" >> local.properties
-          echo "GEMINI_API_KEY=${GEMINI_API_KEY}" > .env
-          
-          # Remove broken signingConfig reference documented in README step 5
-          if [ -f app/build.gradle.kts ]; then
-            sed -i '/signingConfigs.getByName("debugConfig")/d' app/build.gradle.kts || true
-            sed -i '/debugConfig/d' app/build.gradle.kts || true
-          fi
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
 
       - name: Build Debug APK
-        run: gradle assembleDebug --no-daemon
+        env:
+          API_KEY: ${{ secrets.API_KEY }}
+        run: ./gradlew assembleDebug
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Strawberrycandy-app
+          name: app-debug
           path: app/build/outputs/apk/debug/*.apk
