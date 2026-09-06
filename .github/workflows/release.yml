@@ -28,11 +28,13 @@ jobs:
           echo "GEMINI_API_KEY=${GEMINI_API_KEY}" >> local.properties
           echo "GEMINI_API_KEY=${GEMINI_API_KEY}" > .env
           
-          # Fix JVM args without duplicating the org.gradle.jvmargs property
+          # Fix headless JVM flag safely
           sed -i 's/org.gradle.jvmargs=/org.gradle.jvmargs=-Djava.awt.headless=true /g' gradle.properties
 
-          # Remove AI Studio debugConfig reference documented in README step 5
+          # 1. FIX THE ERROR: Replace "ksp"(...) with ksp(...) in build.gradle.kts
           if [ -f app/build.gradle.kts ]; then
+            sed -i 's/"ksp"(/ksp(/g' app/build.gradle.kts
+            # Remove AI Studio debugConfig reference documented in README step 5
             sed -i '/signingConfigs.getByName("debugConfig")/d' app/build.gradle.kts || true
             sed -i '/debugConfig/d' app/build.gradle.kts || true
           fi
@@ -43,7 +45,6 @@ jobs:
           unzip -q gradle-9.3.1-bin.zip
           echo "$PWD/gradle-9.3.1/bin" >> $GITHUB_PATH
 
-      # assembleDebug produces an automatically signed, installable APK
       - name: Build Debug APK
         run: gradle assembleDebug --no-daemon
 
