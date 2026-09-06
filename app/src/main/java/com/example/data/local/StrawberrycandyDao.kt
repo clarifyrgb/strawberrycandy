@@ -151,7 +151,7 @@ interface StrawberrycandyDao {
   @Query("SELECT * FROM chapter_comments WHERE (readerEmail != '' AND LOWER(readerEmail) = LOWER(:email)) OR LOWER(readerName) = LOWER(:name) ORDER BY timestamp DESC")
   fun getCommentsForReader(email: String, name: String): Flow<List<ChapterCommentEntity>>
 
-  @Query("DELETE FROM chapter_comments WHERE id = :commentId")
+  @Query("DELETE FROM chapter_comments WHERE id = :commentId OR parentCommentId = :commentId")
   suspend fun deleteComment(commentId: String)
 
   // Favorite Lines & Bookmarks per Novel
