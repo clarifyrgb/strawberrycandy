@@ -18,7 +18,7 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      # Fix for the KSP "AWT-EventQueue" error by forcing headless mode
+      # Absolute fix for the KSP engine error and configuring project variables
       - name: Configure Headless Environment & Secrets
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -27,16 +27,20 @@ jobs:
           echo "sdk.dir=$ANDROID_HOME" >> local.properties
           echo "GEMINI_API_KEY=${GEMINI_API_KEY}" >> local.properties
           echo "GEMINI_API_KEY=${GEMINI_API_KEY}" > .env
+          
+          # Force JVM into headless mode and disable KSP incremental processing
+          touch gradle.properties
           echo "org.gradle.jvmargs=-Djava.awt.headless=true" >> gradle.properties
+          echo "ksp.incremental=false" >> gradle.properties
 
       - name: Install Gradle Manually
         run: |
-          wget https://services.gradle.org/distributions/gradle-9.3.1-bin.zip
+          wget https://gradle.org
           unzip -q gradle-9.3.1-bin.zip
           echo "$PWD/gradle-9.3.1/bin" >> $GITHUB_PATH
 
       - name: Build Release APK
-        run: gradle assembleRelease
+        run: gradle assembleRelease --no-daemon
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
