@@ -1,8 +1,10 @@
-name: Build Debug APK
+name: Android Release Build
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
   workflow_dispatch:
 
 jobs:
@@ -10,33 +12,35 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    - name: Checkout Repository
+      uses: actions/checkout@v4
 
-      - name: Set up Java / JDK 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '21'
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+        cache: 'gradle'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew || true
 
-      - name: Make Gradlew Executable
-        run: chmod +x gradlew
+    - name: Inject API Key
+      run: |
+        # Injects your Google AI Studio API key safely into local.properties or environment
+        echo "AI_STUDIO_API_KEY=${{ secrets.AI_STUDIO_API_KEY }}" >> local.properties
 
-      - name: Restore Debug Keystore
-        run: |
-          if [ -f "debug.keystore.base64" ]; then
-            base64 -d debug.keystore.base64 > debug.keystore
-          fi
+    - name: Build Debug APK with Gradle
+      run: ./gradlew assembleDebug
 
-      - name: Build Debug APK with Gradle
-        run: ./gradlew assembleDebug --stacktrace
+    - name: Verify APK Output
+      run: |
+        ls -la app/build/outputs/apk/debug/
 
-      - name: Upload Debug APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-debug
-          path: app/build/outputs/apk/debug/*.apk
+    - name: Upload APK Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: app-debug-apk
+        path: app/build/outputs/apk/debug/*.apk
+
 
