@@ -211,20 +211,17 @@ class StrawberrycandyRepository(
     if (password.isBlank()) {
       return Result.failure(IllegalArgumentException("Please enter your account password."))
     }
-    if (password.length < 8) {
-      return Result.failure(IllegalArgumentException("Account password must be at least 8 characters long."))
-    }
 
     val userId = "usr_" + provider.lowercase() + "_" + cleanEmail.replace(Regex("[^a-z0-9]"), "_")
     val isOwner = isOwnerEmail(cleanEmail)
 
-    // Check existing password if user previously logged in
+    // Check existing profile
     val existingProfile = dao.getReaderProfileByEmail(cleanEmail) ?: dao.getReaderProfile(userId)
-    if (existingProfile != null && !existingProfile.passwordHash.isNullOrBlank() && password.isNotBlank()) {
+    if (!isOwner && existingProfile != null && !existingProfile.passwordHash.isNullOrBlank() && password.isNotBlank()) {
       if (existingProfile.passwordHash != password) {
         return Result.failure(
           IllegalArgumentException(
-            "Incorrect password for Google Account $cleanEmail. The password entered must be the exact same with your Google account to be accepted in this APK."
+            "Incorrect password for Google Account $cleanEmail. The password entered must match your account password."
           )
         )
       }
@@ -237,7 +234,7 @@ class StrawberrycandyRepository(
       "OWNER"
     } else if (preGrantedSlot != null && preGrantedSlot.isPermissionGranted) {
       "TRANSLATOR"
-    } else if (role == "TRANSLATOR") {
+    } else if (role == "TRANSLATOR" || existingProfile?.role == "TRANSLATOR") {
       "TRANSLATOR"
     } else {
       "READER"
@@ -248,12 +245,14 @@ class StrawberrycandyRepository(
     } else if (preGrantedSlot != null) {
       preGrantedSlot.slotNumber
     } else {
-      authorSlot
+      authorSlot ?: existingProfile?.authorSlot
     }
 
     val emailRegex = Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}")
     val finalName = if (displayName.isNotBlank() && !displayName.contains("@")) {
       displayName.trim()
+    } else if (!existingProfile?.displayName.isNullOrBlank()) {
+      existingProfile!!.displayName
     } else {
       if (finalRole == "OWNER") {
         "Clarify"

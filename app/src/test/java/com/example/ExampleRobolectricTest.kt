@@ -57,11 +57,11 @@ class ExampleRobolectricTest {
     assertEquals("Strawberrycandy", novel?.author)
     assertEquals("The Whispering Pines", novel?.title)
 
-    // 2. Verify Reader Sign-In with Google and matching password check
+    // 2. Verify Reader Sign-In with Google and matching password check (letters-only password)
     val initialSignInResult = repo.signIn(
       provider = "GOOGLE",
       email = "reader.alex@gmail.com",
-      password = "GooglePassword123!",
+      password = "mypasswordonlyletters",
       displayName = "Alex Vance"
     )
     assertTrue(initialSignInResult.isSuccess)
@@ -74,10 +74,23 @@ class ExampleRobolectricTest {
     val wrongPassResult = repo.signIn(
       provider = "GOOGLE",
       email = "reader.alex@gmail.com",
-      password = "WrongPassword999!",
+      password = "differentpassword",
       displayName = "Alex Vance"
     )
     assertTrue(wrongPassResult.isFailure)
+
+    // Verify Archive Owner (clarifymanga@gmail.com) signs in with letters-only password
+    val ownerSignInResult = repo.signIn(
+      provider = "GOOGLE",
+      email = "clarifymanga@gmail.com",
+      password = "ownerpasswordwithoutnumbers",
+      displayName = "Clarify"
+    )
+    assertTrue(ownerSignInResult.isSuccess)
+    val ownerUser = repo.activeUser.first()
+    assertNotNull(ownerUser)
+    assertEquals("OWNER", ownerUser?.role)
+    assertEquals("clarifymanga@gmail.com", ownerUser?.email)
 
     // 3. Verify Reader adding Favorite and Storing Reading Novel
     repo.toggleFavorite(googleUser!!.userId, uploadedId)
@@ -102,5 +115,53 @@ class ExampleRobolectricTest {
     val appleUser = repo.activeUser.first()
     assertNotNull(appleUser)
     assertEquals("APPLE", appleUser?.provider)
+  }
+
+  @Test
+  fun `translators and readers easily log in with same password and gmail`() = runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val db = StrawberrycandyDatabase.getInstance(context)
+    val dao = db.strawberrycandyDao()
+    val repo = StrawberrycandyRepository(dao)
+
+    // Reader logs in with simple letters-only password
+    val readerResult = repo.signIn(
+      provider = "GOOGLE",
+      email = "testreader@gmail.com",
+      password = "simplepassword",
+      displayName = "Reader Test"
+    )
+    assertTrue(readerResult.isSuccess)
+    val readerUser = repo.activeUser.first()
+    assertNotNull(readerUser)
+    assertEquals("READER", readerUser?.role)
+
+    // Translator logs in with simple password and role is preserved
+    val translatorResult = repo.signIn(
+      provider = "GOOGLE",
+      email = "translator1@gmail.com",
+      password = "translatorpass",
+      displayName = "Translator One",
+      role = "TRANSLATOR",
+      authorSlot = 1
+    )
+    assertTrue(translatorResult.isSuccess)
+    val translatorUser = repo.activeUser.first()
+    assertNotNull(translatorUser)
+    assertEquals("TRANSLATOR", translatorUser?.role)
+    assertEquals(1, translatorUser?.authorSlot)
+
+    // Returning Translator logs in again with just email and same password
+    val returningTranslatorResult = repo.signIn(
+      provider = "GOOGLE",
+      email = "translator1@gmail.com",
+      password = "translatorpass",
+      displayName = ""
+    )
+    assertTrue(returningTranslatorResult.isSuccess)
+    val returningUser = repo.activeUser.first()
+    assertNotNull(returningUser)
+    assertEquals("TRANSLATOR", returningUser?.role)
+    assertEquals(1, returningUser?.authorSlot)
   }
 }

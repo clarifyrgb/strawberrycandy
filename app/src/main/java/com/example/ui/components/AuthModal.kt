@@ -106,18 +106,8 @@ fun AuthModal(
         emailInput = trimmedEmail
       }
       val normalizedEmail = trimmedEmail.lowercase()
-      if (!normalizedEmail.endsWith("@gmail.com") && !normalizedEmail.endsWith("@googlemail.com")) {
-        localError = "Invalid Google Account. Please enter a valid @gmail.com address."
-        return
-      }
-      val localPart = normalizedEmail.substringBefore("@")
-      if (localPart.length < 6) {
-        localError = "Google username must be at least 6 characters before @gmail.com."
-        return
-      }
-      val validGoogleUsernameRegex = Regex("^[a-z0-9][a-z0-9.]*[a-z0-9]$")
-      if (!validGoogleUsernameRegex.matches(localPart) || localPart.contains("..")) {
-        localError = "Invalid Gmail format. Google usernames only contain letters, numbers, and non-consecutive periods."
+      if (!normalizedEmail.contains("@") || !normalizedEmail.contains(".")) {
+        localError = "Please enter a valid Gmail address (e.g. username@gmail.com)."
         return
       }
     } else {
@@ -133,16 +123,6 @@ fun AuthModal(
 
     if (passwordInput.isBlank()) {
       localError = "Please enter your account password."
-      return
-    }
-    if (passwordInput.length < 8) {
-      localError = "Account password must be at least 8 characters long to match Google account requirements."
-      return
-    }
-    val hasLetter = passwordInput.any { it.isLetter() }
-    val hasDigitOrSymbol = passwordInput.any { !it.isLetter() }
-    if (!hasLetter || !hasDigitOrSymbol) {
-      localError = "Password must include both letters and numbers/symbols to match your account credentials."
       return
     }
 
@@ -514,7 +494,7 @@ fun AuthModal(
 
           Spacer(modifier = Modifier.height(4.dp))
           Text(
-            text = "• Enter the exact same password associated with your Google account. Credentials must match for APK acceptance.",
+            text = "• Enter your Google account password (letters-only passwords without numbers or symbols are accepted).",
             style = MaterialTheme.typography.bodySmall.copy(
               fontSize = 10.sp,
               color = CharcoalSecondary,

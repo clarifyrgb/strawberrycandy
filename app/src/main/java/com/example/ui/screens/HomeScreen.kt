@@ -212,7 +212,11 @@ fun HomeScreen(
         onOpenAuth = { viewModel.openAuthDialog() },
         onSignOut = { viewModel.signOut() },
         onOpenProfile = { viewModel.openProfileDialog() },
-        onOpenAuthorRooms = { isAuthorRoomsModalOpen = true },
+        onOpenAuthorRooms = {
+          if (activeUser != null) {
+            isAuthorRoomsModalOpen = true
+          }
+        },
         onOpenUpload = {
           selectedUploadSlot = activeUser?.authorSlot ?: 0
           viewModel.openUploadDialog()
@@ -324,18 +328,23 @@ fun HomeScreen(
         // "All Translators" opens the Translator Archive with live active count
         FilterChip(
           selected = true,
-          onClick = { isAuthorRoomsModalOpen = true },
+          enabled = activeUser != null,
+          onClick = {
+            if (activeUser != null) {
+              isAuthorRoomsModalOpen = true
+            }
+          },
           leadingIcon = {
             Icon(
-              imageVector = Icons.Outlined.WorkspacePremium,
-              contentDescription = null,
-              tint = AntiqueGold,
+              imageVector = if (activeUser != null) Icons.Outlined.WorkspacePremium else Icons.Outlined.Lock,
+              contentDescription = if (activeUser != null) null else "Log in required",
+              tint = if (activeUser != null) AntiqueGold else CharcoalSecondary.copy(alpha = 0.5f),
               modifier = Modifier.size(13.dp)
             )
           },
           label = {
             Text(
-              "All Translators (${activeTranslators.size} Active)",
+              if (activeUser != null) "All Translators (${activeTranslators.size} Active)" else "Curators (Log in to view)",
               style = MaterialTheme.typography.labelSmall.copy(
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold
@@ -346,9 +355,11 @@ fun HomeScreen(
             selectedContainerColor = CharcoalText,
             selectedLabelColor = SoftCreamPaper,
             containerColor = SoftCreamPaper,
-            labelColor = CharcoalSecondary
+            labelColor = CharcoalSecondary,
+            disabledContainerColor = SoftCreamPaper.copy(alpha = 0.5f),
+            disabledLabelColor = CharcoalSecondary.copy(alpha = 0.5f)
           ),
-          border = BorderStroke(1.dp, CharcoalText),
+          border = BorderStroke(1.dp, if (activeUser != null) CharcoalText else SubtleBorder.copy(alpha = 0.5f)),
           shape = RoundedCornerShape(12.dp)
         )
 
@@ -365,12 +376,17 @@ fun HomeScreen(
 
         FilterChip(
           selected = false,
-          onClick = { selectedTranslatorForDetail = ownerSlot },
+          enabled = activeUser != null,
+          onClick = {
+            if (activeUser != null) {
+              selectedTranslatorForDetail = ownerSlot
+            }
+          },
           leadingIcon = {
             Icon(
-              imageVector = Icons.Outlined.WorkspacePremium,
-              contentDescription = null,
-              tint = AntiqueGold,
+              imageVector = if (activeUser != null) Icons.Outlined.WorkspacePremium else Icons.Outlined.Lock,
+              contentDescription = if (activeUser != null) null else "Log in required",
+              tint = if (activeUser != null) AntiqueGold else CharcoalSecondary.copy(alpha = 0.5f),
               modifier = Modifier.size(12.dp)
             )
           },
@@ -390,7 +406,7 @@ fun HomeScreen(
                   "($founderCount)",
                   style = MaterialTheme.typography.labelSmall.copy(
                     fontSize = 9.5.sp,
-                    color = AntiqueGold
+                    color = if (activeUser != null) AntiqueGold else CharcoalSecondary.copy(alpha = 0.5f)
                   )
                 )
               }
@@ -400,9 +416,11 @@ fun HomeScreen(
             selectedContainerColor = SoftCreamPaper,
             selectedLabelColor = CharcoalText,
             containerColor = SoftCreamPaper,
-            labelColor = CharcoalSecondary
+            labelColor = CharcoalSecondary,
+            disabledContainerColor = SoftCreamPaper.copy(alpha = 0.5f),
+            disabledLabelColor = CharcoalSecondary.copy(alpha = 0.5f)
           ),
-          border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.5f)),
+          border = BorderStroke(1.dp, if (activeUser != null) AntiqueGold.copy(alpha = 0.5f) else SubtleBorder.copy(alpha = 0.4f)),
           shape = RoundedCornerShape(12.dp)
         )
 
@@ -413,13 +431,27 @@ fun HomeScreen(
           }
           FilterChip(
             selected = false,
-            onClick = { selectedTranslatorForDetail = slot },
+            enabled = activeUser != null,
+            onClick = {
+              if (activeUser != null) {
+                selectedTranslatorForDetail = slot
+              }
+            },
             leadingIcon = {
-              Box(
-                modifier = Modifier
-                  .size(7.dp)
-                  .background(Color(0xFF2E7D32), CircleShape)
-              )
+              if (activeUser != null) {
+                Box(
+                  modifier = Modifier
+                    .size(7.dp)
+                    .background(Color(0xFF2E7D32), CircleShape)
+                )
+              } else {
+                Icon(
+                  imageVector = Icons.Outlined.Lock,
+                  contentDescription = "Log in required",
+                  tint = CharcoalSecondary.copy(alpha = 0.5f),
+                  modifier = Modifier.size(11.dp)
+                )
+              }
             },
             label = {
               Row(verticalAlignment = Alignment.CenterVertically) {
@@ -447,7 +479,9 @@ fun HomeScreen(
               selectedContainerColor = SoftCreamPaper,
               selectedLabelColor = CharcoalText,
               containerColor = SoftCreamPaper,
-              labelColor = CharcoalSecondary
+              labelColor = CharcoalSecondary,
+              disabledContainerColor = SoftCreamPaper.copy(alpha = 0.5f),
+              disabledLabelColor = CharcoalSecondary.copy(alpha = 0.5f)
             ),
             border = BorderStroke(1.dp, SubtleBorder),
             shape = RoundedCornerShape(12.dp)
@@ -849,7 +883,7 @@ fun HomeScreen(
     }
 
     // Author Rooms / Translator Collective Archive Modal (5 Curators)
-    if (isAuthorRoomsModalOpen) {
+    if (isAuthorRoomsModalOpen && activeUser != null) {
       AuthorRoomsModal(
         authorSlots = uiState.authorSlots,
         novels = allNovelsList,
@@ -884,7 +918,7 @@ fun HomeScreen(
     }
 
     // Dedicated Personal Archive Page for a Translator
-    if (selectedTranslatorForDetail != null) {
+    if (selectedTranslatorForDetail != null && activeUser != null) {
       val activeSlot = uiState.authorSlots.find { it.slotNumber == selectedTranslatorForDetail!!.slotNumber }
         ?: selectedTranslatorForDetail!!
       TranslatorProfileModal(
@@ -1137,12 +1171,13 @@ private fun TopUtilityBar(
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-      // Translators / Curators button
+      // Translators / Curators button (only clickable when logged in)
       Surface(
         onClick = onOpenAuthorRooms,
+        enabled = activeUser != null,
         shape = RoundedCornerShape(16.dp),
-        color = SoftCreamPaper,
-        border = BorderStroke(1.dp, SubtleBorder),
+        color = if (activeUser != null) SoftCreamPaper else SoftCreamPaper.copy(alpha = 0.5f),
+        border = BorderStroke(1.dp, if (activeUser != null) SubtleBorder else SubtleBorder.copy(alpha = 0.4f)),
         modifier = Modifier.testTag("author_rooms_button")
       ) {
         Row(
@@ -1150,19 +1185,19 @@ private fun TopUtilityBar(
           modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
         ) {
           Icon(
-            imageVector = Icons.Outlined.WorkspacePremium,
-            contentDescription = null,
-            tint = AntiqueGold,
+            imageVector = if (activeUser != null) Icons.Outlined.WorkspacePremium else Icons.Outlined.Lock,
+            contentDescription = if (activeUser != null) "Curators" else "Curators (Log in required)",
+            tint = if (activeUser != null) AntiqueGold else CharcoalSecondary.copy(alpha = 0.5f),
             modifier = Modifier.size(13.dp)
           )
           Spacer(modifier = Modifier.width(4.dp))
           Text(
-            text = "$activeTranslatorsCount Curators",
+            text = if (activeUser != null) "$activeTranslatorsCount Curators" else "Curators (Log In)",
             style = MaterialTheme.typography.labelSmall.copy(
               fontWeight = FontWeight.SemiBold,
               fontSize = 9.5.sp
             ),
-            color = CharcoalText
+            color = if (activeUser != null) CharcoalText else CharcoalSecondary.copy(alpha = 0.5f)
           )
         }
       }

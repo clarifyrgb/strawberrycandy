@@ -29,11 +29,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.AntiqueGold
+import com.example.ui.theme.AntiqueGoldLight
 import com.example.ui.theme.CharcoalSecondary
 import com.example.ui.theme.CharcoalTertiary
 import com.example.ui.theme.CharcoalText
@@ -70,10 +72,15 @@ fun NovelSearchBar(
         OutlinedTextField(
           value = query,
           onValueChange = onQueryChange,
+          textStyle = MaterialTheme.typography.bodyMedium.copy(
+            color = CharcoalText,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold
+          ),
           placeholder = {
             Text(
               text = "Search novels by title, author, genre, tags...",
-              style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
+              style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
               color = CharcoalTertiary
             )
           },
@@ -82,20 +89,20 @@ fun NovelSearchBar(
               imageVector = Icons.Outlined.Search,
               contentDescription = "Search",
               tint = AntiqueGold,
-              modifier = Modifier.size(18.dp)
+              modifier = Modifier.size(20.dp)
             )
           },
           trailingIcon = {
             if (query.isNotBlank()) {
               IconButton(
                 onClick = onClearQuery,
-                modifier = Modifier.size(28.dp).testTag("clear_novel_search_button")
+                modifier = Modifier.size(32.dp).testTag("clear_novel_search_button")
               ) {
                 Icon(
                   imageVector = Icons.Outlined.Close,
                   contentDescription = "Clear search",
-                  tint = CharcoalSecondary,
-                  modifier = Modifier.size(16.dp)
+                  tint = CharcoalText,
+                  modifier = Modifier.size(18.dp)
                 )
               }
             }
@@ -103,19 +110,21 @@ fun NovelSearchBar(
           singleLine = true,
           shape = RoundedCornerShape(12.dp),
           colors = OutlinedTextFieldDefaults.colors(
+            focusedTextColor = CharcoalText,
+            unfocusedTextColor = CharcoalText,
+            focusedContainerColor = Color.White,
+            unfocusedContainerColor = SoftCreamPaper,
             focusedBorderColor = AntiqueGold,
-            unfocusedBorderColor = SubtleBorder.copy(alpha = 0.6f),
-            focusedContainerColor = SoftCreamPaper,
-            unfocusedContainerColor = SoftCreamPaper
+            unfocusedBorderColor = SubtleBorder.copy(alpha = 0.8f),
+            cursorColor = AntiqueGold
           ),
           modifier = Modifier
             .fillMaxWidth()
-            .height(48.dp)
             .testTag("novel_search_input")
         )
       }
 
-      // Search status & quick suggestion pills
+      // Search status & active search text indicator
       if (query.isNotBlank()) {
         Spacer(modifier = Modifier.height(6.dp))
         Row(
@@ -123,19 +132,48 @@ fun NovelSearchBar(
           horizontalArrangement = Arrangement.SpaceBetween,
           verticalAlignment = Alignment.CenterVertically
         ) {
-          Text(
-            text = if (matchCount > 0) "Found $matchCount of $totalCount novels" else "No novels match '$query'",
-            style = MaterialTheme.typography.labelSmall.copy(
-              fontSize = 10.sp,
-              fontWeight = FontWeight.Medium
-            ),
-            color = if (matchCount > 0) AntiqueGold else CharcoalSecondary
-          )
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.weight(1f, fill = false)
+          ) {
+            Text(
+              text = "Searching: ",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Normal
+              ),
+              color = CharcoalSecondary
+            )
+            Surface(
+              shape = RoundedCornerShape(6.dp),
+              color = AntiqueGoldLight.copy(alpha = 0.6f),
+              border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.5f))
+            ) {
+              Text(
+                text = "\"$query\"",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 11.sp,
+                  fontWeight = FontWeight.Bold
+                ),
+                color = CharcoalText,
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+              )
+            }
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+              text = "($matchCount found)",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 10.5.sp,
+                fontWeight = FontWeight.SemiBold
+              ),
+              color = if (matchCount > 0) AntiqueGold else Color(0xFFC62828)
+            )
+          }
 
           Surface(
             onClick = onClearQuery,
             shape = RoundedCornerShape(8.dp),
-            color = SubtleBorder.copy(alpha = 0.3f),
+            color = SubtleBorder.copy(alpha = 0.4f),
             modifier = Modifier.clickable { onClearQuery() }
           ) {
             Text(
@@ -145,7 +183,7 @@ fun NovelSearchBar(
                 fontWeight = FontWeight.Bold
               ),
               color = CharcoalText,
-              modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+              modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
             )
           }
         }
