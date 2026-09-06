@@ -5,9 +5,6 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -22,14 +19,8 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      # Fix the AWT EventQueue crash by providing a virtual display buffer
-      - name: Install Virtual Framebuffer (Xvfb)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb
-
-      # Injects the API key and fixes configuration conflicts
-      - name: Setup Environment and Fix Configs
+      # Injects the required API key and fixes missing config
+      - name: Configure Environment
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
@@ -38,13 +29,7 @@ jobs:
           echo "GEMINI_API_KEY=${GEMINI_API_KEY}" >> local.properties
           echo "GEMINI_API_KEY=${GEMINI_API_KEY}" > .env
           
-          # Fix 1: Switch KSP from buggy in-process mode to daemon mode
-          sed -i 's/kotlin.compiler.execution.strategy=in-process/kotlin.compiler.execution.strategy=daemon/g' gradle.properties
-          
-          # Fix 2: Add headless flag safely to existing JVM args
-          sed -i 's/org.gradle.jvmargs=/org.gradle.jvmargs=-Djava.awt.headless=true /g' gradle.properties
-
-          # Fix 3: Remove AI Studio debugConfig reference per README step 5
+          # Remove broken signingConfig line per README step 5
           if [ -f app/build.gradle.kts ]; then
             sed -i '/signingConfigs.getByName("debugConfig")/d' app/build.gradle.kts || true
             sed -i '/debugConfig/d' app/build.gradle.kts || true
@@ -56,12 +41,46 @@ jobs:
           unzip -q gradle-9.3.1-bin.zip
           echo "$PWD/gradle-9.3.1/bin" >> $GITHUB_PATH
 
-      # Runs inside xvfb-run and produces a self-signed, installable debug APK
-      - name: Build Debug APK
-        run: xvfb-run --auto-servernum gradle assembleDebug --no-daemon -Djava.awt.headless=true
+      - name: Build Release APK
+        run: gradle assembleRelease --no-daemon
 
-      - name: Upload APK Artifact
+      # Generates a key, aligns, and signs the release APK so Android accepts it
+      - name: Sign Release APK
+        run: |
+          BUILD_TOOLS_DIR=$(ls -d $ANDROID_HOME/build-tools/* | tail -n 1)
+
+          # 1. Create a valid signing key
+          keytool -genkeypair -v \
+            -keystore release.keystore \
+            -alias strawberry \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -storepass androidpassword \
+            -keypass androidpassword \
+            -dname "CN=Strawberrycandy, OU=App, O=AIStudio, L=City, S=State, C=US"
+
+          # 2. Locate the raw release APK
+          RAW_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          mkdir -p output
+
+          # 3. Zipalign (required by Android)
+          $BUILD_TOOLS_DIR/zipalign -v -p 4 "$RAW_APK" output/aligned.apk
+
+          # 4. Sign APK with v2/v3 signature
+          $BUILD_TOOLS_DIR/apksigner sign \
+            --ks release.keystore \
+            --ks-pass pass:androidpassword \
+            --key-pass pass:androidpassword \
+            --ks-key-alias strawberry \
+            --out output/Strawberrycandy-signed.apk \
+            output/aligned.apk
+
+          # 5. Verify the signature
+          $BUILD_TOOLS_DIR/apksigner verify output/Strawberrycandy-signed.apk
+
+      - name: Upload Signed APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Strawberrycandy-app
-          path: app/build/outputs/apk/debug/*.apk
+          path: output/Strawberrycandy-signed.apk
