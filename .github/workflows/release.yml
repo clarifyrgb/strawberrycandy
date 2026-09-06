@@ -5,9 +5,6 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -31,10 +28,10 @@ jobs:
           echo "GEMINI_API_KEY=${GEMINI_API_KEY}" >> local.properties
           echo "GEMINI_API_KEY=${GEMINI_API_KEY}" > .env
           
-          # Safely append headless mode to existing jvmargs instead of creating a duplicate key
+          # Fix JVM args without duplicating the org.gradle.jvmargs property
           sed -i 's/org.gradle.jvmargs=/org.gradle.jvmargs=-Djava.awt.headless=true /g' gradle.properties
-          
-          # Remove broken AI Studio debugConfig referenced in README step 5
+
+          # Remove AI Studio debugConfig reference documented in README step 5
           if [ -f app/build.gradle.kts ]; then
             sed -i '/signingConfigs.getByName("debugConfig")/d' app/build.gradle.kts || true
             sed -i '/debugConfig/d' app/build.gradle.kts || true
@@ -46,7 +43,7 @@ jobs:
           unzip -q gradle-9.3.1-bin.zip
           echo "$PWD/gradle-9.3.1/bin" >> $GITHUB_PATH
 
-      # assembleDebug automatically self-signs the APK so Android lets you open it
+      # assembleDebug produces an automatically signed, installable APK
       - name: Build Debug APK
         run: gradle assembleDebug --no-daemon
 
