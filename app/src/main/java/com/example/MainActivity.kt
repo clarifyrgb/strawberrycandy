@@ -72,10 +72,11 @@ fun StrawberrycandyApp(
       .testTag("app_root_container")
   ) {
     AnimatedContent(
-      targetState = selectedNovel,
+      targetState = selectedNovelId,
       transitionSpec = { fadeIn() togetherWith fadeOut() },
       label = "screen_transition"
-    ) { currentNovel ->
+    ) { currentNovelId ->
+      val currentNovel = uiState.novels.find { it.id == currentNovelId }
       if (currentNovel != null) {
         ReadingScreen(
           novel = currentNovel,

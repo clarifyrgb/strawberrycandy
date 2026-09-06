@@ -8,9 +8,12 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -67,6 +70,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -144,6 +148,7 @@ data class ActiveParagraphSelection(
   val selectedSentenceIndex: Int, // -1: whole paragraph, >=0: individual sentence index
 )
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ReadingScreen(
   novel: NovelWithState,
@@ -290,10 +295,19 @@ fun ReadingScreen(
     }
   }
 
-  // Auto-save reading progress
+  // Auto-save reading progress (debounced to preserve smooth scroll performance)
   LaunchedEffect(estimatedCurrentPage, hasInitialSynced) {
     if (hasInitialSynced && estimatedCurrentPage != novel.currentPage) {
+      delay(800L)
       onSaveProgress(estimatedCurrentPage)
+    }
+  }
+
+  DisposableEffect(Unit) {
+    onDispose {
+      if (hasInitialSynced) {
+        onSaveProgress(estimatedCurrentPage)
+      }
     }
   }
 
@@ -445,7 +459,7 @@ fun ReadingScreen(
                   overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                  text = "Ch. ${toRomanNumeral(currentChapter?.number ?: (currentChapterIndex + 1))} • ${currentChapter?.title ?: novel.chapterTitle}",
+                  text = "Ch. ${toRomanNumeral(currentChapter?.number ?: (currentChapterIndex + 1))} • p. $estimatedCurrentPage of ${novel.totalPages} • ${currentChapter?.title ?: novel.chapterTitle}",
                   style = MaterialTheme.typography.labelSmall.copy(
                     fontSize = 9.5.sp,
                     color = AntiqueGold,
@@ -897,15 +911,10 @@ fun ReadingScreen(
           state = lazyListState,
           modifier = Modifier
             .fillMaxSize()
-            .pointerInput(Unit) {
-              detectTapGestures {
-                isHudVisible = !isHudVisible
-              }
-            }
             .padding(horizontal = 26.dp, vertical = 8.dp)
             .testTag("reading_lazy_column"),
           horizontalAlignment = Alignment.CenterHorizontally,
-          contentPadding = PaddingValues(bottom = 56.dp)
+          contentPadding = PaddingValues(bottom = 36.dp)
         ) {
           item(key = "reading_header") {
             Column(
@@ -1135,19 +1144,28 @@ fun ReadingScreen(
                           },
                           shape = RoundedCornerShape(12.dp)
                         )
-                        .clickable {
+                        .then(
                           if (isSelectionActive) {
-                            activeParagraphSelection = null
+                            Modifier.clickable {
+                              activeParagraphSelection = null
+                            }
                           } else {
-                            val sentences = splitParagraphIntoSentences(paragraph)
-                            activeParagraphSelection = ActiveParagraphSelection(
-                              paragraphIndex = index,
-                              paragraphText = paragraph,
-                              sentences = sentences,
-                              selectedSentenceIndex = if (sentences.size > 1) 0 else -1
+                            Modifier.combinedClickable(
+                              onLongClick = {
+                                val sentences = splitParagraphIntoSentences(paragraph)
+                                activeParagraphSelection = ActiveParagraphSelection(
+                                  paragraphIndex = index,
+                                  paragraphText = paragraph,
+                                  sentences = sentences,
+                                  selectedSentenceIndex = if (sentences.size > 1) 0 else -1
+                                )
+                              },
+                              onClick = {
+                                // Plain tap allows smooth scroll and doesn't interfere with gesture detection
+                              }
                             )
                           }
-                        }
+                        )
                         .padding(
                           horizontal = if (isSelectionActive || hasHighlights) 12.dp else 0.dp,
                           vertical = if (isSelectionActive || hasHighlights) 8.dp else 0.dp
@@ -1607,70 +1625,6 @@ fun ReadingScreen(
               )
 
               Spacer(modifier = Modifier.height(48.dp))
-            }
-          }
-        }
-      }
-
-      // -------------------------------------------------------------
-      // BOTTOM HUD BAR: CHAPTER PILL, PREV/NEXT & READING PROGRESS SLIDER
-      // -------------------------------------------------------------
-      AnimatedVisibility(
-        visible = isHudVisible,
-        enter = fadeIn() + expandVertically(),
-        exit = fadeOut() + shrinkVertically()
-      ) {
-        Surface(
-          color = Color(0xF5FAF6EE),
-          border = BorderStroke(1.dp, SubtleBorder),
-          shadowElevation = 8.dp,
-          modifier = Modifier.fillMaxWidth()
-        ) {
-          Column(
-            modifier = Modifier
-              .fillMaxWidth()
-              .padding(horizontal = 14.dp, vertical = 6.dp)
-          ) {
-            // Reading progress scrubber slider & folio
-            Row(
-              modifier = Modifier.fillMaxWidth(),
-              verticalAlignment = Alignment.CenterVertically
-            ) {
-              Text(
-                text = "p. $estimatedCurrentPage",
-                style = MaterialTheme.typography.labelSmall.copy(
-                  fontSize = 10.sp,
-                  fontWeight = FontWeight.Bold,
-                  color = AntiqueGold
-                )
-              )
-
-              Slider(
-                value = (lazyListState.firstVisibleItemIndex).coerceIn(0, (novel.storyItems.size).coerceAtLeast(1)).toFloat(),
-                onValueChange = { itemVal ->
-                  coroutineScope.launch {
-                    lazyListState.scrollToItem(itemVal.toInt(), 0)
-                  }
-                },
-                valueRange = 0f..(novel.storyItems.size).coerceAtLeast(1).toFloat(),
-                colors = SliderDefaults.colors(
-                  thumbColor = AntiqueGold,
-                  activeTrackColor = AntiqueGold,
-                  inactiveTrackColor = Color(0x22000000)
-                ),
-                modifier = Modifier
-                  .weight(1f)
-                  .padding(horizontal = 8.dp)
-                  .height(26.dp)
-              )
-
-              Text(
-                text = "p. ${novel.totalPages}",
-                style = MaterialTheme.typography.labelSmall.copy(
-                  fontSize = 10.sp,
-                  color = CharcoalTertiary
-                )
-              )
             }
           }
         }
