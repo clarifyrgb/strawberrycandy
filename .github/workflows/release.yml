@@ -2,13 +2,12 @@ name: Android Release Build
 
 on:
   push:
-    tags:
-      - 'v*' # Triggers automatically when you push a version tag (e.g., v1.0.0)
+    branches: [ main ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -19,15 +18,17 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Make Gradle executable
-        run: chmod +x gradlew
+      - name: Install Gradle Manually
+        run: |
+          wget https://services.gradle.org/distributions/gradle-8.7-bin.zip
+          unzip -q gradle-8.7-bin.zip
+          echo "$PWD/gradle-8.7/bin" >> $GITHUB_PATH
 
       - name: Build Release APK
-        run: ./gradlew assembleRelease
+        run: gradle assembleRelease
 
-      - name: Upload APK to GitHub Release
-        uses: softprops/action-gh-release@v1
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
         with:
-          files: app/build/outputs/apk/release/*.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+          name: app-release
+          path: app/build/outputs/**/*.apk
