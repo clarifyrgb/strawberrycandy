@@ -3,7 +3,6 @@ name: Android Release Build
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:
 
 jobs:
   build:
@@ -25,27 +24,11 @@ jobs:
           unzip -q gradle-9.3.1-bin.zip
           echo "$PWD/gradle-9.3.1/bin" >> $GITHUB_PATH
 
-      # Injects the required Gemini key so the app doesn't crash on launch
-      - name: Inject Environment Secrets
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: |
-          touch local.properties
-          echo "sdk.dir=$ANDROID_HOME" > local.properties
-          echo "GEMINI_API_KEY=${GEMINI_API_KEY}" >> local.properties
-          echo "GEMINI_API_KEY=${GEMINI_API_KEY}" > .env
-
-          # Remove AI Studio debugConfig requirement if present
-          if [ -f app/build.gradle.kts ]; then
-            sed -i '/debugConfig/d' app/build.gradle.kts || true
-          fi
-
-      # Build debug variant so it is automatically signed and runnable on any device
-      - name: Build Runnable APK
+      - name: Build Release APK
         run: gradle assembleDebug
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Strawberrycandy-app
+          name: app-release
           path: app/build/outputs/apk/debug/*.apk
