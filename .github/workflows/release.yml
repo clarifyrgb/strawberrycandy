@@ -19,7 +19,7 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Configure Headless Environment & Secrets
+      - name: Configure Environment & Secrets
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
@@ -28,13 +28,16 @@ jobs:
           echo "GEMINI_API_KEY=${GEMINI_API_KEY}" >> local.properties
           echo "GEMINI_API_KEY=${GEMINI_API_KEY}" > .env
           
-          # Fix headless JVM flag safely
+          # Fix headless AWT flag
           sed -i 's/org.gradle.jvmargs=/org.gradle.jvmargs=-Djava.awt.headless=true /g' gradle.properties
 
-          # 1. FIX THE ERROR: Replace "ksp"(...) with ksp(...) in build.gradle.kts
+          # 1. FIX THE KSP LINE 142 SYNTAX ERROR:
+          # Converts "ksp"(...) to add("ksp", ...) which works in all Kotlin DSL versions
           if [ -f app/build.gradle.kts ]; then
-            sed -i 's/"ksp"(/ksp(/g' app/build.gradle.kts
-            # Remove AI Studio debugConfig reference documented in README step 5
+            sed -i 's/"ksp"(\(.*\))/add("ksp", \1)/g' app/build.gradle.kts
+            sed -i 's/^ *ksp(\(.*\))/    add("ksp", \1)/g' app/build.gradle.kts
+            
+            # Remove AI Studio debugConfig reference per README step 5
             sed -i '/signingConfigs.getByName("debugConfig")/d' app/build.gradle.kts || true
             sed -i '/debugConfig/d' app/build.gradle.kts || true
           fi
@@ -45,8 +48,9 @@ jobs:
           unzip -q gradle-9.3.1-bin.zip
           echo "$PWD/gradle-9.3.1/bin" >> $GITHUB_PATH
 
+      # --no-configuration-cache forces Gradle to re-parse the corrected build.gradle.kts
       - name: Build Debug APK
-        run: gradle assembleDebug --no-daemon
+        run: gradle assembleDebug --no-daemon --no-configuration-cache
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
