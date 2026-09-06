@@ -19,7 +19,8 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Configure API Key
+      # Fix missing API key & setup environment to avoid launch crashes
+      - name: Prepare Secrets and Environment
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
@@ -27,6 +28,15 @@ jobs:
           echo "sdk.dir=$ANDROID_HOME" > local.properties
           echo "GEMINI_API_KEY=${GEMINI_API_KEY}" >> local.properties
           echo "GEMINI_API_KEY=${GEMINI_API_KEY}" > .env
+          
+          # Fix KSP compiler crash by using daemon execution
+          sed -i 's/kotlin.compiler.execution.strategy=in-process/kotlin.compiler.execution.strategy=daemon/g' gradle.properties || true
+
+          # Remove AI Studio debugConfig reference per README step 5
+          if [ -f app/build.gradle.kts ]; then
+            sed -i '/signingConfigs.getByName("debugConfig")/d' app/build.gradle.kts || true
+            sed -i '/debugConfig/d' app/build.gradle.kts || true
+          fi
 
       - name: Install Gradle Manually
         run: |
@@ -34,44 +44,48 @@ jobs:
           unzip -q gradle-9.3.1-bin.zip
           echo "$PWD/gradle-9.3.1/bin" >> $GITHUB_PATH
 
-      # Compiles using your working release task
+      # Compiles the release build
       - name: Build Release APK
-        run: gradle assembleRelease
+        run: gradle assembleRelease --no-daemon
 
-      # Signs the APK so Android accepts and opens it
-      - name: Sign APK
+      # FIX PROBLEM 2: Sign APK using apksigner so Android installs it cleanly
+      - name: Sign Release APK
         run: |
+          # 1. Locate Android build-tools
           BUILD_TOOLS_DIR=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -n 1)
 
-          # Generate signing certificate
+          # 2. Create self-signed keystore
           keytool -genkeypair -v \
-            -keystore app.keystore \
-            -alias appalias \
+            -keystore my-release-key.jks \
             -keyalg RSA \
             -keysize 2048 \
             -validity 10000 \
-            -storepass password123 \
-            -keypass password123 \
-            -dname "CN=Strawberrycandy, OU=App, O=AIStudio, L=City, S=State, C=US"
+            -alias my-alias \
+            -storepass androidkey \
+            -keypass androidkey \
+            -dname "CN=Strawberrycandy, OU=Mobile, O=Apps, L=City, S=State, C=US"
 
-          # Find the unsigned release APK
+          # 3. Find built APK
           RAW_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
           mkdir -p output
 
-          # Zipalign the APK
+          # 4. Align APK (required by Android)
           $BUILD_TOOLS_DIR/zipalign -v -p 4 "$RAW_APK" output/aligned.apk
 
-          # Sign with official Android signature schemes (v1, v2, v3)
+          # 5. Sign APK with official Android v2/v3 signatures
           $BUILD_TOOLS_DIR/apksigner sign \
-            --ks app.keystore \
-            --ks-pass pass:password123 \
-            --key-pass pass:password123 \
-            --ks-key-alias appalias \
-            --out output/Strawberrycandy.apk \
+            --ks my-release-key.jks \
+            --ks-pass pass:androidkey \
+            --key-pass pass:androidkey \
+            --ks-key-alias my-alias \
+            --out output/Strawberrycandy-installable.apk \
             output/aligned.apk
 
-      - name: Upload APK Artifact
+          # 6. Verify signature
+          $BUILD_TOOLS_DIR/apksigner verify output/Strawberrycandy-installable.apk
+
+      - name: Upload Installable APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Strawberrycandy-app
-          path: output/Strawberrycandy.apk
+          path: output/Strawberrycandy-installable.apk
