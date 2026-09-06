@@ -13,6 +13,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Inspect Directory Structure
+        run: |
+          echo "=== Root Folder Contents ==="
+          ls -la
+          echo "=== Locating package.json ==="
+          find . -name "package.json" -not -path "*/node_modules/*"
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -20,6 +27,16 @@ jobs:
 
       - name: Install dependencies & Build Web Assets
         run: |
+          # Find directory containing package.json
+          PKG_PATH=$(find . -name "package.json" -not -path "*/node_modules/*" | head -n 1)
+          if [ -z "$PKG_PATH" ]; then
+            echo "ERROR: package.json could not be found anywhere in this repository."
+            echo "Please push your project source files to GitHub first."
+            exit 1
+          fi
+          APP_DIR=$(dirname "$PKG_PATH")
+          echo "Found package.json in directory: $APP_DIR"
+          cd "$APP_DIR"
           npm install
           npm run build
 
@@ -34,18 +51,29 @@ jobs:
 
       - name: Sync Capacitor Android
         run: |
+          PKG_PATH=$(find . -name "package.json" -not -path "*/node_modules/*" | head -n 1)
+          APP_DIR=$(dirname "$PKG_PATH")
+          cd "$APP_DIR"
           npx cap sync android
 
       - name: Make Gradlew Executable
-        run: chmod +x android/gradlew
+        run: |
+          GRADLEW_PATH=$(find . -name "gradlew" | head -n 1)
+          if [ -z "$GRADLEW_PATH" ]; then
+            echo "ERROR: gradlew file not found. Ensure your capacitor android project is generated."
+            exit 1
+          fi
+          chmod +x "$GRADLEW_PATH"
 
       - name: Build Debug APK with Gradle
         run: |
-          cd android
+          GRADLEW_PATH=$(find . -name "gradlew" | head -n 1)
+          ANDROID_DIR=$(dirname "$GRADLEW_PATH")
+          cd "$ANDROID_DIR"
           ./gradlew assembleDebug --stacktrace
 
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: "**/outputs/apk/debug/*.apk"
