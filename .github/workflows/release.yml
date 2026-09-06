@@ -5,6 +5,9 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -19,14 +22,14 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      # 1. Install xvfb to provide a virtual display for AWT
-      - name: Install Virtual Framebuffer
+      # Fix the AWT EventQueue crash by providing a virtual display buffer
+      - name: Install Virtual Framebuffer (Xvfb)
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb
 
-      # 2. Fix the AWT and execution strategy inside gradle.properties
-      - name: Configure Secrets and Environment
+      # Injects the API key and fixes configuration conflicts
+      - name: Setup Environment and Fix Configs
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
@@ -35,13 +38,13 @@ jobs:
           echo "GEMINI_API_KEY=${GEMINI_API_KEY}" >> local.properties
           echo "GEMINI_API_KEY=${GEMINI_API_KEY}" > .env
           
-          # Fix the exact root cause: switch in-process to daemon
+          # Fix 1: Switch KSP from buggy in-process mode to daemon mode
           sed -i 's/kotlin.compiler.execution.strategy=in-process/kotlin.compiler.execution.strategy=daemon/g' gradle.properties
           
-          # Safely append headless flag to JVM args
+          # Fix 2: Add headless flag safely to existing JVM args
           sed -i 's/org.gradle.jvmargs=/org.gradle.jvmargs=-Djava.awt.headless=true /g' gradle.properties
 
-          # Remove AI Studio debugConfig per README step 5
+          # Fix 3: Remove AI Studio debugConfig reference per README step 5
           if [ -f app/build.gradle.kts ]; then
             sed -i '/signingConfigs.getByName("debugConfig")/d' app/build.gradle.kts || true
             sed -i '/debugConfig/d' app/build.gradle.kts || true
@@ -53,12 +56,12 @@ jobs:
           unzip -q gradle-9.3.1-bin.zip
           echo "$PWD/gradle-9.3.1/bin" >> $GITHUB_PATH
 
-      # 3. Wrap Gradle build inside xvfb-run
+      # Runs inside xvfb-run and produces a self-signed, installable debug APK
       - name: Build Debug APK
         run: xvfb-run --auto-servernum gradle assembleDebug --no-daemon -Djava.awt.headless=true
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
+          name: Strawberrycandy-app
           path: app/build/outputs/apk/debug/*.apk
