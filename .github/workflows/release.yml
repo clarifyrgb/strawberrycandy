@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Debug APK
 
 on:
   push:
@@ -10,24 +10,27 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Java / JDK 17
+      - name: Set up Java / JDK 21
         uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
-          java-version: '17'
-          cache: 'gradle'
+          distribution: 'temurin'
+          java-version: '21'
 
-      - name: Grant execute permission for gradlew
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Make Gradlew Executable
         run: chmod +x gradlew
 
       - name: Build Debug APK with Gradle
         run: ./gradlew assembleDebug --stacktrace
 
-      - name: Upload Debug APK
+      - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
           path: app/build/outputs/apk/debug/*.apk
+
