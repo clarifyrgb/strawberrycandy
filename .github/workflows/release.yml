@@ -5,6 +5,9 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -19,21 +22,33 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      # Fix missing API key & setup environment to avoid launch crashes
-      - name: Prepare Secrets and Environment
+      # Install virtual display to prevent headless AWT / KSP crashes
+      - name: Install Virtual Framebuffer (Xvfb)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+
+      # Prepare API keys, SDK directory, and repair build files automatically
+      - name: Configure Environment and Fix Build Files
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
+          # 1. Provide API key and SDK path for AI Studio export
           touch local.properties
           echo "sdk.dir=$ANDROID_HOME" > local.properties
           echo "GEMINI_API_KEY=${GEMINI_API_KEY}" >> local.properties
           echo "GEMINI_API_KEY=${GEMINI_API_KEY}" > .env
           
-          # Fix KSP compiler crash by using daemon execution
+          # 2. Fix KSP in-process compiler bug
           sed -i 's/kotlin.compiler.execution.strategy=in-process/kotlin.compiler.execution.strategy=daemon/g' gradle.properties || true
+          sed -i 's/org.gradle.jvmargs=/org.gradle.jvmargs=-Djava.awt.headless=true /g' gradle.properties || true
 
-          # Remove AI Studio debugConfig reference per README step 5
+          # 3. Automatically fix Kotlin DSL syntax errors and AI Studio configs
           if [ -f app/build.gradle.kts ]; then
+            # Fix Line 142 error: converts "ksp"(...) to add("ksp", ...)
+            sed -i 's/"ksp"(\(.*\))/add("ksp", \1)/g' app/build.gradle.kts || true
+            
+            # Remove AI Studio broken debugConfig reference per README step 5
             sed -i '/signingConfigs.getByName("debugConfig")/d' app/build.gradle.kts || true
             sed -i '/debugConfig/d' app/build.gradle.kts || true
           fi
@@ -44,17 +59,16 @@ jobs:
           unzip -q gradle-9.3.1-bin.zip
           echo "$PWD/gradle-9.3.1/bin" >> $GITHUB_PATH
 
-      # Compiles the release build
+      # Compile release APK in virtual framebuffer mode
       - name: Build Release APK
-        run: gradle assembleRelease --no-daemon
+        run: xvfb-run --auto-servernum gradle assembleRelease --no-daemon --no-configuration-cache -Djava.awt.headless=true
 
-      # FIX PROBLEM 2: Sign APK using apksigner so Android installs it cleanly
+      # Sign release APK using official Android SDK tools so it installs without errors
       - name: Sign Release APK
         run: |
-          # 1. Locate Android build-tools
           BUILD_TOOLS_DIR=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -n 1)
 
-          # 2. Create self-signed keystore
+          # Generate keystore
           keytool -genkeypair -v \
             -keystore my-release-key.jks \
             -keyalg RSA \
@@ -65,14 +79,14 @@ jobs:
             -keypass androidkey \
             -dname "CN=Strawberrycandy, OU=Mobile, O=Apps, L=City, S=State, C=US"
 
-          # 3. Find built APK
+          # Find the raw APK
           RAW_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
           mkdir -p output
 
-          # 4. Align APK (required by Android)
+          # Align the APK (mandatory for Android installation)
           $BUILD_TOOLS_DIR/zipalign -v -p 4 "$RAW_APK" output/aligned.apk
 
-          # 5. Sign APK with official Android v2/v3 signatures
+          # Sign with Android v2/v3 signatures
           $BUILD_TOOLS_DIR/apksigner sign \
             --ks my-release-key.jks \
             --ks-pass pass:androidkey \
@@ -81,7 +95,7 @@ jobs:
             --out output/Strawberrycandy-installable.apk \
             output/aligned.apk
 
-          # 6. Verify signature
+          # Verify signature validity
           $BUILD_TOOLS_DIR/apksigner verify output/Strawberrycandy-installable.apk
 
       - name: Upload Installable APK Artifact
