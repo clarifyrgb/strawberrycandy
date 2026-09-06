@@ -3,6 +3,10 @@ name: Android Release Build
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -24,11 +28,26 @@ jobs:
           unzip -q gradle-9.3.1-bin.zip
           echo "$PWD/gradle-9.3.1/bin" >> $GITHUB_PATH
 
-      - name: Build Release APK
-        run: gradle assembleDebug
+      - name: Configure Secrets and Fix Signing Config
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          touch local.properties
+          echo "sdk.dir=$ANDROID_HOME" >> local.properties
+          echo "GEMINI_API_KEY=${GEMINI_API_KEY}" >> local.properties
+          echo "GEMINI_API_KEY=${GEMINI_API_KEY}" > .env
+          
+          # Remove broken signingConfig reference documented in README step 5
+          if [ -f app/build.gradle.kts ]; then
+            sed -i '/signingConfigs.getByName("debugConfig")/d' app/build.gradle.kts || true
+            sed -i '/debugConfig/d' app/build.gradle.kts || true
+          fi
+
+      - name: Build Debug APK
+        run: gradle assembleDebug --no-daemon
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-release
+          name: Strawberrycandy-app
           path: app/build/outputs/apk/debug/*.apk
