@@ -14,4 +14,5 @@ data class ReaderProfileEntity(
   val authorSlot: Int? = null, // Optional slot number (0 for owner, 1..10 for translator)
   val lastLoginTimestamp: Long = System.currentTimeMillis(),
   val penNamePoints: Int = 0,
+  val passwordHash: String? = null,
 )

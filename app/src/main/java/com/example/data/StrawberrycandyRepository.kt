@@ -54,6 +54,7 @@ class StrawberrycandyRepository(
       dao.sanitizeSlotPenNames()
       dao.sanitizeCommentNames()
       syncOwnerConfiguration()
+      ensureQuickFindCategoriesExist()
     }
   }
 
@@ -89,6 +90,8 @@ class StrawberrycandyRepository(
     coverImageUri: String? = null,
     storyImagesJson: String = "",
     originalAuthor: String = "",
+    novelStatus: String = "ONGOING",
+    releaseFormat: String = "CHAPTER",
   ): String {
     val novelId = "nov_" + UUID.randomUUID().toString().take(8)
     val novel = NovelEntity(
@@ -112,6 +115,8 @@ class StrawberrycandyRepository(
       readsCount = 0,
       favoritesCount = 0,
       storyImagesJson = storyImagesJson,
+      novelStatus = novelStatus,
+      releaseFormat = releaseFormat,
     )
     dao.insertNovel(novel)
     return novelId
@@ -164,6 +169,8 @@ class StrawberrycandyRepository(
     contentText: String,
     coverColorHex: Long? = null,
     coverImageUri: String? = null,
+    novelStatus: String? = null,
+    releaseFormat: String? = null,
   ) {
     val existing = dao.getNovelById(novelId) ?: return
     val cleanContent = contentText.trim()
@@ -176,6 +183,8 @@ class StrawberrycandyRepository(
       contentText = cleanContent,
       coverColorHex = coverColorHex ?: existing.coverColorHex,
       coverImageUri = coverImageUri ?: existing.coverImageUri,
+      novelStatus = novelStatus ?: existing.novelStatus,
+      releaseFormat = releaseFormat ?: existing.releaseFormat,
       totalPages = maxOf(1, cleanContent.split("\n\n").count { it.isNotBlank() } * 2)
     )
     dao.insertNovel(updated)
@@ -188,23 +197,59 @@ class StrawberrycandyRepository(
   suspend fun signIn(
     provider: String, // "GOOGLE" or "APPLE"
     email: String,
+    password: String = "",
     displayName: String,
     role: String = "READER",
     authorSlot: Int? = null,
-  ) {
-    val cleanEmail = email.trim()
-    val userId = "usr_" + provider.lowercase() + "_" + cleanEmail.replace(Regex("[^a-zA-Z0-9]"), "").take(12)
+  ): Result<Unit> {
+    val cleanEmail = email.trim().lowercase()
+    if (provider == "GOOGLE") {
+      if (!cleanEmail.endsWith("@gmail.com") && !cleanEmail.endsWith("@googlemail.com")) {
+        return Result.failure(IllegalArgumentException("For Google sign in, you must enter a valid Gmail address (@gmail.com)."))
+      }
+    }
+    if (password.isBlank()) {
+      return Result.failure(IllegalArgumentException("Please enter your account password."))
+    }
+    if (password.length < 8) {
+      return Result.failure(IllegalArgumentException("Account password must be at least 8 characters long."))
+    }
+
+    val userId = "usr_" + provider.lowercase() + "_" + cleanEmail.replace(Regex("[^a-z0-9]"), "_")
     val isOwner = isOwnerEmail(cleanEmail)
+
+    // Check existing password if user previously logged in
+    val existingProfile = dao.getReaderProfileByEmail(cleanEmail) ?: dao.getReaderProfile(userId)
+    if (existingProfile != null && !existingProfile.passwordHash.isNullOrBlank() && password.isNotBlank()) {
+      if (existingProfile.passwordHash != password) {
+        return Result.failure(
+          IllegalArgumentException(
+            "Incorrect password for Google Account $cleanEmail. The password entered must be the exact same with your Google account to be accepted in this APK."
+          )
+        )
+      }
+    }
+
+    // Check if owner has pre-granted this email to an author slot
+    val preGrantedSlot = dao.getAuthorSlotByEmail(cleanEmail)
 
     val finalRole = if (isOwner) {
       "OWNER"
+    } else if (preGrantedSlot != null && preGrantedSlot.isPermissionGranted) {
+      "TRANSLATOR"
     } else if (role == "TRANSLATOR") {
       "TRANSLATOR"
     } else {
       "READER"
     }
 
-    val finalSlot = if (finalRole == "OWNER") 0 else authorSlot
+    val finalSlot = if (finalRole == "OWNER") {
+      0
+    } else if (preGrantedSlot != null) {
+      preGrantedSlot.slotNumber
+    } else {
+      authorSlot
+    }
 
     val emailRegex = Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}")
     val finalName = if (displayName.isNotBlank() && !displayName.contains("@")) {
@@ -225,7 +270,6 @@ class StrawberrycandyRepository(
       }
     }
 
-    val existingProfile = dao.getReaderProfile(userId)
     val existingPoints = existingProfile?.penNamePoints ?: 0
 
     val profile = ReaderProfileEntity(
@@ -236,9 +280,34 @@ class StrawberrycandyRepository(
       role = finalRole,
       authorSlot = finalSlot,
       penNamePoints = existingPoints,
-      lastLoginTimestamp = System.currentTimeMillis()
+      lastLoginTimestamp = System.currentTimeMillis(),
+      passwordHash = password.ifBlank { existingProfile?.passwordHash ?: "account_pass" }
     )
     dao.insertReaderProfile(profile)
+
+    // If translator, link their Gmail address to the author slot so the Owner can see it
+    if (finalRole == "TRANSLATOR" && finalSlot != null && finalSlot != 0) {
+      val slot = dao.getAuthorSlot(finalSlot)
+      if (slot != null) {
+        dao.updateAuthorSlotEmail(finalSlot, cleanEmail)
+      }
+    }
+
+    return Result.success(Unit)
+  }
+
+  suspend fun grantPermissionByEmail(email: String, slotNumber: Int? = null) {
+    val cleanEmail = email.trim().lowercase()
+    val existingSlot = dao.getAuthorSlotByEmail(cleanEmail)
+    if (existingSlot != null) {
+      dao.updateAuthorSlotPermission(existingSlot.slotNumber, true)
+    } else {
+      val target = slotNumber ?: (1..10).firstOrNull { slotNum ->
+        val s = dao.getAuthorSlot(slotNum)
+        s == null || !s.isPermissionGranted
+      } ?: 5
+      dao.updateAuthorSlotPermissionAndEmail(target, true, cleanEmail)
+    }
   }
 
   suspend fun signOut() {
@@ -446,6 +515,23 @@ class StrawberrycandyRepository(
       val slotNum = profile.authorSlot
       if (slotNum != null && slotNum >= 0) {
         dao.updateSlotPenName(slotNum, cleanPenName)
+      }
+      return true
+    }
+    return false
+  }
+
+  suspend fun updateReaderDisplayName(userId: String, newDisplayName: String): Boolean {
+    val emailRegex = Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}")
+    val cleanName = newDisplayName.replace(emailRegex, "").trim()
+    if (cleanName.isBlank()) return false
+
+    val profile = dao.getReaderProfile(userId) ?: return false
+    val updatedCount = dao.updateReaderDisplayName(userId, cleanName)
+    if (updatedCount > 0) {
+      val slotNum = profile.authorSlot
+      if (slotNum != null && slotNum >= 0) {
+        dao.updateSlotPenName(slotNum, cleanName)
       }
       return true
     }
@@ -809,6 +895,24 @@ class StrawberrycandyRepository(
     }
   }
 
+  private suspend fun ensureQuickFindCategoriesExist() {
+    val quickFindMappings = mapOf(
+      "nov_crimson" to "Historical Romance • Chronicles of the Spider Lily & Midnight Courtyard",
+      "nov_moonlight" to "Modern Romance • Letters Written Beneath the Lotus Bower",
+      "nov_celestial" to "Fantasy Romance • Voyages Beyond the Astral Meridian",
+      "nov_whispering_pines" to "Historical Romance • Echoes Across the Mist of the Northern Fjord",
+      "nov_2" to "R19 • Studies in Void, Weight, and Proportion",
+      "nov_3" to "Modern Romance • Notes on Radiance, Dawn, and Impermanence",
+      "nov_1" to "Fantasy Romance • Monastic Spacing & Solitary Thought"
+    )
+    for ((id, subtitle) in quickFindMappings) {
+      val novel = dao.getNovelById(id)
+      if (novel != null && !novel.subtitle.contains("Romance") && !novel.subtitle.contains("R19")) {
+        dao.insertNovel(novel.copy(subtitle = subtitle))
+      }
+    }
+  }
+
   private suspend fun seedDefaultAuthorSlotsIfEmpty() {
     val defaultSlots = listOf(
       AuthorSlotEntity(
@@ -819,7 +923,8 @@ class StrawberrycandyRepository(
         avatarColorHex = 0xFF8C2D48,
         accessCode = "ARCHIVE-OWNER-0",
         isClaimed = true,
-        isPermissionGranted = true
+        isPermissionGranted = true,
+        translatorEmail = "clarifymanga@gmail.com"
       ),
       AuthorSlotEntity(
         slotNumber = 1,
@@ -829,7 +934,8 @@ class StrawberrycandyRepository(
         avatarColorHex = 0xFF5C2D3B,
         accessCode = "AUTH-ROOM-1",
         isClaimed = true,
-        isPermissionGranted = true
+        isPermissionGranted = true,
+        translatorEmail = "aria.thorne@gmail.com"
       ),
       AuthorSlotEntity(
         slotNumber = 2,
@@ -839,7 +945,8 @@ class StrawberrycandyRepository(
         avatarColorHex = 0xFF28362D,
         accessCode = "AUTH-ROOM-2",
         isClaimed = true,
-        isPermissionGranted = true
+        isPermissionGranted = true,
+        translatorEmail = "felix.moreau@gmail.com"
       ),
       AuthorSlotEntity(
         slotNumber = 3,
@@ -849,7 +956,8 @@ class StrawberrycandyRepository(
         avatarColorHex = 0xFF21252D,
         accessCode = "AUTH-ROOM-3",
         isClaimed = true,
-        isPermissionGranted = true
+        isPermissionGranted = true,
+        translatorEmail = "clara.oconnor@gmail.com"
       ),
       AuthorSlotEntity(
         slotNumber = 4,
@@ -859,7 +967,8 @@ class StrawberrycandyRepository(
         avatarColorHex = 0xFF4A3428,
         accessCode = "AUTH-ROOM-4",
         isClaimed = true,
-        isPermissionGranted = true
+        isPermissionGranted = true,
+        translatorEmail = "dante.valeri@gmail.com"
       ),
       AuthorSlotEntity(
         slotNumber = 5,
@@ -869,7 +978,8 @@ class StrawberrycandyRepository(
         avatarColorHex = 0xFF3D405B,
         accessCode = "AUTH-ROOM-5",
         isClaimed = false,
-        isPermissionGranted = false
+        isPermissionGranted = false,
+        translatorEmail = "evelyn.vance@gmail.com"
       ),
       AuthorSlotEntity(
         slotNumber = 6,
@@ -879,7 +989,8 @@ class StrawberrycandyRepository(
         avatarColorHex = 0xFF4A5859,
         accessCode = "AUTH-ROOM-6",
         isClaimed = false,
-        isPermissionGranted = false
+        isPermissionGranted = false,
+        translatorEmail = "julian.croft@gmail.com"
       ),
       AuthorSlotEntity(
         slotNumber = 7,
@@ -889,7 +1000,8 @@ class StrawberrycandyRepository(
         avatarColorHex = 0xFF6B4E71,
         accessCode = "AUTH-ROOM-7",
         isClaimed = false,
-        isPermissionGranted = false
+        isPermissionGranted = false,
+        translatorEmail = "mira.hashimoto@gmail.com"
       ),
       AuthorSlotEntity(
         slotNumber = 8,
@@ -899,7 +1011,8 @@ class StrawberrycandyRepository(
         avatarColorHex = 0xFF583E26,
         accessCode = "AUTH-ROOM-8",
         isClaimed = false,
-        isPermissionGranted = false
+        isPermissionGranted = false,
+        translatorEmail = "lucian.bell@gmail.com"
       ),
       AuthorSlotEntity(
         slotNumber = 9,
@@ -909,7 +1022,8 @@ class StrawberrycandyRepository(
         avatarColorHex = 0xFF2E4057,
         accessCode = "AUTH-ROOM-9",
         isClaimed = false,
-        isPermissionGranted = false
+        isPermissionGranted = false,
+        translatorEmail = "sophie.lind@gmail.com"
       ),
       AuthorSlotEntity(
         slotNumber = 10,
@@ -919,17 +1033,21 @@ class StrawberrycandyRepository(
         avatarColorHex = 0xFF4B3832,
         accessCode = "AUTH-ROOM-10",
         isClaimed = false,
-        isPermissionGranted = false
+        isPermissionGranted = false,
+        translatorEmail = "rowan.mercer@gmail.com"
       )
     )
 
     if (dao.getAuthorSlotCount() == 0) {
       dao.insertAuthorSlots(defaultSlots)
     } else {
-      // Ensure all 10 translator slots plus slot 0 exist
+      // Ensure all 10 translator slots plus slot 0 exist and have emails
       for (slot in defaultSlots) {
-        if (dao.getAuthorSlot(slot.slotNumber) == null) {
+        val current = dao.getAuthorSlot(slot.slotNumber)
+        if (current == null) {
           dao.updateAuthorSlot(slot)
+        } else if (current.translatorEmail.isNullOrBlank()) {
+          dao.updateAuthorSlot(current.copy(translatorEmail = slot.translatorEmail))
         }
       }
     }
@@ -989,6 +1107,14 @@ class StrawberrycandyRepository(
 
   suspend fun likeComment(commentId: String) {
     dao.likeComment(commentId)
+  }
+
+  fun getCommentsForReader(email: String, name: String): Flow<List<ChapterCommentEntity>> {
+    return dao.getCommentsForReader(email, name)
+  }
+
+  suspend fun deleteComment(commentId: String) {
+    dao.deleteComment(commentId)
   }
 
   // Favorite Lines & Bookmarks

@@ -15,4 +15,5 @@ data class AuthorSlotEntity(
   val isClaimed: Boolean = true,
   val isPermissionGranted: Boolean = true,
   val lastActiveTimestamp: Long = System.currentTimeMillis(),
+  val translatorEmail: String? = null,
 )

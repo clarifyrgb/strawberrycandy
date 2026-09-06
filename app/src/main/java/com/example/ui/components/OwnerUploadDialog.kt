@@ -51,6 +51,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -101,10 +102,17 @@ fun OwnerUploadDialog(
     authorSlot: Int,
     coverImageUri: String?,
     originalAuthor: String,
+    novelStatus: String,
+    releaseFormat: String,
   ) -> Unit,
 ) {
   var selectedSlot by remember { mutableIntStateOf(initialSlot) }
   var isEditingSlotProfile by remember { mutableStateOf(false) }
+
+  // Publication status: Ongoing vs Finished
+  var isFinishedNovel by remember { mutableStateOf(false) }
+  // Release format: Per Chapter vs Per Volume
+  var isPerVolumeRelease by remember { mutableStateOf(false) }
 
   // Active author slot data
   val currentSlotEntity = authorSlots.find { it.slotNumber == selectedSlot }
@@ -1000,6 +1008,165 @@ fun OwnerUploadDialog(
           }
         }
 
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Novel Status (Ongoing vs Finished) & Release Format (Chapter vs Volume) Toggles
+        Surface(
+          shape = RoundedCornerShape(16.dp),
+          color = AntiqueGold.copy(alpha = 0.07f),
+          border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.25f)),
+          modifier = Modifier.fillMaxWidth().testTag("upload_status_and_format_card")
+        ) {
+          Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+          ) {
+            // 1. Novel Status Toggle: Ongoing vs Finished
+            Column {
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Text(
+                  text = "NOVEL STATUS",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    color = AntiqueGold
+                  )
+                )
+                Text(
+                  text = if (isFinishedNovel) "✓ Finished" else "• Ongoing",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isFinishedNovel) Color(0xFF2E7D32) else Color(0xFFD87D2A)
+                  )
+                )
+              }
+              Spacer(modifier = Modifier.height(6.dp))
+              Row(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .clip(RoundedCornerShape(10.dp))
+                  .background(SoftCreamPaper)
+                  .border(BorderStroke(1.dp, SubtleBorder), shape = RoundedCornerShape(10.dp))
+                  .padding(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+              ) {
+                Surface(
+                  onClick = { isFinishedNovel = false },
+                  shape = RoundedCornerShape(8.dp),
+                  color = if (!isFinishedNovel) Color(0xFFD87D2A) else Color.Transparent,
+                  modifier = Modifier.weight(1f).testTag("status_toggle_ongoing")
+                ) {
+                  Text(
+                    text = "Ongoing",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontWeight = if (!isFinishedNovel) FontWeight.Bold else FontWeight.Normal,
+                      fontSize = 11.sp
+                    ),
+                    color = if (!isFinishedNovel) Color.White else CharcoalSecondary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(vertical = 7.dp)
+                  )
+                }
+                Surface(
+                  onClick = { isFinishedNovel = true },
+                  shape = RoundedCornerShape(8.dp),
+                  color = if (isFinishedNovel) Color(0xFF2E7D32) else Color.Transparent,
+                  modifier = Modifier.weight(1f).testTag("status_toggle_finished")
+                ) {
+                  Text(
+                    text = "Finished",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontWeight = if (isFinishedNovel) FontWeight.Bold else FontWeight.Normal,
+                      fontSize = 11.sp
+                    ),
+                    color = if (isFinishedNovel) Color.White else CharcoalSecondary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(vertical = 7.dp)
+                  )
+                }
+              }
+            }
+
+            // 2. Release Format: Per Chapter vs Per Volume
+            Column {
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Text(
+                  text = "RELEASE FORMAT",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    color = AntiqueGold
+                  )
+                )
+                Text(
+                  text = if (isPerVolumeRelease) "Button: 'Read Volume'" else "Button: 'Read Chapters'",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = CharcoalSecondary
+                  )
+                )
+              }
+              Spacer(modifier = Modifier.height(6.dp))
+              Row(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .clip(RoundedCornerShape(10.dp))
+                  .background(SoftCreamPaper)
+                  .border(BorderStroke(1.dp, SubtleBorder), shape = RoundedCornerShape(10.dp))
+                  .padding(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+              ) {
+                Surface(
+                  onClick = { isPerVolumeRelease = false },
+                  shape = RoundedCornerShape(8.dp),
+                  color = if (!isPerVolumeRelease) CharcoalText else Color.Transparent,
+                  modifier = Modifier.weight(1f).testTag("format_toggle_chapter")
+                ) {
+                  Text(
+                    text = "Per Chapter",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontWeight = if (!isPerVolumeRelease) FontWeight.Bold else FontWeight.Normal,
+                      fontSize = 11.sp
+                    ),
+                    color = if (!isPerVolumeRelease) SoftCreamPaper else CharcoalSecondary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(vertical = 7.dp)
+                  )
+                }
+                Surface(
+                  onClick = { isPerVolumeRelease = true },
+                  shape = RoundedCornerShape(8.dp),
+                  color = if (isPerVolumeRelease) CharcoalText else Color.Transparent,
+                  modifier = Modifier.weight(1f).testTag("format_toggle_volume")
+                ) {
+                  Text(
+                    text = "Per Volume",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontWeight = if (isPerVolumeRelease) FontWeight.Bold else FontWeight.Normal,
+                      fontSize = 11.sp
+                    ),
+                    color = if (isPerVolumeRelease) SoftCreamPaper else CharcoalSecondary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(vertical = 7.dp)
+                  )
+                }
+              }
+            }
+          }
+        }
+
         if (errorText != null) {
           Spacer(modifier = Modifier.height(8.dp))
           Text(
@@ -1037,7 +1204,9 @@ fun OwnerUploadDialog(
               authorToCredit,
               selectedSlot,
               coverImageUri,
-              cleanOriginalAuthor
+              cleanOriginalAuthor,
+              if (isFinishedNovel) "FINISHED" else "ONGOING",
+              if (isPerVolumeRelease) "VOLUME" else "CHAPTER"
             )
           },
           shape = RoundedCornerShape(16.dp),

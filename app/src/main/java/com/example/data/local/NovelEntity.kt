@@ -25,4 +25,6 @@ data class NovelEntity(
   val readsCount: Int = 0,
   val favoritesCount: Int = 0,
   val storyImagesJson: String = "",
+  val novelStatus: String = "ONGOING", // "ONGOING" or "FINISHED"
+  val releaseFormat: String = "CHAPTER", // "CHAPTER" or "VOLUME"
 )

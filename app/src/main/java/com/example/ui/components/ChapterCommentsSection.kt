@@ -33,7 +33,9 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -53,6 +55,7 @@ import com.example.ui.theme.CharcoalTertiary
 import com.example.ui.theme.CharcoalText
 import com.example.ui.theme.SoftCreamPaper
 import com.example.ui.theme.SubtleBorder
+import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -73,7 +76,13 @@ fun ChapterCommentsSection(
   }
   var isEditingPenName by remember { mutableStateOf(false) }
 
-  val dateFormatter = remember { SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()) }
+  var liveTickerMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+  LaunchedEffect(Unit) {
+    while (true) {
+      delay(4000L) // Refresh relative timestamps in real-time every 4 seconds
+      liveTickerMs = System.currentTimeMillis()
+    }
+  }
 
   val quickReactions = listOf(
     "✨ Eloquent passage",
@@ -313,7 +322,7 @@ fun ChapterCommentsSection(
           comments.forEach { comment ->
             CommentCardItem(
               comment = comment,
-              dateFormatted = dateFormatter.format(Date(comment.timestamp)),
+              liveTickerMs = liveTickerMs,
               onLike = { onLikeComment(comment.id) }
             )
           }
@@ -323,16 +332,35 @@ fun ChapterCommentsSection(
   }
 }
 
+private fun formatRealtimeCommentDate(timestamp: Long, liveNow: Long): String {
+  val diff = (liveNow - timestamp).coerceAtLeast(0L)
+  val exactTime = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(timestamp))
+  val exactDate = SimpleDateFormat("MMM d", Locale.getDefault()).format(Date(timestamp))
+  return when {
+    diff < 8_000L -> "Just now • $exactTime"
+    diff < 60_000L -> "${(diff / 1000L).coerceAtLeast(1)}s ago • $exactTime"
+    diff < 3600_000L -> "${diff / 60_000L}m ago • $exactTime"
+    diff < 86400_000L -> "${diff / 3600_000L}h ago • $exactTime"
+    diff < 172800_000L -> "Yesterday • $exactTime"
+    else -> "$exactDate • $exactTime"
+  }
+}
+
 @Composable
 private fun CommentCardItem(
   comment: ChapterCommentEntity,
-  dateFormatted: String,
+  liveTickerMs: Long,
   onLike: () -> Unit,
 ) {
+  val dateFormatted = remember(comment.timestamp, liveTickerMs) {
+    formatRealtimeCommentDate(comment.timestamp, liveTickerMs)
+  }
+  val isRealtimeRecent = (liveTickerMs - comment.timestamp) in 0..120_000L
+
   Card(
     shape = RoundedCornerShape(14.dp),
     colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
-    border = BorderStroke(1.dp, SubtleBorder),
+    border = BorderStroke(1.dp, if (isRealtimeRecent) AntiqueGold.copy(alpha = 0.5f) else SubtleBorder),
     modifier = Modifier.fillMaxWidth()
   ) {
     Column(
@@ -372,18 +400,52 @@ private fun CommentCardItem(
           Spacer(modifier = Modifier.width(8.dp))
 
           Column {
-            Text(
-              text = safeReaderName,
-              style = MaterialTheme.typography.labelSmall.copy(
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 11.sp
-              ),
-              color = CharcoalText
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              Text(
+                text = safeReaderName,
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontWeight = FontWeight.SemiBold,
+                  fontSize = 11.sp
+                ),
+                color = CharcoalText
+              )
+              if (isRealtimeRecent) {
+                Spacer(modifier = Modifier.width(5.dp))
+                Surface(
+                  shape = RoundedCornerShape(4.dp),
+                  color = Color(0xFF2E7D32).copy(alpha = 0.12f),
+                  border = BorderStroke(0.5.dp, Color(0xFF2E7D32).copy(alpha = 0.4f))
+                ) {
+                  Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                  ) {
+                    Box(
+                      modifier = Modifier
+                        .size(4.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF2E7D32))
+                    )
+                    Spacer(modifier = Modifier.width(2.5.dp))
+                    Text(
+                      text = "REALTIME",
+                      style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 7.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF2E7D32)
+                      )
+                    )
+                  }
+                }
+              }
+            }
             Text(
               text = dateFormatted,
-              style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
-              color = CharcoalTertiary
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 8.5.sp,
+                fontWeight = if (isRealtimeRecent) FontWeight.Medium else FontWeight.Normal
+              ),
+              color = if (isRealtimeRecent) AntiqueGold else CharcoalTertiary
             )
           }
         }

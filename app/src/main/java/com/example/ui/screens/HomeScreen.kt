@@ -53,6 +53,7 @@ import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Logout
+import androidx.compose.material.icons.outlined.Mail
 import androidx.compose.material.icons.outlined.MeetingRoom
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PersonAdd
@@ -116,6 +117,7 @@ import com.example.model.NovelWithState
 import com.example.ui.components.AuthModal
 import com.example.ui.components.AuthorRoomsModal
 import com.example.ui.components.EditNovelModal
+import com.example.ui.components.NovelSearchBar
 import com.example.ui.components.OwnerUploadDialog
 import com.example.ui.components.ReaderProfileModal
 import com.example.ui.components.TranslatorProfileModal
@@ -144,6 +146,7 @@ fun HomeScreen(
 ) {
   val uiState by viewModel.uiState.collectAsState()
   val allNovelsList by viewModel.allNovels.collectAsState()
+  val myCommentsHistory by viewModel.myCommentsHistory.collectAsState(initial = emptyList())
   val novels = uiState.novels
   val activeUser = uiState.activeUser
   var selectedIndex by remember { mutableIntStateOf(0) }
@@ -217,46 +220,44 @@ fun HomeScreen(
         activeTranslatorsCount = activeTranslators.size
       )
 
-      // 2. Reader & Translator Category Filter Chips (All, Reading, Finished, To-Be-Read, Favorites, Sort, View-Mode)
+      // 2. Novel Search Bar for Readers and Translators
+      NovelSearchBar(
+        query = uiState.novelSearchQuery,
+        onQueryChange = { viewModel.setNovelSearchQuery(it) },
+        onClearQuery = { viewModel.clearNovelSearchQuery() },
+        matchCount = novels.size,
+        totalCount = allNovelsList.size,
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(horizontal = 16.dp, vertical = 6.dp)
+      )
+
+      // 3. Clean Archive Header & Sort Bar (Reading, Finished, TBR & Shelf moved to Reader and Translator Profiles for clean aesthetic)
       Row(
         modifier = Modifier
           .fillMaxWidth()
-          .horizontalScroll(rememberScrollState())
-          .padding(horizontal = 16.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+          .padding(horizontal = 24.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
       ) {
-        ShelfFilterChip(
-          label = "All",
-          icon = null,
-          selected = uiState.activeFilter == ShelfFilter.ALL,
-          onClick = { viewModel.setFilter(ShelfFilter.ALL) }
-        )
-        ShelfFilterChip(
-          label = "Reading (${uiState.readingCount})",
-          icon = Icons.Filled.MenuBook,
-          selected = uiState.activeFilter == ShelfFilter.READING,
-          onClick = { viewModel.setFilter(ShelfFilter.READING) }
-        )
-        ShelfFilterChip(
-          label = "Finished (${uiState.finishedCount})",
-          icon = Icons.Filled.CheckCircle,
-          selected = uiState.activeFilter == ShelfFilter.FINISHED,
-          onClick = { viewModel.setFilter(ShelfFilter.FINISHED) }
-        )
-        ShelfFilterChip(
-          label = "To Read (${uiState.toBeReadCount})",
-          icon = Icons.Filled.Bookmark,
-          selected = uiState.activeFilter == ShelfFilter.TO_BE_READ,
-          onClick = { viewModel.setFilter(ShelfFilter.TO_BE_READ) }
-        )
-        ShelfFilterChip(
-          label = "Favorites (${uiState.totalFavoriteNovelsCount})",
-          icon = Icons.Filled.Favorite,
-          selected = uiState.activeFilter == ShelfFilter.FAVORITES,
-          onClick = { viewModel.setFilter(ShelfFilter.FAVORITES) },
-          modifier = Modifier.testTag("user_favorited_count_indicator")
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Box(
+            modifier = Modifier
+              .size(6.dp)
+              .clip(CircleShape)
+              .background(AntiqueGold)
+          )
+          Spacer(modifier = Modifier.width(6.dp))
+          Text(
+            text = "LITERARY COLLECTION (${novels.size})",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 9.5.sp,
+              fontWeight = FontWeight.Bold,
+              letterSpacing = 1.2.sp,
+              color = CharcoalTertiary
+            )
+          )
+        }
 
         // Sort Dropdown Button
         Box {
@@ -265,7 +266,7 @@ fun HomeScreen(
             shape = RoundedCornerShape(14.dp),
             color = SoftCreamPaper,
             border = BorderStroke(1.dp, SubtleBorder),
-            modifier = Modifier.height(30.dp)
+            modifier = Modifier.height(28.dp)
           ) {
             Row(
               verticalAlignment = Alignment.CenterVertically,
@@ -277,10 +278,10 @@ fun HomeScreen(
                 tint = AntiqueGold,
                 modifier = Modifier.size(13.dp)
               )
-              Spacer(modifier = Modifier.width(3.dp))
+              Spacer(modifier = Modifier.width(4.dp))
               Text(
                 text = uiState.activeSort.label,
-                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                 color = CharcoalText
               )
             }
@@ -307,36 +308,6 @@ fun HomeScreen(
                 }
               )
             }
-          }
-        }
-
-        // View Mode Switcher (Shelf vs Full-Cover Flow)
-        Surface(
-          onClick = { isCoverGalleryMode = !isCoverGalleryMode },
-          shape = RoundedCornerShape(14.dp),
-          color = if (isCoverGalleryMode) CharcoalText else SoftCreamPaper,
-          border = BorderStroke(1.dp, if (isCoverGalleryMode) CharcoalText else SubtleBorder),
-          modifier = Modifier.height(30.dp)
-        ) {
-          Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 8.dp)
-          ) {
-            Icon(
-              imageVector = if (isCoverGalleryMode) Icons.Outlined.PhotoLibrary else Icons.AutoMirrored.Outlined.MenuBook,
-              contentDescription = "Toggle view mode",
-              tint = if (isCoverGalleryMode) SoftCreamPaper else CharcoalSecondary,
-              modifier = Modifier.size(13.dp)
-            )
-            Spacer(modifier = Modifier.width(3.dp))
-            Text(
-              text = if (isCoverGalleryMode) "Covers" else "Shelf",
-              style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 10.5.sp,
-                fontWeight = FontWeight.SemiBold
-              ),
-              color = if (isCoverGalleryMode) SoftCreamPaper else CharcoalSecondary
-            )
           }
         }
       }
@@ -663,18 +634,39 @@ fun HomeScreen(
             modifier = Modifier.padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
           ) {
+            val titleText = when {
+              uiState.novelSearchQuery.isNotBlank() -> "No Matching Novels"
+              uiState.activeFilter == ShelfFilter.FAVORITES -> "No Favorites Yet"
+              else -> "Reading Shelf Empty"
+            }
+            val subtitleText = when {
+              uiState.novelSearchQuery.isNotBlank() -> "We couldn't find any novels matching '${uiState.novelSearchQuery}'. Try searching by author, genre, or title."
+              uiState.activeFilter == ShelfFilter.FAVORITES -> "Tap the heart icon on any novel to save your favorites here."
+              else -> "Start reading or tap any novel from the archive to add it to this shelf."
+            }
+
             Text(
-              text = if (uiState.activeFilter == ShelfFilter.FAVORITES) "No Favorites Yet" else "Reading Shelf Empty",
+              text = titleText,
               style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Serif),
               color = CharcoalText
             )
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(6.dp))
             Text(
-              text = "Tap the heart icon or start reading any novel to add it here.",
+              text = subtitleText,
               style = MaterialTheme.typography.bodySmall,
               color = CharcoalSecondary,
               textAlign = TextAlign.Center
             )
+
+            if (uiState.novelSearchQuery.isNotBlank()) {
+              Spacer(modifier = Modifier.height(10.dp))
+              TextButton(
+                onClick = { viewModel.clearNovelSearchQuery() },
+                modifier = Modifier.testTag("empty_state_clear_search_button")
+              ) {
+                Text("Clear Search Query", color = AntiqueGold, fontWeight = FontWeight.Bold)
+              }
+            }
           }
         }
       }
@@ -819,16 +811,18 @@ fun HomeScreen(
     if (uiState.isAuthDialogOpen) {
       AuthModal(
         onDismiss = { viewModel.closeAuthDialog() },
-        onSignInWithGoogle = { email, name, role, authorSlot ->
-          viewModel.signInWithGoogle(email, name, role, authorSlot)
+        onSignInWithGoogle = { email, password, name, role, authorSlot ->
+          viewModel.signInWithGoogle(email = email, password = password, displayName = name, role = role, authorSlot = authorSlot)
         },
-        onSignInWithApple = { email, name, role, authorSlot ->
-          viewModel.signInWithApple(email, name, role, authorSlot)
-        }
+        onSignInWithApple = { email, password, name, role, authorSlot ->
+          viewModel.signInWithApple(email = email, password = password, displayName = name, role = role, authorSlot = authorSlot)
+        },
+        externalErrorMessage = uiState.authErrorMessage,
+        onClearError = { viewModel.clearAuthError() }
       )
     }
 
-    // Reader Profile Modal (Shows points, stats, and pen name change mechanism)
+    // Reader Profile Modal (Shows points, stats, freely editable name, and comment history)
     if (uiState.isProfileDialogOpen && activeUser != null) {
       ReaderProfileModal(
         activeUser = activeUser,
@@ -836,9 +830,18 @@ fun HomeScreen(
         finishedCount = uiState.finishedCount,
         toBeReadCount = uiState.toBeReadCount,
         isSoleOwner = isSoleOwner,
+        commentsHistory = myCommentsHistory,
+        novelsList = allNovelsList,
         onDismiss = { viewModel.closeProfileDialog() },
         onChangePenName = { newName ->
-          viewModel.changePenNameWithPoint(newName)
+          viewModel.updateReaderName(newName)
+        },
+        onDeleteComment = { commentId ->
+          viewModel.deleteComment(commentId)
+        },
+        onSelectNovel = { novel ->
+          viewModel.closeProfileDialog()
+          onSelectNovel(novel)
         },
         onSwitchAccount = { viewModel.openAuthDialog() },
         onSignOut = { viewModel.signOut() }
@@ -873,7 +876,10 @@ fun HomeScreen(
         },
         onViewTranslatorArchive = { slot ->
           selectedTranslatorForDetail = slot
-        }
+        },
+        onGrantPermissionByEmail = if (isSoleOwner) { email, slot ->
+          viewModel.grantPermissionByEmail(email, slot)
+        } else null
       )
     }
 
@@ -948,6 +954,36 @@ fun HomeScreen(
               color = CharcoalSecondary
             )
             Spacer(modifier = Modifier.height(4.dp))
+            if (slot.translatorEmail != null) {
+              Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = AntiqueGold.copy(alpha = 0.1f),
+                border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth()
+              ) {
+                Row(
+                  modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                  verticalAlignment = Alignment.CenterVertically
+                ) {
+                  Icon(
+                    imageVector = Icons.Outlined.Mail,
+                    contentDescription = null,
+                    tint = AntiqueGold,
+                    modifier = Modifier.size(14.dp)
+                  )
+                  Spacer(modifier = Modifier.width(6.dp))
+                  Text(
+                    text = "Translator Gmail: ${slot.translatorEmail}",
+                    style = MaterialTheme.typography.bodySmall.copy(
+                      fontSize = 11.5.sp,
+                      fontWeight = FontWeight.SemiBold,
+                      color = CharcoalText
+                    )
+                  )
+                }
+              }
+              Spacer(modifier = Modifier.height(4.dp))
+            }
             Text(
               text = "Granting permission will activate this translator slot, allowing them to publish translated manuscripts and appear as an active curator in the archive.",
               style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp, lineHeight = 15.sp),
@@ -1000,7 +1036,7 @@ fun HomeScreen(
         onUpdateAuthorSlot = { slot, name, penName, bio ->
           viewModel.updateAuthorSlot(slot, name, penName, bio)
         },
-        onPublishNovel = { title, subtitle, chapterTitle, excerpt, content, coverColor, author, authorSlot, coverImageUri, originalAuthor ->
+        onPublishNovel = { title, subtitle, chapterTitle, excerpt, content, coverColor, author, authorSlot, coverImageUri, originalAuthor, novelStatus, releaseFormat ->
           viewModel.uploadNovel(
             title = title,
             subtitle = subtitle,
@@ -1011,7 +1047,9 @@ fun HomeScreen(
             author = author,
             authorSlot = authorSlot,
             coverImageUri = coverImageUri,
-            originalAuthor = originalAuthor
+            originalAuthor = originalAuthor,
+            novelStatus = novelStatus,
+            releaseFormat = releaseFormat
           )
         }
       )
@@ -1022,7 +1060,7 @@ fun HomeScreen(
       EditNovelModal(
         novel = novelToEdit!!,
         onDismiss = { novelToEdit = null },
-        onUpdateNovel = { novelId, title, subtitle, originalAuthor, synopsis, chapterTitle, contentText, coverColorHex, coverImageUri ->
+        onUpdateNovel = { novelId, title, subtitle, originalAuthor, synopsis, chapterTitle, contentText, coverColorHex, coverImageUri, novelStatus, releaseFormat ->
           viewModel.updateNovel(
             novelId = novelId,
             title = title,
@@ -1032,7 +1070,9 @@ fun HomeScreen(
             chapterTitle = chapterTitle,
             contentText = contentText,
             coverColorHex = coverColorHex,
-            coverImageUri = coverImageUri
+            coverImageUri = coverImageUri,
+            novelStatus = novelStatus,
+            releaseFormat = releaseFormat
           )
         },
         onDeleteNovel = { novelId ->
@@ -1218,6 +1258,38 @@ private fun TopUtilityBar(
             }
           }
         }
+
+        Spacer(modifier = Modifier.width(4.dp))
+
+        // Prominent Top Bar Sign Out Button
+        Surface(
+          onClick = onSignOut,
+          shape = RoundedCornerShape(16.dp),
+          color = SoftCreamPaper,
+          border = BorderStroke(1.dp, Color(0xFFC62828).copy(alpha = 0.4f)),
+          modifier = Modifier.testTag("top_utility_sign_out_button")
+        ) {
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp)
+          ) {
+            Icon(
+              imageVector = Icons.Outlined.Logout,
+              contentDescription = "Sign Out",
+              tint = Color(0xFFC62828),
+              modifier = Modifier.size(12.dp)
+            )
+            Spacer(modifier = Modifier.width(3.dp))
+            Text(
+              text = "Sign Out",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 9.sp,
+                color = Color(0xFFC62828)
+              )
+            )
+          }
+        }
       } else {
         Surface(
           onClick = onOpenAuth,
@@ -1323,7 +1395,7 @@ private fun ContinueReadingBanner(
           detectTapGestures(
             onPress = {
               val startTime = System.currentTimeMillis()
-              val totalMs = 3000L
+              val totalMs = 2000L
               val interval = 40L
               val job = coroutineScope.launch {
                 var elapsed = 0L
@@ -1402,7 +1474,7 @@ private fun ContinueReadingBanner(
             )
             Text(
               text = if (isTranslatorOrOwner) {
-                "Page ${novel.currentPage} of ${novel.totalPages} • Progress saved • Hold 3s to Edit"
+                "Page ${novel.currentPage} of ${novel.totalPages} • Progress saved • Hold 2s to Edit"
               } else {
                 "Page ${novel.currentPage} of ${novel.totalPages} • Progress saved"
               },
@@ -1507,7 +1579,7 @@ private fun HorizontalNovelCard(
             onPress = {
               onFocusClick()
               val startTime = System.currentTimeMillis()
-              val totalMs = 3000L
+              val totalMs = 2000L
               val interval = 40L
               val job = coroutineScope.launch {
                 var elapsed = 0L
@@ -1735,7 +1807,7 @@ private fun HorizontalNovelCard(
                 strokeWidth = 3.5.dp
               )
               Spacer(modifier = Modifier.height(6.dp))
-              val remainingSec = maxOf(1, (3.2f * (1f - holdProgress)).toInt())
+              val remainingSec = maxOf(1, (2.2f * (1f - holdProgress)).toInt())
               Text(
                 text = "Hold ${remainingSec}s\nto Edit",
                 style = MaterialTheme.typography.labelSmall.copy(
@@ -2053,7 +2125,25 @@ private fun SelectedNovelSpotlight(
                   modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                 )
               }
-              Spacer(modifier = Modifier.width(6.dp))
+              Spacer(modifier = Modifier.width(5.dp))
+              // Publication Status Badge: Finished vs Ongoing
+              Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = if (novel.isCompletedNovel) Color(0xFF2E7D32).copy(alpha = 0.15f) else Color(0xFFD87D2A).copy(alpha = 0.15f),
+                border = BorderStroke(0.6.dp, if (novel.isCompletedNovel) Color(0xFF2E7D32).copy(alpha = 0.4f) else Color(0xFFD87D2A).copy(alpha = 0.4f))
+              ) {
+                Text(
+                  text = if (novel.isCompletedNovel) "✓ FINISHED" else "• ONGOING",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 7.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.5.sp
+                  ),
+                  color = if (novel.isCompletedNovel) Color(0xFF2E7D32) else Color(0xFFD87D2A),
+                  modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                )
+              }
+              Spacer(modifier = Modifier.width(5.dp))
               Text(
                 text = "${novel.totalPages} pages",
                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
@@ -2173,7 +2263,7 @@ private fun SelectedNovelSpotlight(
           )
           Spacer(modifier = Modifier.width(6.dp))
           Text(
-            text = if (novel.inReadingList && novel.progressFraction > 0f) "Continue (Pg. ${novel.currentPage})" else "Read Volume",
+            text = novel.readButtonLabel,
             style = MaterialTheme.typography.labelMedium.copy(
               fontWeight = FontWeight.SemiBold,
               fontSize = 11.sp,

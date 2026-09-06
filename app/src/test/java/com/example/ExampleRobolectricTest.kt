@@ -57,12 +57,27 @@ class ExampleRobolectricTest {
     assertEquals("Strawberrycandy", novel?.author)
     assertEquals("The Whispering Pines", novel?.title)
 
-    // 2. Verify Reader Sign-In with Google and Apple
-    repo.signIn(provider = "GOOGLE", email = "reader.alex@gmail.com", displayName = "Alex Vance")
+    // 2. Verify Reader Sign-In with Google and matching password check
+    val initialSignInResult = repo.signIn(
+      provider = "GOOGLE",
+      email = "reader.alex@gmail.com",
+      password = "GooglePassword123!",
+      displayName = "Alex Vance"
+    )
+    assertTrue(initialSignInResult.isSuccess)
     val googleUser = repo.activeUser.first()
     assertNotNull(googleUser)
     assertEquals("GOOGLE", googleUser?.provider)
     assertEquals("reader.alex@gmail.com", googleUser?.email)
+
+    // Verify rejection if mismatched password is used
+    val wrongPassResult = repo.signIn(
+      provider = "GOOGLE",
+      email = "reader.alex@gmail.com",
+      password = "WrongPassword999!",
+      displayName = "Alex Vance"
+    )
+    assertTrue(wrongPassResult.isFailure)
 
     // 3. Verify Reader adding Favorite and Storing Reading Novel
     repo.toggleFavorite(googleUser!!.userId, uploadedId)
@@ -77,7 +92,13 @@ class ExampleRobolectricTest {
     assertEquals(42, updatedState?.currentPage)
 
     // 5. Verify Sign in with Apple
-    repo.signIn(provider = "APPLE", email = "reader.user@privaterelay.appleid.com", displayName = "Apple Reader")
+    val appleResult = repo.signIn(
+      provider = "APPLE",
+      email = "reader.user@privaterelay.appleid.com",
+      password = "ApplePassword123!",
+      displayName = "Apple Reader"
+    )
+    assertTrue(appleResult.isSuccess)
     val appleUser = repo.activeUser.first()
     assertNotNull(appleUser)
     assertEquals("APPLE", appleUser?.provider)

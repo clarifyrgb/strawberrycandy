@@ -11,6 +11,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -87,6 +88,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -253,15 +255,36 @@ fun ReadingScreen(
     buildReadingPages(novel)
   }
 
-  // Initial page calculation
-  val initialPageIndex = remember(novel.currentPage, pages.size) {
-    if (pages.isNotEmpty() && novel.totalPages > 0) {
+  // Initial page calculation tied to current novel and built pages
+  val initialPageIndex = remember(novel.id, pages.size) {
+    if (pages.isNotEmpty() && novel.totalPages > 0 && novel.currentPage > 1) {
       val frac = (novel.currentPage - 1).toFloat() / novel.totalPages.toFloat()
       (frac * pages.size).toInt().coerceIn(0, pages.size - 1)
     } else 0
   }
 
   val pagerState = rememberPagerState(initialPage = initialPageIndex) { pages.size }
+
+  var hasInitialSynced by remember(novel.id) { mutableStateOf(false) }
+
+  // Initial sync to novel's saved reading progress
+  LaunchedEffect(novel.id, pages.size) {
+    if (!hasInitialSynced && pages.isNotEmpty()) {
+      if (novel.currentPage > 1 && novel.totalPages > 0) {
+        val frac = (novel.currentPage - 1).toFloat() / novel.totalPages.toFloat()
+        if (pageTurnMode == "flip") {
+          val targetPage = (frac * (pages.size - 1)).toInt().coerceIn(0, pages.size - 1)
+          pagerState.scrollToPage(targetPage)
+        } else {
+          if (novel.storyItems.isNotEmpty()) {
+            val targetItem = (frac * novel.storyItems.size).toInt().coerceIn(0, novel.storyItems.size)
+            lazyListState.scrollToItem((targetItem + 1).coerceIn(0, novel.storyItems.size), 0)
+          }
+        }
+      }
+      hasInitialSynced = true
+    }
+  }
 
   // Active chapter detection
   val currentChapterIndex by remember(pageTurnMode, pagerState.currentPage, lazyListState.firstVisibleItemIndex) {
@@ -280,7 +303,7 @@ fun ReadingScreen(
   val currentChapter = novel.chapters.getOrNull(currentChapterIndex) ?: novel.chapters.firstOrNull()
 
   // Track page progress
-  val estimatedCurrentPage by remember(pageTurnMode, pagerState.currentPage, lazyListState.firstVisibleItemIndex) {
+  val estimatedCurrentPage by remember(pageTurnMode, pagerState.currentPage, lazyListState.firstVisibleItemIndex, pages.size) {
     derivedStateOf {
       if (pageTurnMode == "flip" && pages.isNotEmpty()) {
         val frac = pagerState.currentPage.toFloat() / (pages.size - 1).coerceAtLeast(1).toFloat()
@@ -298,18 +321,10 @@ fun ReadingScreen(
     }
   }
 
-  // Auto-save reading progress
-  LaunchedEffect(estimatedCurrentPage) {
-    if (estimatedCurrentPage != novel.currentPage) {
+  // Auto-save reading progress only after initial sync has completed and user actively turned/scrolled
+  LaunchedEffect(estimatedCurrentPage, hasInitialSynced) {
+    if (hasInitialSynced && estimatedCurrentPage != novel.currentPage && pages.isNotEmpty()) {
       onSaveProgress(estimatedCurrentPage)
-    }
-  }
-
-  // Restore scroll position in Scroll mode
-  LaunchedEffect(novel.id, pageTurnMode) {
-    if (pageTurnMode == "scroll" && novel.currentPage > 1 && novel.storyItems.isNotEmpty()) {
-      val targetItem = ((novel.currentPage - 1).toFloat() / novel.totalPages.toFloat() * novel.storyItems.size).toInt()
-      lazyListState.scrollToItem((targetItem + 1).coerceIn(0, novel.storyItems.size), 0)
     }
   }
 
@@ -476,6 +491,25 @@ fun ReadingScreen(
                 modifier = Modifier
                   .clickable {
                     val nextMode = if (pageTurnMode == "flip") "scroll" else "flip"
+                    if (nextMode == "scroll") {
+                      // Smoothly sync current reading page from flip into scroll view
+                      if (pages.isNotEmpty() && novel.storyItems.isNotEmpty()) {
+                        val frac = pagerState.currentPage.toFloat() / (pages.size - 1).coerceAtLeast(1).toFloat()
+                        val targetItem = (frac * novel.storyItems.size).toInt().coerceIn(0, novel.storyItems.size)
+                        coroutineScope.launch {
+                          lazyListState.scrollToItem((targetItem + 1).coerceIn(0, novel.storyItems.size), 0)
+                        }
+                      }
+                    } else {
+                      // Smoothly sync current scroll position into flip page index
+                      if (pages.isNotEmpty() && novel.storyItems.isNotEmpty()) {
+                        val frac = (lazyListState.firstVisibleItemIndex - 1).coerceAtLeast(0).toFloat() / novel.storyItems.size.toFloat()
+                        val targetPage = (frac * (pages.size - 1)).toInt().coerceIn(0, pages.size - 1)
+                        coroutineScope.launch {
+                          pagerState.scrollToPage(targetPage)
+                        }
+                      }
+                    }
                     pageTurnMode = nextMode
                     typographyPrefs.edit().putString("reading_turn_mode", nextMode).apply()
                   }
@@ -947,6 +981,26 @@ fun ReadingScreen(
                     }
                   }
                   .background(SoftCreamPaper)
+                  .pointerInput(pagerState.currentPage, pages.size) {
+                    detectTapGestures { offset ->
+                      val width = size.width
+                      if (offset.x < width * 0.22f) {
+                        if (pagerState.currentPage > 0) {
+                          coroutineScope.launch {
+                            pagerState.animateScrollToPage(pagerState.currentPage - 1)
+                          }
+                        }
+                      } else if (offset.x > width * 0.78f) {
+                        if (pagerState.currentPage < pages.size - 1) {
+                          coroutineScope.launch {
+                            pagerState.animateScrollToPage(pagerState.currentPage + 1)
+                          }
+                        }
+                      } else {
+                        isHudVisible = !isHudVisible
+                      }
+                    }
+                  }
               ) {
                 // Left spine crease gradient shadow
                 Box(
@@ -1012,7 +1066,8 @@ fun ReadingScreen(
                   Column(
                     modifier = Modifier
                       .weight(1f)
-                      .fillMaxWidth(),
+                      .fillMaxWidth()
+                      .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(baseParagraphSpacing)
                   ) {
                     page.items.forEach { item ->
@@ -1242,98 +1297,56 @@ fun ReadingScreen(
               }
             }
 
-            // Interactive Tap Zones: Left (Prev Page), Right (Next Page), Center (Toggle HUD)
-            Row(modifier = Modifier.fillMaxSize()) {
-              // Left tap zone: previous page
-              Box(
+            // Floating Tactile Page Turning Chevrons (Previous Page & Next Page)
+            if (pagerState.currentPage > 0) {
+              Surface(
+                shape = CircleShape,
+                color = if (isHudVisible) Color(0x992A2825) else Color(0x332A2825),
+                border = BorderStroke(1.dp, AntiqueGold.copy(alpha = if (isHudVisible) 0.6f else 0.25f)),
                 modifier = Modifier
-                  .weight(0.22f)
-                  .fillMaxHeight()
-                  .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                  ) {
-                    if (pagerState.currentPage > 0) {
-                      coroutineScope.launch {
-                        pagerState.animateScrollToPage(pagerState.currentPage - 1)
-                      }
+                  .align(Alignment.CenterStart)
+                  .padding(start = 8.dp)
+                  .size(48.dp)
+                  .clickable {
+                    coroutineScope.launch {
+                      pagerState.animateScrollToPage(pagerState.currentPage - 1)
                     }
                   }
-              )
-
-              // Center tap zone: toggle HUD
-              Box(
-                modifier = Modifier
-                  .weight(0.56f)
-                  .fillMaxHeight()
-                  .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                  ) {
-                    isHudVisible = !isHudVisible
-                  }
-              )
-
-              // Right tap zone: next page
-              Box(
-                modifier = Modifier
-                  .weight(0.22f)
-                  .fillMaxHeight()
-                  .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                  ) {
-                    if (pagerState.currentPage < pages.size - 1) {
-                      coroutineScope.launch {
-                        pagerState.animateScrollToPage(pagerState.currentPage + 1)
-                      }
-                    }
-                  }
-              )
-            }
-
-            // Floating subtle Chevrons for tactile turning
-            if (isHudVisible) {
-              if (pagerState.currentPage > 0) {
-                Surface(
-                  shape = CircleShape,
-                  color = Color(0x66000000),
-                  modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .padding(start = 6.dp)
-                    .clickable {
-                      coroutineScope.launch {
-                        pagerState.animateScrollToPage(pagerState.currentPage - 1)
-                      }
-                    }
-                ) {
+                  .testTag("flip_prev_page_button")
+              ) {
+                Box(contentAlignment = Alignment.Center) {
                   Icon(
                     imageVector = Icons.Outlined.ChevronLeft,
                     contentDescription = "Previous Page",
                     tint = SoftCreamPaper,
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(26.dp)
                   )
                 }
               }
+            }
 
-              if (pagerState.currentPage < pages.size - 1) {
-                Surface(
-                  shape = CircleShape,
-                  color = Color(0x66000000),
-                  modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 6.dp)
-                    .clickable {
-                      coroutineScope.launch {
-                        pagerState.animateScrollToPage(pagerState.currentPage + 1)
-                      }
+            if (pagerState.currentPage < pages.size - 1) {
+              Surface(
+                shape = CircleShape,
+                color = if (isHudVisible) Color(0x992A2825) else Color(0x332A2825),
+                border = BorderStroke(1.dp, AntiqueGold.copy(alpha = if (isHudVisible) 0.6f else 0.25f)),
+                modifier = Modifier
+                  .align(Alignment.CenterEnd)
+                  .padding(end = 8.dp)
+                  .size(48.dp)
+                  .clickable {
+                    coroutineScope.launch {
+                      pagerState.animateScrollToPage(pagerState.currentPage + 1)
                     }
-                ) {
+                  }
+                  .testTag("flip_next_page_button")
+              ) {
+                Box(contentAlignment = Alignment.Center) {
                   Icon(
                     imageVector = Icons.Outlined.ChevronRight,
                     contentDescription = "Next Page",
                     tint = SoftCreamPaper,
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(26.dp)
                   )
                 }
               }
@@ -1347,6 +1360,11 @@ fun ReadingScreen(
             state = lazyListState,
             modifier = Modifier
               .fillMaxSize()
+              .pointerInput(Unit) {
+                detectTapGestures {
+                  isHudVisible = !isHudVisible
+                }
+              }
               .padding(horizontal = 28.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             contentPadding = PaddingValues(bottom = 48.dp)
@@ -1901,12 +1919,32 @@ fun ReadingScreen(
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Row 2: Page Scrubber Slider & Folio Info
+            // Row 2: Page Scrubber Slider & Folio Info & Turning Page Buttons
             if (pageTurnMode == "flip" && pages.size > 1) {
               Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
               ) {
+                // Turning Page Button: Prev
+                IconButton(
+                  onClick = {
+                    if (pagerState.currentPage > 0) {
+                      coroutineScope.launch {
+                        pagerState.animateScrollToPage(pagerState.currentPage - 1)
+                      }
+                    }
+                  },
+                  enabled = pagerState.currentPage > 0,
+                  modifier = Modifier.size(32.dp).testTag("bottom_prev_page_button")
+                ) {
+                  Icon(
+                    imageVector = Icons.Outlined.ChevronLeft,
+                    contentDescription = "Previous Page",
+                    tint = if (pagerState.currentPage > 0) AntiqueGold else CharcoalTertiary.copy(alpha = 0.35f),
+                    modifier = Modifier.size(18.dp)
+                  )
+                }
+
                 Text(
                   text = "${pagerState.currentPage + 1}",
                   style = MaterialTheme.typography.labelSmall.copy(
@@ -1932,7 +1970,7 @@ fun ReadingScreen(
                   ),
                   modifier = Modifier
                     .weight(1f)
-                    .padding(horizontal = 8.dp)
+                    .padding(horizontal = 6.dp)
                     .height(26.dp)
                 )
 
@@ -1943,6 +1981,26 @@ fun ReadingScreen(
                     color = CharcoalTertiary
                   )
                 )
+
+                // Turning Page Button: Next
+                IconButton(
+                  onClick = {
+                    if (pagerState.currentPage < pages.size - 1) {
+                      coroutineScope.launch {
+                        pagerState.animateScrollToPage(pagerState.currentPage + 1)
+                      }
+                    }
+                  },
+                  enabled = pagerState.currentPage < pages.size - 1,
+                  modifier = Modifier.size(32.dp).testTag("bottom_next_page_button")
+                ) {
+                  Icon(
+                    imageVector = Icons.Outlined.ChevronRight,
+                    contentDescription = "Next Page",
+                    tint = if (pagerState.currentPage < pages.size - 1) AntiqueGold else CharcoalTertiary.copy(alpha = 0.35f),
+                    modifier = Modifier.size(18.dp)
+                  )
+                }
               }
             } else {
               Text(
@@ -2227,7 +2285,7 @@ private fun buildReadingPages(novel: NovelWithState): List<ReadingPage> {
   val chapters = novel.chapters
   if (novel.storyItems.isEmpty()) return emptyList()
 
-  val targetCharsPerPage = 1350
+  val targetCharsPerPage = 480
 
   chapters.forEach { chapter ->
     val start = chapter.startParagraphIndex.coerceIn(0, novel.storyItems.size)

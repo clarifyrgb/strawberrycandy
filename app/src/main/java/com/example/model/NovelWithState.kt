@@ -188,5 +188,35 @@ data class NovelWithState(
   val readsCount: Int get() = novel.readsCount
   val favoritesCount: Int get() = novel.favoritesCount
   val storyImagesJson: String get() = novel.storyImagesJson
+  val novelStatus: String get() = novel.novelStatus
+  val releaseFormat: String get() = novel.releaseFormat
+
+  val isCompletedNovel: Boolean get() = novel.novelStatus.equals("FINISHED", ignoreCase = true)
+  val novelStatusLabel: String get() = if (isCompletedNovel) "Finished" else "Ongoing"
+
+  val authorLabel: String get() {
+    return if (originalAuthor.isNotBlank() && !originalAuthor.equals(author, ignoreCase = true)) {
+      "$originalAuthor (Trans. $author)"
+    } else {
+      author
+    }
+  }
+
+  val isPerVolume: Boolean get() {
+    if (novel.releaseFormat.equals("VOLUME", ignoreCase = true)) return true
+    if (novel.releaseFormat.equals("CHAPTER", ignoreCase = true)) return false
+    val combined = "${novel.title} ${novel.subtitle} ${novel.chapterTitle}".lowercase()
+    return combined.contains("volume") || combined.contains("vol.") || combined.contains("vol ")
+  }
+
+  val readButtonLabel: String get() {
+    return if (inReadingList && progressFraction > 0f) {
+      "Continue (Pg. $currentPage)"
+    } else if (isPerVolume) {
+      "Read Volume"
+    } else {
+      "Read Chapters"
+    }
+  }
 }
 

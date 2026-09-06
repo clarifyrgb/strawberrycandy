@@ -36,6 +36,7 @@ import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Clear
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Mail
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Search
@@ -72,6 +73,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.outlined.AutoStories
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -93,6 +100,18 @@ import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+enum class TranslatorProfileTab {
+  WORKS,
+  MY_SHELF
+}
+
+enum class TranslatorShelfCategory {
+  READING,
+  TO_BE_READ,
+  FINISHED,
+  FAVORITES
+}
 
 enum class TranslatorWorksSort {
   NEWEST,
@@ -125,6 +144,13 @@ fun TranslatorProfileModal(
   val context = LocalContext.current
   var searchQuery by remember { mutableStateOf("") }
   var selectedSort by remember { mutableStateOf(TranslatorWorksSort.NEWEST) }
+  var selectedProfileTab by remember { mutableStateOf(TranslatorProfileTab.WORKS) }
+  var selectedShelfCategory by remember { mutableStateOf(TranslatorShelfCategory.READING) }
+
+  val readingNovels = remember(novels) { novels.filter { it.inReadingList && !it.isFinished } }
+  val tbrNovels = remember(novels) { novels.filter { it.isToBeRead || it.inTbrList } }
+  val finishedNovels = remember(novels) { novels.filter { it.isFinished } }
+  val favoriteNovels = remember(novels) { novels.filter { it.isFavorite } }
 
   val photoPickerLauncher = rememberLauncherForActivityResult(
     contract = ActivityResultContracts.PickVisualMedia()
@@ -513,6 +539,75 @@ fun TranslatorProfileModal(
                   }
                 }
 
+                // Translator Gmail Banner (Prominently visible to Owner Clarify)
+                if (isOwner && slot.slotNumber != 0) {
+                  Spacer(modifier = Modifier.height(12.dp))
+                  Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = AntiqueGold.copy(alpha = 0.09f),
+                    border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.4f)),
+                    modifier = Modifier.fillMaxWidth().testTag("translator_gmail_owner_badge")
+                  ) {
+                    Row(
+                      modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                      verticalAlignment = Alignment.CenterVertically,
+                      horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                      Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                      ) {
+                        Icon(
+                          imageVector = Icons.Outlined.Mail,
+                          contentDescription = null,
+                          tint = AntiqueGold,
+                          modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                          Text(
+                            text = "TRANSLATOR GMAIL (VISIBLE TO OWNER ONLY)",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                              fontSize = 8.5.sp,
+                              fontWeight = FontWeight.Bold,
+                              letterSpacing = 1.1.sp,
+                              color = AntiqueGold
+                            )
+                          )
+                          Text(
+                            text = slot.translatorEmail ?: "translator${slot.slotNumber}@gmail.com",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                              fontSize = 12.5.sp,
+                              fontWeight = FontWeight.Bold,
+                              color = CharcoalText
+                            )
+                          )
+                        }
+                      }
+                      if (!slot.isPermissionGranted && onToggleSlotPermission != null) {
+                        Button(
+                          onClick = { onToggleSlotPermission(slot.slotNumber, true) },
+                          shape = RoundedCornerShape(10.dp),
+                          colors = ButtonDefaults.buttonColors(containerColor = AntiqueGold),
+                          contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                          modifier = Modifier.height(28.dp)
+                        ) {
+                          Text(
+                            text = "Grant Permission",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                              fontSize = 10.sp,
+                              color = SoftCreamPaper,
+                              fontWeight = FontWeight.Bold
+                            )
+                          )
+                        }
+                      }
+                    }
+                  }
+                }
+
                 if (!slot.isPermissionGranted && isOwner && onToggleSlotPermission != null && slot.slotNumber != 0) {
                   Spacer(modifier = Modifier.height(14.dp))
                   Surface(
@@ -539,7 +634,7 @@ fun TranslatorProfileModal(
                           )
                         )
                         Text(
-                          text = "You can grant permission to activate Seat ${slot.slotNumber} and make this translator visible as an active curator.",
+                          text = "Grant permission to ${slot.translatorEmail ?: "this translator"} to activate Seat ${slot.slotNumber} and make them an active curator.",
                           style = MaterialTheme.typography.bodySmall.copy(
                             fontSize = 11.sp,
                             lineHeight = 15.sp,
@@ -571,186 +666,512 @@ fun TranslatorProfileModal(
             }
           }
 
-          // Subtle Search Bar
-          item {
-            OutlinedTextField(
-              value = searchQuery,
-              onValueChange = { searchQuery = it },
-              placeholder = {
-                Text(
-                  "Search manuscripts by title, chapter or excerpt...",
-                  style = MaterialTheme.typography.bodySmall.copy(
-                    color = CharcoalTertiary,
-                    fontSize = 12.sp
-                  )
-                )
-              },
-              leadingIcon = {
-                Icon(
-                  imageVector = Icons.Outlined.Search,
-                  contentDescription = "Search",
-                  tint = AntiqueGold,
-                  modifier = Modifier.size(17.dp)
-                )
-              },
-              trailingIcon = {
-                if (searchQuery.isNotEmpty()) {
-                  IconButton(onClick = { searchQuery = "" }) {
-                    Icon(
-                      imageVector = Icons.Outlined.Clear,
-                      contentDescription = "Clear",
-                      tint = CharcoalSecondary,
-                      modifier = Modifier.size(16.dp)
-                    )
-                  }
-                }
-              },
-              singleLine = true,
-              shape = RoundedCornerShape(16.dp),
-              colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = SoftCreamPaper,
-                unfocusedContainerColor = SoftCreamPaper,
-                focusedBorderColor = AntiqueGold,
-                unfocusedBorderColor = SubtleBorder
-              ),
-              modifier = Modifier
-                .fillMaxWidth()
-                .testTag("translator_search_bar")
-            )
-          }
-
-          // Subtle 'Sort by' Filter Chips
+          // Tab Switcher: Published Works vs My Reading Shelf
           item {
             Row(
               modifier = Modifier
                 .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-              verticalAlignment = Alignment.CenterVertically,
-              horizontalArrangement = Arrangement.spacedBy(8.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0x0E000000))
+                .padding(3.dp),
+              horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-              Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                  imageVector = Icons.Outlined.Sort,
-                  contentDescription = null,
-                  tint = AntiqueGold,
-                  modifier = Modifier.size(14.dp)
+              Surface(
+                onClick = { selectedProfileTab = TranslatorProfileTab.WORKS },
+                shape = RoundedCornerShape(10.dp),
+                color = if (selectedProfileTab == TranslatorProfileTab.WORKS) SoftCreamPaper else Color.Transparent,
+                shadowElevation = if (selectedProfileTab == TranslatorProfileTab.WORKS) 2.dp else 0.dp,
+                modifier = Modifier
+                  .weight(1f)
+                  .testTag("translator_tab_works")
+              ) {
+                Row(
+                  modifier = Modifier.padding(vertical = 8.dp, horizontal = 6.dp),
+                  horizontalArrangement = Arrangement.Center,
+                  verticalAlignment = Alignment.CenterVertically
+                ) {
+                  Icon(
+                    imageVector = Icons.Outlined.AutoStories,
+                    contentDescription = null,
+                    tint = if (selectedProfileTab == TranslatorProfileTab.WORKS) AntiqueGold else CharcoalSecondary,
+                    modifier = Modifier.size(13.dp)
+                  )
+                  Spacer(modifier = Modifier.width(5.dp))
+                  Text(
+                    text = "Works (${translatorNovels.size})",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontWeight = if (selectedProfileTab == TranslatorProfileTab.WORKS) FontWeight.Bold else FontWeight.Medium,
+                      fontSize = 11.sp
+                    ),
+                    color = if (selectedProfileTab == TranslatorProfileTab.WORKS) CharcoalText else CharcoalSecondary
+                  )
+                }
+              }
+
+              Surface(
+                onClick = { selectedProfileTab = TranslatorProfileTab.MY_SHELF },
+                shape = RoundedCornerShape(10.dp),
+                color = if (selectedProfileTab == TranslatorProfileTab.MY_SHELF) SoftCreamPaper else Color.Transparent,
+                shadowElevation = if (selectedProfileTab == TranslatorProfileTab.MY_SHELF) 2.dp else 0.dp,
+                modifier = Modifier
+                  .weight(1f)
+                  .testTag("translator_tab_shelf")
+              ) {
+                Row(
+                  modifier = Modifier.padding(vertical = 8.dp, horizontal = 6.dp),
+                  horizontalArrangement = Arrangement.Center,
+                  verticalAlignment = Alignment.CenterVertically
+                ) {
+                  Icon(
+                    imageVector = Icons.Filled.MenuBook,
+                    contentDescription = null,
+                    tint = if (selectedProfileTab == TranslatorProfileTab.MY_SHELF) AntiqueGold else CharcoalSecondary,
+                    modifier = Modifier.size(13.dp)
+                  )
+                  Spacer(modifier = Modifier.width(5.dp))
+                  Text(
+                    text = "My Shelf",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontWeight = if (selectedProfileTab == TranslatorProfileTab.MY_SHELF) FontWeight.Bold else FontWeight.Medium,
+                      fontSize = 11.sp
+                    ),
+                    color = if (selectedProfileTab == TranslatorProfileTab.MY_SHELF) CharcoalText else CharcoalSecondary
+                  )
+                }
+              }
+            }
+          }
+
+          if (selectedProfileTab == TranslatorProfileTab.WORKS) {
+            // Subtle Search Bar
+            item {
+              OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = {
+                  Text(
+                    "Search manuscripts by title, chapter or excerpt...",
+                    style = MaterialTheme.typography.bodySmall.copy(
+                      color = CharcoalTertiary,
+                      fontSize = 12.sp
+                    )
+                  )
+                },
+                leadingIcon = {
+                  Icon(
+                    imageVector = Icons.Outlined.Search,
+                    contentDescription = "Search",
+                    tint = AntiqueGold,
+                    modifier = Modifier.size(17.dp)
+                  )
+                },
+                trailingIcon = {
+                  if (searchQuery.isNotEmpty()) {
+                    IconButton(onClick = { searchQuery = "" }) {
+                      Icon(
+                        imageVector = Icons.Outlined.Clear,
+                        contentDescription = "Clear",
+                        tint = CharcoalSecondary,
+                        modifier = Modifier.size(16.dp)
+                      )
+                    }
+                  }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(16.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                  focusedContainerColor = SoftCreamPaper,
+                  unfocusedContainerColor = SoftCreamPaper,
+                  focusedBorderColor = AntiqueGold,
+                  unfocusedBorderColor = SubtleBorder
+                ),
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .testTag("translator_search_bar")
+              )
+            }
+
+            // Subtle 'Sort by' Filter Chips
+            item {
+              Row(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .horizontalScroll(rememberScrollState()),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+              ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                  Icon(
+                    imageVector = Icons.Outlined.Sort,
+                    contentDescription = null,
+                    tint = AntiqueGold,
+                    modifier = Modifier.size(14.dp)
+                  )
+                  Spacer(modifier = Modifier.width(4.dp))
+                  Text(
+                    text = "Sort:",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontWeight = FontWeight.Bold,
+                      fontSize = 10.5.sp
+                    ),
+                    color = CharcoalTertiary
+                  )
+                }
+
+                TranslatorSortChip(
+                  label = "Newest First",
+                  selected = selectedSort == TranslatorWorksSort.NEWEST,
+                  onClick = { selectedSort = TranslatorWorksSort.NEWEST }
                 )
-                Spacer(modifier = Modifier.width(4.dp))
+
+                TranslatorSortChip(
+                  label = "Most Popular",
+                  selected = selectedSort == TranslatorWorksSort.POPULAR,
+                  onClick = { selectedSort = TranslatorWorksSort.POPULAR }
+                )
+
+                TranslatorSortChip(
+                  label = "Oldest First",
+                  selected = selectedSort == TranslatorWorksSort.OLDEST,
+                  onClick = { selectedSort = TranslatorWorksSort.OLDEST }
+                )
+
+                TranslatorSortChip(
+                  label = "Title (A–Z)",
+                  selected = selectedSort == TranslatorWorksSort.TITLE_AZ,
+                  onClick = { selectedSort = TranslatorWorksSort.TITLE_AZ }
+                )
+
+                TranslatorSortChip(
+                  label = "Length (Pages)",
+                  selected = selectedSort == TranslatorWorksSort.PAGES,
+                  onClick = { selectedSort = TranslatorWorksSort.PAGES }
+                )
+              }
+            }
+
+            // Section Title
+            item {
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+              ) {
                 Text(
-                  text = "Sort:",
+                  text = "TRANSLATED WORKS (${displayedNovels.size})",
                   style = MaterialTheme.typography.labelSmall.copy(
+                    letterSpacing = 1.3.sp,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 10.5.sp
+                    fontSize = 10.sp
                   ),
                   color = CharcoalTertiary
                 )
-              }
 
-              TranslatorSortChip(
-                label = "Newest First",
-                selected = selectedSort == TranslatorWorksSort.NEWEST,
-                onClick = { selectedSort = TranslatorWorksSort.NEWEST }
-              )
-
-              TranslatorSortChip(
-                label = "Most Popular",
-                selected = selectedSort == TranslatorWorksSort.POPULAR,
-                onClick = { selectedSort = TranslatorWorksSort.POPULAR }
-              )
-
-              TranslatorSortChip(
-                label = "Oldest First",
-                selected = selectedSort == TranslatorWorksSort.OLDEST,
-                onClick = { selectedSort = TranslatorWorksSort.OLDEST }
-              )
-
-              TranslatorSortChip(
-                label = "Title (A–Z)",
-                selected = selectedSort == TranslatorWorksSort.TITLE_AZ,
-                onClick = { selectedSort = TranslatorWorksSort.TITLE_AZ }
-              )
-
-              TranslatorSortChip(
-                label = "Length (Pages)",
-                selected = selectedSort == TranslatorWorksSort.PAGES,
-                onClick = { selectedSort = TranslatorWorksSort.PAGES }
-              )
-            }
-          }
-
-          // Section Title
-          item {
-            Row(
-              modifier = Modifier.fillMaxWidth(),
-              horizontalArrangement = Arrangement.SpaceBetween,
-              verticalAlignment = Alignment.CenterVertically
-            ) {
-              Text(
-                text = "TRANSLATED WORKS (${displayedNovels.size})",
-                style = MaterialTheme.typography.labelSmall.copy(
-                  letterSpacing = 1.3.sp,
-                  fontWeight = FontWeight.Bold,
-                  fontSize = 10.sp
-                ),
-                color = CharcoalTertiary
-              )
-
-              if (searchQuery.isNotEmpty()) {
-                Text(
-                  text = "Filtered results",
-                  style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 10.sp,
-                    color = AntiqueGold
+                if (searchQuery.isNotEmpty()) {
+                  Text(
+                    text = "Filtered results",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontSize = 10.sp,
+                      color = AntiqueGold
+                    )
                   )
+                }
+              }
+            }
+
+            // Empty state if no works match
+            if (displayedNovels.isEmpty()) {
+              item {
+                Box(
+                  modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 40.dp),
+                  contentAlignment = Alignment.Center
+                ) {
+                  Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                      imageVector = Icons.AutoMirrored.Outlined.MenuBook,
+                      contentDescription = null,
+                      tint = AntiqueGold.copy(alpha = 0.5f),
+                      modifier = Modifier.size(36.dp)
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                      text = if (searchQuery.isNotEmpty()) "No manuscripts match '$searchQuery'" else "No works published in this translator's archive yet.",
+                      style = MaterialTheme.typography.bodyMedium,
+                      color = CharcoalSecondary
+                    )
+                    if (searchQuery.isNotEmpty()) {
+                      Spacer(modifier = Modifier.height(6.dp))
+                      OutlinedButton(
+                        onClick = { searchQuery = "" },
+                        shape = RoundedCornerShape(10.dp)
+                      ) {
+                        Text("Clear Search", fontSize = 11.sp)
+                      }
+                    }
+                  }
+                }
+              }
+            } else {
+              // Clean Library Grid / Cards for all works
+              items(displayedNovels, key = { it.id }) { novel ->
+                TranslatorNovelCard(
+                  novel = novel,
+                  onRead = {
+                    onDismiss()
+                    onSelectNovel(novel)
+                  }
                 )
               }
             }
-          }
-
-          // Empty state if no works match
-          if (displayedNovels.isEmpty()) {
+          } else {
+            // My Reading Shelf (TBR, Reading, Finished, Favorites)
             item {
-              Box(
+              Row(
                 modifier = Modifier
                   .fillMaxWidth()
-                  .padding(vertical = 40.dp),
-                contentAlignment = Alignment.Center
+                  .padding(bottom = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
               ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                  Icon(
-                    imageVector = Icons.AutoMirrored.Outlined.MenuBook,
-                    contentDescription = null,
-                    tint = AntiqueGold.copy(alpha = 0.5f),
-                    modifier = Modifier.size(36.dp)
-                  )
-                  Spacer(modifier = Modifier.height(10.dp))
-                  Text(
-                    text = if (searchQuery.isNotEmpty()) "No manuscripts match '$searchQuery'" else "No works published in this translator's archive yet.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = CharcoalSecondary
-                  )
-                  if (searchQuery.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    OutlinedButton(
-                      onClick = { searchQuery = "" },
-                      shape = RoundedCornerShape(10.dp)
+                listOf(
+                  Triple(TranslatorShelfCategory.READING, "Reading (${readingNovels.size})", Icons.Filled.MenuBook),
+                  Triple(TranslatorShelfCategory.TO_BE_READ, "TBR (${tbrNovels.size})", Icons.Filled.Bookmark),
+                  Triple(TranslatorShelfCategory.FINISHED, "Finished (${finishedNovels.size})", Icons.Filled.CheckCircle),
+                  Triple(TranslatorShelfCategory.FAVORITES, "Favs (${favoriteNovels.size})", Icons.Filled.Favorite),
+                ).forEach { (cat, label, icon) ->
+                  val isSel = selectedShelfCategory == cat
+                  Surface(
+                    onClick = { selectedShelfCategory = cat },
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (isSel) CharcoalText else SoftCreamPaper,
+                    border = BorderStroke(1.dp, if (isSel) CharcoalText else SubtleBorder),
+                    modifier = Modifier.weight(1f)
+                  ) {
+                    Row(
+                      modifier = Modifier.padding(vertical = 6.dp, horizontal = 2.dp),
+                      horizontalArrangement = Arrangement.Center,
+                      verticalAlignment = Alignment.CenterVertically
                     ) {
-                      Text("Clear Search", fontSize = 11.sp)
+                      Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = if (isSel) AntiqueGold else CharcoalSecondary,
+                        modifier = Modifier.size(11.dp)
+                      )
+                      Spacer(modifier = Modifier.width(3.dp))
+                      Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                          fontSize = 9.5.sp,
+                          fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal
+                        ),
+                        color = if (isSel) SoftCreamPaper else CharcoalSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                      )
                     }
                   }
                 }
               }
             }
-          } else {
-            // Clean Library Grid / Cards for all works
-            items(displayedNovels, key = { it.id }) { novel ->
-              TranslatorNovelCard(
-                novel = novel,
-                onRead = {
-                  onDismiss()
-                  onSelectNovel(novel)
+
+            val currentShelfNovels = when (selectedShelfCategory) {
+              TranslatorShelfCategory.READING -> readingNovels
+              TranslatorShelfCategory.TO_BE_READ -> tbrNovels
+              TranslatorShelfCategory.FINISHED -> finishedNovels
+              TranslatorShelfCategory.FAVORITES -> favoriteNovels
+            }
+
+            if (currentShelfNovels.isEmpty()) {
+              item {
+                Surface(
+                  shape = RoundedCornerShape(16.dp),
+                  color = SoftCreamPaper,
+                  border = BorderStroke(1.dp, SubtleBorder),
+                  modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 16.dp)
+                ) {
+                  Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                  ) {
+                    Icon(
+                      imageVector = when (selectedShelfCategory) {
+                        TranslatorShelfCategory.READING -> Icons.Filled.MenuBook
+                        TranslatorShelfCategory.TO_BE_READ -> Icons.Filled.Bookmark
+                        TranslatorShelfCategory.FINISHED -> Icons.Filled.CheckCircle
+                        TranslatorShelfCategory.FAVORITES -> Icons.Filled.Favorite
+                      },
+                      contentDescription = null,
+                      tint = AntiqueGold,
+                      modifier = Modifier.size(32.dp)
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                      text = when (selectedShelfCategory) {
+                        TranslatorShelfCategory.READING -> "No novels currently being read"
+                        TranslatorShelfCategory.TO_BE_READ -> "Your TBR shelf is empty"
+                        TranslatorShelfCategory.FINISHED -> "No novels finished yet"
+                        TranslatorShelfCategory.FAVORITES -> "No favorited novels yet"
+                      },
+                      style = MaterialTheme.typography.titleSmall.copy(
+                        fontFamily = FontFamily.Serif,
+                        fontWeight = FontWeight.Bold
+                      ),
+                      color = CharcoalText
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                      text = "Explore the strawberrycandy archive to discover manuscripts and add them to your shelf.",
+                      style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                      color = CharcoalSecondary,
+                      textAlign = TextAlign.Center
+                    )
+                  }
                 }
-              )
+              }
+            } else {
+              items(currentShelfNovels, key = { it.id }) { novel ->
+                Card(
+                  shape = RoundedCornerShape(14.dp),
+                  colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
+                  border = BorderStroke(1.dp, SubtleBorder),
+                  modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                      onDismiss()
+                      onSelectNovel(novel)
+                    }
+                ) {
+                  Row(
+                    modifier = Modifier
+                      .fillMaxWidth()
+                      .padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                  ) {
+                    // Cover thumbnail
+                    Box(
+                      modifier = Modifier
+                        .size(width = 46.dp, height = 64.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(novel.coverColorHex)),
+                      contentAlignment = Alignment.Center
+                    ) {
+                      if (novel.coverImageUri != null) {
+                        AsyncImage(
+                          model = novel.coverImageUri,
+                          contentDescription = novel.title,
+                          contentScale = ContentScale.Crop,
+                          modifier = Modifier.matchParentSize()
+                        )
+                      } else {
+                        Text(
+                          text = novel.title.take(1).uppercase(),
+                          style = MaterialTheme.typography.titleMedium.copy(
+                            fontFamily = FontFamily.Serif,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                          )
+                        )
+                      }
+                    }
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                      Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                      ) {
+                        Surface(
+                          shape = RoundedCornerShape(4.dp),
+                          color = if (novel.isCompletedNovel) Color(0xFF2E7D32).copy(alpha = 0.15f) else Color(0xFFD87D2A).copy(alpha = 0.15f)
+                        ) {
+                          Text(
+                            text = if (novel.isCompletedNovel) "✓ FINISHED" else "• ONGOING",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                              fontSize = 7.5.sp,
+                              fontWeight = FontWeight.Bold,
+                              color = if (novel.isCompletedNovel) Color(0xFF2E7D32) else Color(0xFFD87D2A)
+                            ),
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.5.dp)
+                          )
+                        }
+                        Text(
+                          text = "${novel.totalPages} pages",
+                          style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
+                          color = CharcoalSecondary
+                        )
+                      }
+
+                      Spacer(modifier = Modifier.height(3.dp))
+
+                      Text(
+                        text = novel.title,
+                        style = MaterialTheme.typography.titleSmall.copy(
+                          fontFamily = FontFamily.Serif,
+                          fontWeight = FontWeight.Bold,
+                          fontSize = 13.sp
+                        ),
+                        color = CharcoalText,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                      )
+
+                      Text(
+                        text = novel.authorLabel,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                        color = CharcoalSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                      )
+
+                      if (selectedShelfCategory == TranslatorShelfCategory.READING) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        LinearProgressIndicator(
+                          progress = { novel.progressFraction },
+                          modifier = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .clip(RoundedCornerShape(2.dp)),
+                          color = AntiqueGold,
+                          trackColor = CharcoalText.copy(alpha = 0.1f),
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                          text = "Page ${novel.currentPage} of ${novel.totalPages} (${(novel.progressFraction * 100).toInt()}%)",
+                          style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
+                          color = AntiqueGold
+                        )
+                      }
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Button(
+                      onClick = {
+                        onDismiss()
+                        onSelectNovel(novel)
+                      },
+                      shape = RoundedCornerShape(10.dp),
+                      colors = ButtonDefaults.buttonColors(containerColor = CharcoalText),
+                      contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                      modifier = Modifier.height(30.dp)
+                    ) {
+                      Text(
+                        text = novel.readButtonLabel,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                          fontSize = 10.sp,
+                          fontWeight = FontWeight.Bold,
+                          color = SoftCreamPaper
+                        )
+                      )
+                    }
+                  }
+                }
+              }
             }
           }
 

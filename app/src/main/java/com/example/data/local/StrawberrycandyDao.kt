@@ -64,6 +64,9 @@ interface StrawberrycandyDao {
   @Query("SELECT * FROM reader_profiles WHERE userId = :userId LIMIT 1")
   suspend fun getReaderProfile(userId: String): ReaderProfileEntity?
 
+  @Query("SELECT * FROM reader_profiles WHERE LOWER(email) = LOWER(:email) LIMIT 1")
+  suspend fun getReaderProfileByEmail(email: String): ReaderProfileEntity?
+
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun insertReaderProfile(profile: ReaderProfileEntity)
 
@@ -75,6 +78,9 @@ interface StrawberrycandyDao {
 
   @Query("UPDATE reader_profiles SET displayName = :newDisplayName, penNamePoints = penNamePoints - 1 WHERE userId = :userId AND penNamePoints >= 1")
   suspend fun deductPointAndSetDisplayName(userId: String, newDisplayName: String): Int
+
+  @Query("UPDATE reader_profiles SET displayName = :newDisplayName WHERE userId = :userId")
+  suspend fun updateReaderDisplayName(userId: String, newDisplayName: String): Int
 
   @Query("UPDATE author_slots SET penName = :penName WHERE slotNumber = :slotNumber")
   suspend fun updateSlotPenName(slotNumber: Int, penName: String)
@@ -108,6 +114,15 @@ interface StrawberrycandyDao {
   @Query("UPDATE author_slots SET isPermissionGranted = :isGranted WHERE slotNumber = :slotNumber")
   suspend fun updateAuthorSlotPermission(slotNumber: Int, isGranted: Boolean)
 
+  @Query("UPDATE author_slots SET translatorEmail = :email WHERE slotNumber = :slotNumber")
+  suspend fun updateAuthorSlotEmail(slotNumber: Int, email: String)
+
+  @Query("UPDATE author_slots SET isPermissionGranted = :isGranted, translatorEmail = :email, isClaimed = 1 WHERE slotNumber = :slotNumber")
+  suspend fun updateAuthorSlotPermissionAndEmail(slotNumber: Int, isGranted: Boolean, email: String)
+
+  @Query("SELECT * FROM author_slots WHERE LOWER(translatorEmail) = LOWER(:email) LIMIT 1")
+  suspend fun getAuthorSlotByEmail(email: String): AuthorSlotEntity?
+
   @Query("SELECT COUNT(*) FROM author_slots")
   suspend fun getAuthorSlotCount(): Int
 
@@ -129,6 +144,12 @@ interface StrawberrycandyDao {
 
   @Query("SELECT COUNT(*) FROM chapter_comments")
   suspend fun getCommentCount(): Int
+
+  @Query("SELECT * FROM chapter_comments WHERE (readerEmail != '' AND LOWER(readerEmail) = LOWER(:email)) OR LOWER(readerName) = LOWER(:name) ORDER BY timestamp DESC")
+  fun getCommentsForReader(email: String, name: String): Flow<List<ChapterCommentEntity>>
+
+  @Query("DELETE FROM chapter_comments WHERE id = :commentId")
+  suspend fun deleteComment(commentId: String)
 
   // Favorite Lines & Bookmarks per Novel
   @Query("SELECT * FROM chapter_bookmarks WHERE novelId = :novelId ORDER BY timestamp DESC")

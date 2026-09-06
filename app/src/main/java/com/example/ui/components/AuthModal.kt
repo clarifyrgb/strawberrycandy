@@ -30,6 +30,8 @@ import androidx.compose.material.icons.outlined.Mail
 import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Security
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.outlined.WorkspacePremium
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -55,6 +57,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -72,16 +76,21 @@ import com.example.ui.theme.SubtleBorder
 @Composable
 fun AuthModal(
   onDismiss: () -> Unit,
-  onSignInWithGoogle: (email: String, name: String, role: String, authorSlot: Int?) -> Unit,
-  onSignInWithApple: (email: String, name: String, role: String, authorSlot: Int?) -> Unit,
+  onSignInWithGoogle: (email: String, password: String, name: String, role: String, authorSlot: Int?) -> Unit,
+  onSignInWithApple: (email: String, password: String, name: String, role: String, authorSlot: Int?) -> Unit,
   initialEmail: String = "",
+  externalErrorMessage: String? = null,
+  onClearError: () -> Unit = {},
 ) {
   var emailInput by remember { mutableStateOf(initialEmail) }
+  var passwordInput by remember { mutableStateOf("") }
+  var isPasswordVisible by remember { mutableStateOf(false) }
   var nameInput by remember { mutableStateOf("") }
   var selectedRole by remember {
     mutableStateOf(if (StrawberrycandyRepository.isOwnerEmail(initialEmail)) "OWNER" else "READER")
   }
-  var errorMessage by remember { mutableStateOf<String?>(null) }
+  var localError by remember { mutableStateOf<String?>(null) }
+  val displayErrorMessage = localError ?: externalErrorMessage
 
   val isOwnerDetected = StrawberrycandyRepository.isOwnerEmail(emailInput)
 
@@ -89,29 +98,56 @@ fun AuthModal(
     var trimmedEmail = emailInput.trim()
     if (provider == "GOOGLE") {
       if (trimmedEmail.isBlank()) {
-        errorMessage = "Please enter your Gmail address (e.g. username@gmail.com)."
+        localError = "Please enter your Gmail address (e.g. username@gmail.com)."
         return
       }
       if (!trimmedEmail.contains("@")) {
         trimmedEmail = "$trimmedEmail@gmail.com"
         emailInput = trimmedEmail
       }
-      if (!trimmedEmail.contains(".")) {
-        errorMessage = "Please enter a valid Gmail address (e.g. username@gmail.com)."
+      val normalizedEmail = trimmedEmail.lowercase()
+      if (!normalizedEmail.endsWith("@gmail.com") && !normalizedEmail.endsWith("@googlemail.com")) {
+        localError = "Invalid Google Account. Please enter a valid @gmail.com address."
+        return
+      }
+      val localPart = normalizedEmail.substringBefore("@")
+      if (localPart.length < 6) {
+        localError = "Google username must be at least 6 characters before @gmail.com."
+        return
+      }
+      val validGoogleUsernameRegex = Regex("^[a-z0-9][a-z0-9.]*[a-z0-9]$")
+      if (!validGoogleUsernameRegex.matches(localPart) || localPart.contains("..")) {
+        localError = "Invalid Gmail format. Google usernames only contain letters, numbers, and non-consecutive periods."
         return
       }
     } else {
       if (trimmedEmail.isBlank()) {
-        errorMessage = "Please enter your email address before signing in."
+        localError = "Please enter your email address before signing in."
         return
       }
       if (!trimmedEmail.contains("@") || !trimmedEmail.contains(".")) {
-        errorMessage = "Please enter a valid email address (e.g. reader@example.com)."
+        localError = "Please enter a valid email address (e.g. reader@example.com)."
         return
       }
     }
 
-    errorMessage = null
+    if (passwordInput.isBlank()) {
+      localError = "Please enter your account password."
+      return
+    }
+    if (passwordInput.length < 8) {
+      localError = "Account password must be at least 8 characters long to match Google account requirements."
+      return
+    }
+    val hasLetter = passwordInput.any { it.isLetter() }
+    val hasDigitOrSymbol = passwordInput.any { !it.isLetter() }
+    if (!hasLetter || !hasDigitOrSymbol) {
+      localError = "Password must include both letters and numbers/symbols to match your account credentials."
+      return
+    }
+
+    localError = null
+    onClearError()
     val isOwner = StrawberrycandyRepository.isOwnerEmail(trimmedEmail)
     val effectiveRole = if (isOwner) {
       "OWNER"
@@ -146,9 +182,9 @@ fun AuthModal(
     }
 
     if (provider == "GOOGLE") {
-      onSignInWithGoogle(trimmedEmail, finalName, effectiveRole, assignedSlot)
+      onSignInWithGoogle(trimmedEmail, passwordInput, finalName, effectiveRole, assignedSlot)
     } else {
-      onSignInWithApple(trimmedEmail, finalName, effectiveRole, assignedSlot)
+      onSignInWithApple(trimmedEmail, passwordInput, finalName, effectiveRole, assignedSlot)
     }
   }
 
@@ -352,7 +388,8 @@ fun AuthModal(
             value = emailInput,
             onValueChange = {
               emailInput = it
-              errorMessage = null
+              localError = null
+              onClearError()
             },
             placeholder = { Text("reader@gmail.com", color = CharcoalTertiary) },
             leadingIcon = {
@@ -391,7 +428,8 @@ fun AuthModal(
                 border = BorderStroke(1.dp, Color(0xFF4285F4).copy(alpha = 0.3f)),
                 onClick = {
                   emailInput = "$emailInput@gmail.com"
-                  errorMessage = null
+                  localError = null
+                  onClearError()
                 }
               ) {
                 Row(
@@ -414,6 +452,79 @@ fun AuthModal(
 
         Spacer(modifier = Modifier.height(12.dp))
 
+        // Password Text Field
+        Column(modifier = Modifier.fillMaxWidth()) {
+          Text(
+            text = "GMAIL / ACCOUNT PASSWORD *",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 9.sp,
+              fontWeight = FontWeight.Bold,
+              letterSpacing = 1.1.sp
+            ),
+            color = CharcoalText
+          )
+
+          Spacer(modifier = Modifier.height(6.dp))
+
+          OutlinedTextField(
+            value = passwordInput,
+            onValueChange = {
+              passwordInput = it
+              localError = null
+              onClearError()
+            },
+            placeholder = { Text("Enter your Google account password", color = CharcoalTertiary) },
+            leadingIcon = {
+              Icon(
+                imageVector = Icons.Outlined.Lock,
+                contentDescription = null,
+                tint = if (isOwnerDetected) AntiqueGold else CharcoalSecondary,
+                modifier = Modifier.size(18.dp)
+              )
+            },
+            trailingIcon = {
+              IconButton(
+                onClick = { isPasswordVisible = !isPasswordVisible },
+                modifier = Modifier.size(24.dp)
+              ) {
+                Icon(
+                  imageVector = if (isPasswordVisible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                  contentDescription = if (isPasswordVisible) "Hide password" else "Show password",
+                  tint = CharcoalSecondary,
+                  modifier = Modifier.size(18.dp)
+                )
+              }
+            },
+            singleLine = true,
+            visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            shape = RoundedCornerShape(12.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+              focusedBorderColor = AntiqueGold,
+              unfocusedBorderColor = SubtleBorder,
+              focusedContainerColor = SoftCreamPaper,
+              unfocusedContainerColor = SoftCreamPaper,
+              focusedTextColor = CharcoalText,
+              unfocusedTextColor = CharcoalText
+            ),
+            modifier = Modifier
+              .fillMaxWidth()
+              .testTag("auth_password_input")
+          )
+
+          Spacer(modifier = Modifier.height(4.dp))
+          Text(
+            text = "• Enter the exact same password associated with your Google account. Credentials must match for APK acceptance.",
+            style = MaterialTheme.typography.bodySmall.copy(
+              fontSize = 10.sp,
+              color = CharcoalSecondary,
+              lineHeight = 13.sp
+            )
+          )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
         // Name / Pen Name Text Field
         Column(modifier = Modifier.fillMaxWidth()) {
           Row(
@@ -432,12 +543,12 @@ fun AuthModal(
             )
             if (selectedRole == "TRANSLATOR") {
               Text(
-                text = "GMAIL HIDDEN",
+                text = "VISIBLE TO OWNER",
                 style = MaterialTheme.typography.labelSmall.copy(
                   fontSize = 8.sp,
                   fontWeight = FontWeight.Bold,
                   letterSpacing = 0.8.sp,
-                  color = Color(0xFF2E7D32)
+                  color = AntiqueGold
                 )
               )
             }
@@ -474,7 +585,7 @@ fun AuthModal(
           if (selectedRole == "TRANSLATOR") {
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-              text = "Privacy: Translators' Gmail accounts are hidden from readers. Only your pen name is visible.",
+              text = "Note: Translators' Gmail addresses are visible to Owner Clarify so they can grant you translation permission.",
               style = MaterialTheme.typography.bodySmall.copy(
                 fontSize = 10.5.sp,
                 color = CharcoalSecondary
@@ -484,7 +595,7 @@ fun AuthModal(
         }
 
         // Error message banner
-        if (errorMessage != null) {
+        if (displayErrorMessage != null) {
           Spacer(modifier = Modifier.height(12.dp))
           Row(
             modifier = Modifier
@@ -503,7 +614,7 @@ fun AuthModal(
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-              text = errorMessage ?: "",
+              text = displayErrorMessage,
               style = MaterialTheme.typography.bodySmall.copy(
                 fontSize = 11.sp,
                 color = Color(0xFFC62828),
@@ -593,7 +704,7 @@ fun AuthModal(
             }
             Spacer(modifier = Modifier.width(12.dp))
             Text(
-              text = "Authenticate with Google (gmail.com)",
+              text = "Sign in with Google Account",
               style = MaterialTheme.typography.labelLarge.copy(
                 fontWeight = FontWeight.SemiBold,
                 letterSpacing = 0.3.sp

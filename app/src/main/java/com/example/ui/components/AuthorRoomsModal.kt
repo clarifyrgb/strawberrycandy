@@ -35,9 +35,12 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LockOpen
+import androidx.compose.material.icons.outlined.Mail
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.Upload
 import androidx.compose.material.icons.outlined.WorkspacePremium
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -54,6 +57,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -69,6 +73,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -104,6 +109,7 @@ fun AuthorRoomsModal(
   onUpdateSlotCover: (slotNumber: Int, imagePath: String) -> Unit,
   onToggleSlotPermission: (slotNumber: Int, isGranted: Boolean) -> Unit,
   onViewTranslatorArchive: (AuthorSlotEntity) -> Unit,
+  onGrantPermissionByEmail: ((email: String, slotNumber: Int?) -> Unit)? = null,
 ) {
   val context = LocalContext.current
   val isOwnerUser = currentUser != null && StrawberrycandyViewModel.isOwnerEmail(currentUser.email)
@@ -117,6 +123,10 @@ fun AuthorRoomsModal(
   var editPenName by remember { mutableStateOf("") }
   var editBio by remember { mutableStateOf("") }
   var targetPhotoSlot by remember { mutableIntStateOf(-1) }
+  var isGrantByGmailDialogOpen by remember { mutableStateOf(false) }
+  var inputGrantEmail by remember { mutableStateOf("") }
+  var selectedGrantSlot by remember { mutableIntStateOf(5) }
+  var grantEmailError by remember { mutableStateOf<String?>(null) }
 
   val photoPickerLauncher = rememberLauncherForActivityResult(
     contract = ActivityResultContracts.PickVisualMedia()
@@ -333,19 +343,57 @@ fun AuthorRoomsModal(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Text(
-          text = if (activeRoleView == UserRoleView.READER) {
-            "PERMITTED TRANSLATORS (${permittedTranslators.size})"
-          } else {
-            "ALL TRANSLATOR SLOTS (${permittedTranslators.size} / 10 ACTIVE)"
-          },
-          style = MaterialTheme.typography.labelSmall.copy(
-            fontSize = 9.5.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.2.sp
-          ),
-          color = CharcoalTertiary
-        )
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Text(
+            text = if (activeRoleView == UserRoleView.READER) {
+              "PERMITTED TRANSLATORS (${permittedTranslators.size})"
+            } else {
+              "ALL TRANSLATOR SLOTS (${permittedTranslators.size} / 10 ACTIVE)"
+            },
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 9.5.sp,
+              fontWeight = FontWeight.Bold,
+              letterSpacing = 1.2.sp
+            ),
+            color = CharcoalTertiary
+          )
+
+          if (isOwnerUser && onGrantPermissionByEmail != null) {
+            Surface(
+              shape = RoundedCornerShape(8.dp),
+              color = AntiqueGold.copy(alpha = 0.12f),
+              border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.4f)),
+              modifier = Modifier
+                .clickable { isGrantByGmailDialogOpen = true }
+                .testTag("author_rooms_grant_gmail_button")
+            ) {
+              Row(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Icon(
+                  imageVector = Icons.Outlined.PersonAdd,
+                  contentDescription = null,
+                  tint = AntiqueGold,
+                  modifier = Modifier.size(12.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                  text = "Grant by Gmail",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = AntiqueGold
+                  )
+                )
+              }
+            }
+          }
+        }
 
         Spacer(modifier = Modifier.height(8.dp))
 
@@ -418,6 +466,214 @@ fun AuthorRoomsModal(
         }
       }
     }
+  }
+
+  // Owner Dialog: Grant Permission Directly by Gmail
+  if (isGrantByGmailDialogOpen && isOwnerUser) {
+    AlertDialog(
+      onDismissRequest = {
+        isGrantByGmailDialogOpen = false
+        grantEmailError = null
+        inputGrantEmail = ""
+      },
+      icon = {
+        Icon(
+          imageVector = Icons.Outlined.PersonAdd,
+          contentDescription = null,
+          tint = AntiqueGold,
+          modifier = Modifier.size(28.dp)
+        )
+      },
+      title = {
+        Text(
+          text = "Grant Permission by Gmail",
+          style = MaterialTheme.typography.titleMedium.copy(
+            fontFamily = FontFamily.Serif,
+            fontWeight = FontWeight.Bold
+          ),
+          color = CharcoalText,
+          textAlign = TextAlign.Center
+        )
+      },
+      text = {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+          Text(
+            text = "Enter the translator's Gmail to grant them translation rights and assign their archive seat.",
+            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 16.sp),
+            color = CharcoalSecondary
+          )
+
+          OutlinedTextField(
+            value = inputGrantEmail,
+            onValueChange = {
+              inputGrantEmail = it
+              grantEmailError = null
+            },
+            placeholder = { Text("translator@gmail.com", color = CharcoalTertiary) },
+            leadingIcon = {
+              Icon(
+                imageVector = Icons.Outlined.Mail,
+                contentDescription = null,
+                tint = AntiqueGold,
+                modifier = Modifier.size(18.dp)
+              )
+            },
+            singleLine = true,
+            shape = RoundedCornerShape(10.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+              focusedBorderColor = AntiqueGold,
+              unfocusedBorderColor = SubtleBorder,
+              focusedContainerColor = SoftCreamPaper,
+              unfocusedContainerColor = SoftCreamPaper,
+              focusedTextColor = CharcoalText,
+              unfocusedTextColor = CharcoalText
+            ),
+            modifier = Modifier.fillMaxWidth().testTag("grant_gmail_input")
+          )
+
+          if (inputGrantEmail.isNotBlank() && !inputGrantEmail.contains("@")) {
+            Surface(
+              shape = RoundedCornerShape(6.dp),
+              color = Color(0xFF4285F4).copy(alpha = 0.12f),
+              border = BorderStroke(1.dp, Color(0xFF4285F4).copy(alpha = 0.3f)),
+              onClick = {
+                inputGrantEmail = "$inputGrantEmail@gmail.com"
+                grantEmailError = null
+              }
+            ) {
+              Text(
+                text = "+ @gmail.com",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 10.sp,
+                  fontWeight = FontWeight.SemiBold,
+                  color = Color(0xFF1A73E8)
+                ),
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+              )
+            }
+          }
+
+          if (grantEmailError != null) {
+            Text(
+              text = grantEmailError ?: "",
+              style = MaterialTheme.typography.bodySmall.copy(
+                fontSize = 11.sp,
+                color = Color(0xFFC62828)
+              )
+            )
+          }
+
+          Text(
+            text = "ASSIGN TO TRANSLATOR SLOT (1 - 10):",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 9.sp,
+              fontWeight = FontWeight.Bold,
+              letterSpacing = 1.sp,
+              color = AntiqueGold
+            )
+          )
+
+          // Row 1 (Slots 1 to 5)
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+          ) {
+            (1..5).forEach { slotNum ->
+              val isSlotActive = authorSlots.find { it.slotNumber == slotNum }?.isPermissionGranted == true
+              val isSelected = selectedGrantSlot == slotNum
+              Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = if (isSelected) AntiqueGold else if (isSlotActive) Color(0xFFE8F5E9) else Color.Gray.copy(alpha = 0.08f),
+                border = BorderStroke(1.dp, if (isSelected) AntiqueGold else SubtleBorder),
+                modifier = Modifier
+                  .weight(1f)
+                  .clickable { selectedGrantSlot = slotNum }
+              ) {
+                Box(
+                  modifier = Modifier.padding(vertical = 6.dp),
+                  contentAlignment = Alignment.Center
+                ) {
+                  Text(
+                    text = "#$slotNum",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontSize = 10.5.sp,
+                      fontWeight = FontWeight.Bold,
+                      color = if (isSelected) SoftCreamPaper else if (isSlotActive) Color(0xFF2E7D32) else CharcoalText
+                    )
+                  )
+                }
+              }
+            }
+          }
+
+          // Row 2 (Slots 6 to 10)
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+          ) {
+            (6..10).forEach { slotNum ->
+              val isSlotActive = authorSlots.find { it.slotNumber == slotNum }?.isPermissionGranted == true
+              val isSelected = selectedGrantSlot == slotNum
+              Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = if (isSelected) AntiqueGold else if (isSlotActive) Color(0xFFE8F5E9) else Color.Gray.copy(alpha = 0.08f),
+                border = BorderStroke(1.dp, if (isSelected) AntiqueGold else SubtleBorder),
+                modifier = Modifier
+                  .weight(1f)
+                  .clickable { selectedGrantSlot = slotNum }
+              ) {
+                Box(
+                  modifier = Modifier.padding(vertical = 6.dp),
+                  contentAlignment = Alignment.Center
+                ) {
+                  Text(
+                    text = "#$slotNum",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontSize = 10.5.sp,
+                      fontWeight = FontWeight.Bold,
+                      color = if (isSelected) SoftCreamPaper else if (isSlotActive) Color(0xFF2E7D32) else CharcoalText
+                    )
+                  )
+                }
+              }
+            }
+          }
+        }
+      },
+      confirmButton = {
+        Button(
+          onClick = {
+            var email = inputGrantEmail.trim()
+            if (!email.contains("@")) {
+              email = "$email@gmail.com"
+              inputGrantEmail = email
+            }
+            if (email.isBlank() || !email.contains(".")) {
+              grantEmailError = "Please enter a valid Gmail address (e.g. user@gmail.com)."
+              return@Button
+            }
+            onGrantPermissionByEmail?.invoke(email, selectedGrantSlot)
+            isGrantByGmailDialogOpen = false
+            inputGrantEmail = ""
+          },
+          colors = ButtonDefaults.buttonColors(containerColor = AntiqueGold),
+          shape = RoundedCornerShape(10.dp)
+        ) {
+          Text("Grant Permission", color = SoftCreamPaper, fontWeight = FontWeight.Bold)
+        }
+      },
+      dismissButton = {
+        TextButton(
+          onClick = {
+            isGrantByGmailDialogOpen = false
+            inputGrantEmail = ""
+            grantEmailError = null
+          }
+        ) {
+          Text("Cancel", color = CharcoalSecondary)
+        }
+      }
+    )
   }
 }
 
@@ -643,6 +899,29 @@ private fun TranslatorCardItem(
             ),
             color = CharcoalText
           )
+
+          if (isOwnerUser && !isOwner) {
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              modifier = Modifier.padding(top = 1.dp)
+            ) {
+              Icon(
+                imageVector = Icons.Outlined.Mail,
+                contentDescription = null,
+                tint = AntiqueGold,
+                modifier = Modifier.size(11.dp)
+              )
+              Spacer(modifier = Modifier.width(3.dp))
+              Text(
+                text = slot.translatorEmail ?: "translator${slot.slotNumber}@gmail.com",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 10.sp,
+                  fontWeight = FontWeight.Bold,
+                  color = AntiqueGold
+                )
+              )
+            }
+          }
 
           Text(
             text = "$worksCount manuscripts in archive",

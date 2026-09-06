@@ -43,6 +43,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -99,7 +100,9 @@ fun EditNovelModal(
     chapterTitle: String,
     contentText: String,
     coverColorHex: Long?,
-    coverImageUri: String?
+    coverImageUri: String?,
+    novelStatus: String?,
+    releaseFormat: String?,
   ) -> Unit,
   onDeleteNovel: (novelId: String) -> Unit,
 ) {
@@ -113,6 +116,8 @@ fun EditNovelModal(
   var contentText by remember { mutableStateOf(novel.novel.contentText) }
   var selectedColorHex by remember { mutableLongStateOf(novel.coverColorHex) }
   var coverImageUri by remember { mutableStateOf<String?>(novel.coverImageUri) }
+  var isFinishedNovel by remember { mutableStateOf(novel.isCompletedNovel) }
+  var isPerVolumeRelease by remember { mutableStateOf(novel.isPerVolume) }
 
   var isConfirmDeleteOpen by remember { mutableStateOf(false) }
 
@@ -505,6 +510,165 @@ fun EditNovelModal(
           }
         }
 
+        Spacer(modifier = Modifier.height(18.dp))
+
+        // Novel Status (Ongoing vs Finished) & Release Format (Chapter vs Volume) Toggles
+        Surface(
+          shape = RoundedCornerShape(16.dp),
+          color = AntiqueGold.copy(alpha = 0.07f),
+          border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.25f)),
+          modifier = Modifier.fillMaxWidth().testTag("edit_status_and_format_card")
+        ) {
+          Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+          ) {
+            // 1. Novel Status Toggle: Ongoing vs Finished
+            Column {
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Text(
+                  text = "NOVEL STATUS",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    color = AntiqueGold
+                  )
+                )
+                Text(
+                  text = if (isFinishedNovel) "✓ Finished" else "• Ongoing",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isFinishedNovel) Color(0xFF2E7D32) else Color(0xFFD87D2A)
+                  )
+                )
+              }
+              Spacer(modifier = Modifier.height(6.dp))
+              Row(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .clip(RoundedCornerShape(10.dp))
+                  .background(SoftCreamPaper)
+                  .border(BorderStroke(1.dp, SubtleBorder), shape = RoundedCornerShape(10.dp))
+                  .padding(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+              ) {
+                Surface(
+                  onClick = { isFinishedNovel = false },
+                  shape = RoundedCornerShape(8.dp),
+                  color = if (!isFinishedNovel) Color(0xFFD87D2A) else Color.Transparent,
+                  modifier = Modifier.weight(1f).testTag("edit_toggle_ongoing")
+                ) {
+                  Text(
+                    text = "Ongoing",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontWeight = if (!isFinishedNovel) FontWeight.Bold else FontWeight.Normal,
+                      fontSize = 11.sp
+                    ),
+                    color = if (!isFinishedNovel) Color.White else CharcoalSecondary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(vertical = 7.dp)
+                  )
+                }
+                Surface(
+                  onClick = { isFinishedNovel = true },
+                  shape = RoundedCornerShape(8.dp),
+                  color = if (isFinishedNovel) Color(0xFF2E7D32) else Color.Transparent,
+                  modifier = Modifier.weight(1f).testTag("edit_toggle_finished")
+                ) {
+                  Text(
+                    text = "Finished",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontWeight = if (isFinishedNovel) FontWeight.Bold else FontWeight.Normal,
+                      fontSize = 11.sp
+                    ),
+                    color = if (isFinishedNovel) Color.White else CharcoalSecondary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(vertical = 7.dp)
+                  )
+                }
+              }
+            }
+
+            // 2. Release Format: Per Chapter vs Per Volume
+            Column {
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Text(
+                  text = "RELEASE FORMAT",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    color = AntiqueGold
+                  )
+                )
+                Text(
+                  text = if (isPerVolumeRelease) "Button: 'Read Volume'" else "Button: 'Read Chapters'",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = CharcoalSecondary
+                  )
+                )
+              }
+              Spacer(modifier = Modifier.height(6.dp))
+              Row(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .clip(RoundedCornerShape(10.dp))
+                  .background(SoftCreamPaper)
+                  .border(BorderStroke(1.dp, SubtleBorder), shape = RoundedCornerShape(10.dp))
+                  .padding(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+              ) {
+                Surface(
+                  onClick = { isPerVolumeRelease = false },
+                  shape = RoundedCornerShape(8.dp),
+                  color = if (!isPerVolumeRelease) CharcoalText else Color.Transparent,
+                  modifier = Modifier.weight(1f).testTag("edit_toggle_chapter")
+                ) {
+                  Text(
+                    text = "Per Chapter",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontWeight = if (!isPerVolumeRelease) FontWeight.Bold else FontWeight.Normal,
+                      fontSize = 11.sp
+                    ),
+                    color = if (!isPerVolumeRelease) SoftCreamPaper else CharcoalSecondary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(vertical = 7.dp)
+                  )
+                }
+                Surface(
+                  onClick = { isPerVolumeRelease = true },
+                  shape = RoundedCornerShape(8.dp),
+                  color = if (isPerVolumeRelease) CharcoalText else Color.Transparent,
+                  modifier = Modifier.weight(1f).testTag("edit_toggle_volume")
+                ) {
+                  Text(
+                    text = "Per Volume",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontWeight = if (isPerVolumeRelease) FontWeight.Bold else FontWeight.Normal,
+                      fontSize = 11.sp
+                    ),
+                    color = if (isPerVolumeRelease) SoftCreamPaper else CharcoalSecondary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(vertical = 7.dp)
+                  )
+                }
+              }
+            }
+          }
+        }
+
         Spacer(modifier = Modifier.height(24.dp))
 
         // Action Buttons: Delete Novel & Save Changes
@@ -551,7 +715,9 @@ fun EditNovelModal(
                   chapterTitle,
                   contentText,
                   selectedColorHex,
-                  coverImageUri
+                  coverImageUri,
+                  if (isFinishedNovel) "FINISHED" else "ONGOING",
+                  if (isPerVolumeRelease) "VOLUME" else "CHAPTER"
                 )
                 onDismiss()
               }
