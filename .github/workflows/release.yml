@@ -18,6 +18,17 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
+      # Fix for the KSP "AWT-EventQueue" error by forcing headless mode
+      - name: Configure Headless Environment & Secrets
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          touch local.properties
+          echo "sdk.dir=$ANDROID_HOME" >> local.properties
+          echo "GEMINI_API_KEY=${GEMINI_API_KEY}" >> local.properties
+          echo "GEMINI_API_KEY=${GEMINI_API_KEY}" > .env
+          echo "org.gradle.jvmargs=-Djava.awt.headless=true" >> gradle.properties
+
       - name: Install Gradle Manually
         run: |
           wget https://services.gradle.org/distributions/gradle-9.3.1-bin.zip
