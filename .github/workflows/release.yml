@@ -19,8 +19,7 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      # Injects the required API key and fixes missing config
-      - name: Configure Environment
+      - name: Configure API Key
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
@@ -28,12 +27,6 @@ jobs:
           echo "sdk.dir=$ANDROID_HOME" > local.properties
           echo "GEMINI_API_KEY=${GEMINI_API_KEY}" >> local.properties
           echo "GEMINI_API_KEY=${GEMINI_API_KEY}" > .env
-          
-          # Remove broken signingConfig line per README step 5
-          if [ -f app/build.gradle.kts ]; then
-            sed -i '/signingConfigs.getByName("debugConfig")/d' app/build.gradle.kts || true
-            sed -i '/debugConfig/d' app/build.gradle.kts || true
-          fi
 
       - name: Install Gradle Manually
         run: |
@@ -41,46 +34,44 @@ jobs:
           unzip -q gradle-9.3.1-bin.zip
           echo "$PWD/gradle-9.3.1/bin" >> $GITHUB_PATH
 
+      # Compiles using your working release task
       - name: Build Release APK
-        run: gradle assembleRelease --no-daemon
+        run: gradle assembleRelease
 
-      # Generates a key, aligns, and signs the release APK so Android accepts it
-      - name: Sign Release APK
+      # Signs the APK so Android accepts and opens it
+      - name: Sign APK
         run: |
-          BUILD_TOOLS_DIR=$(ls -d $ANDROID_HOME/build-tools/* | tail -n 1)
+          BUILD_TOOLS_DIR=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -n 1)
 
-          # 1. Create a valid signing key
+          # Generate signing certificate
           keytool -genkeypair -v \
-            -keystore release.keystore \
-            -alias strawberry \
+            -keystore app.keystore \
+            -alias appalias \
             -keyalg RSA \
             -keysize 2048 \
             -validity 10000 \
-            -storepass androidpassword \
-            -keypass androidpassword \
+            -storepass password123 \
+            -keypass password123 \
             -dname "CN=Strawberrycandy, OU=App, O=AIStudio, L=City, S=State, C=US"
 
-          # 2. Locate the raw release APK
+          # Find the unsigned release APK
           RAW_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
           mkdir -p output
 
-          # 3. Zipalign (required by Android)
+          # Zipalign the APK
           $BUILD_TOOLS_DIR/zipalign -v -p 4 "$RAW_APK" output/aligned.apk
 
-          # 4. Sign APK with v2/v3 signature
+          # Sign with official Android signature schemes (v1, v2, v3)
           $BUILD_TOOLS_DIR/apksigner sign \
-            --ks release.keystore \
-            --ks-pass pass:androidpassword \
-            --key-pass pass:androidpassword \
-            --ks-key-alias strawberry \
-            --out output/Strawberrycandy-signed.apk \
+            --ks app.keystore \
+            --ks-pass pass:password123 \
+            --key-pass pass:password123 \
+            --ks-key-alias appalias \
+            --out output/Strawberrycandy.apk \
             output/aligned.apk
 
-          # 5. Verify the signature
-          $BUILD_TOOLS_DIR/apksigner verify output/Strawberrycandy-signed.apk
-
-      - name: Upload Signed APK Artifact
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Strawberrycandy-app
-          path: output/Strawberrycandy-signed.apk
+          path: output/Strawberrycandy.apk
