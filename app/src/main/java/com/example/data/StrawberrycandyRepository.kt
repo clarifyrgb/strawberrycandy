@@ -29,6 +29,7 @@ class StrawberrycandyRepository(
       seedDefaultAuthorSlotsIfEmpty()
       seedDefaultCommentsIfEmpty()
       ensureSchemaMonographExists()
+      upgradeDefaultNovelsWithChapters()
     }
   }
 
@@ -233,16 +234,19 @@ class StrawberrycandyRepository(
           editionNumber = "ARCHIVE NO. 042 / 100",
           coverDrawableRes = R.drawable.img_book_1,
           coverColorHex = 0xFF2A2825,
-          chapterTitle = "Chapter III • The Acoustics of Stillness",
+          chapterTitle = "Chapter I • The Cloistered Arcades of Thoronet",
           totalPages = 312,
           excerpt = "To construct a room for silence is not to subtract sound, but to tune the resonance of what remains.",
           contentText = listOf(
+            "[chapter:Chapter I • The Cloistered Arcades of Thoronet]",
             "To construct a room for silence is not merely to subtract sound, but to tune the subtle resonance of what remains. In the cloistered arcades of Thoronet and the vaulted corridors of Sénanque, stone does not absorb speech; it receives it as a transient vibration, smoothing harshness into an echo that returns only as ambient presence.",
             "[photo:drawable:img_book_1:Plate I • Monastic Stone Arcades & The Acoustics of Thoronet]",
             "When an author steps into such enclosures, the cadence of thought slows to match the thermal mass of granite. We are accustomed in contemporary life to an architecture of velocity—glass surfaces that reflect only haste, partitions that transmit anxiety.",
+            "[chapter:Chapter II • Deep Limestone Splays & Morning Light]",
             "Here, conversely, the wall possesses gravity. A single window, cut deep into limestone with a 45-degree splay, gathers the morning light and diffuses it across whitewashed lime plaster with an evenness that renders artificial illumination unnecessary. In this sanctuary, the page becomes the floorplan of an inner chamber.",
             "[photo:drawable:img_book_2:Plate II • Deep Limestone Splay Diffusing Morning Light]",
             "Consider the margin of the printed page. It is not wasted paper; it is the physical moat that shields the text from the noise of the surrounding world. Just as a Japanese teahouse requires an entry crawl-space (nijiriguchi) to humble the visitor, a worthy book demands an expanse of blank cream paper before the first sentence may begin.",
+            "[chapter:Chapter III • The Acoustics of Stillness & Sacred Margins]",
             "We read, ultimately, not to consume data, but to occupy a space designed by an architect of language. The sentences must carry structural integrity: verbs acting as load-bearing columns, subordinate clauses as cantilevered balconies overlooking quiet courtyards of reflection.",
             "In this proprietary edition, the text is sealed against casual dissemination. It exists only for the deliberate eye, held within an authenticated viewport where words retain their weight, unclouded by the frantic mechanisms of the digital crowd."
           ).joinToString("\n\n"),
@@ -265,11 +269,14 @@ class StrawberrycandyRepository(
           totalPages = 284,
           excerpt = "Form is what happens when solitude is granted sufficient time to harden into outline.",
           contentText = listOf(
+            "[chapter:Chapter I • The Geometry of Solitude]",
             "Form is what happens when solitude is granted sufficient time to harden into outline. Left to itself, human contemplation is diffuse, mist-like, drifting across memories and unfinished gestures without settling into durable shape.",
             "Only under the deliberate pressure of seclusion does the material crystallize. The sculptor knows that marble does not yield to haste; every chisel blow is a subtraction that reveals an inevitable contour already dormant within the quarry.",
             "[photo:drawable:img_book_2:Plate I • Contemplation of the Stone Quarry & Solitary Form]",
+            "[chapter:Chapter II • The Chisel and the Marble Contour]",
             "In our era of hyper-connectivity, solitude is often treated as an error code—a malfunction to be corrected by immediate notification. Yet throughout intellectual history, every profound contribution to philosophy and literature arose from sustained, uninterrupted seclusion.",
             "The mind needs borders just as a painting requires a frame. Without limits, imagination dissipates into ambient noise. By establishing rigorous artistic constraints—restricting our shelf to three works, purifying our canvas of extraneous buttons—we return dignity to the reading act.",
+            "[chapter:Chapter III • The Contractual Stillness of Reading]",
             "The reader who opens this volume enters a contractual stillness. No alerts will arrive; no algorithms will measure your scroll speed to optimize engagement. There is only the charcoal ligature upon cream fiber, and the silent covenant between author and witness."
           ).joinToString("\n\n"),
           isOwnerUploaded = false,
@@ -287,13 +294,16 @@ class StrawberrycandyRepository(
           editionNumber = "ARCHIVE NO. 087 / 100",
           coverDrawableRes = R.drawable.img_book_3,
           coverColorHex = 0xFF2F322B,
-          chapterTitle = "Chapter V • Translucence and Memory",
+          chapterTitle = "Chapter I • Slant Light at Dawn",
           totalPages = 196,
           excerpt = "The most enduring ideas are those written with the lightness of dust floating across a sunbeam.",
           contentText = listOf(
+            "[chapter:Chapter I • Slant Light at Dawn]",
             "The most enduring ideas are those written with the lightness of dust floating across a sunbeam. They do not demand assent with theatrical rhetoric; they illuminate quietly, allowing the reader to discover the truth as if remembering a long-forgotten dream.",
             "[photo:drawable:img_book_3:Plate I • Slant Light across the Ancient Library Gallery at Dawn]",
+            "[chapter:Chapter II • The Golden Foil of Forgotten Folios]",
             "At dawn, before the city awakens, light enters sideways. It strikes the spine of a book shelved three decades ago, gilding the gold foil embossing with a momentary flash of gold. For five minutes, that forgotten object becomes the brightest thing in the library.",
+            "[chapter:Chapter III • Translucence and Memory]",
             "Literature is that slant light. It illuminates what was already present in the reader's spirit, giving names to sensations that were previously mute. In designing these digital manuscripts, we sought the tactile tranquility of that early morning study.",
             "The subtle grain of paper, the restraint of charcoal typography, and the absence of intrusive interface machinery all conspire toward one end: that nothing shall stand between the radiance of the sentence and the stillness of the reader's mind."
           ).joinToString("\n\n"),
@@ -340,6 +350,88 @@ class StrawberrycandyRepository(
         favoritesCount = 920
       )
       dao.insertNovel(schemaMonograph)
+    }
+  }
+
+  private suspend fun upgradeDefaultNovelsWithChapters() {
+    val nov1 = dao.getNovelById("nov_1")
+    if (nov1 != null && !nov1.contentText.contains("[chapter:")) {
+      val updatedNov1 = nov1.copy(
+        chapterTitle = "Chapter I • The Cloistered Arcades of Thoronet",
+        contentText = listOf(
+          "[chapter:Chapter I • The Cloistered Arcades of Thoronet]",
+          "To construct a room for silence is not merely to subtract sound, but to tune the subtle resonance of what remains. In the cloistered arcades of Thoronet and the vaulted corridors of Sénanque, stone does not absorb speech; it receives it as a transient vibration, smoothing harshness into an echo that returns only as ambient presence.",
+          "[photo:drawable:img_book_1:Plate I • Monastic Stone Arcades & The Acoustics of Thoronet]",
+          "When an author steps into such enclosures, the cadence of thought slows to match the thermal mass of granite. We are accustomed in contemporary life to an architecture of velocity—glass surfaces that reflect only haste, partitions that transmit anxiety.",
+          "[chapter:Chapter II • Deep Limestone Splays & Morning Light]",
+          "Here, conversely, the wall possesses gravity. A single window, cut deep into limestone with a 45-degree splay, gathers the morning light and diffuses it across whitewashed lime plaster with an evenness that renders artificial illumination unnecessary. In this sanctuary, the page becomes the floorplan of an inner chamber.",
+          "[photo:drawable:img_book_2:Plate II • Deep Limestone Splay Diffusing Morning Light]",
+          "Consider the margin of the printed page. It is not wasted paper; it is the physical moat that shields the text from the noise of the surrounding world. Just as a Japanese teahouse requires an entry crawl-space (nijiriguchi) to humble the visitor, a worthy book demands an expanse of blank cream paper before the first sentence may begin.",
+          "[chapter:Chapter III • The Acoustics of Stillness & Sacred Margins]",
+          "We read, ultimately, not to consume data, but to occupy a space designed by an architect of language. The sentences must carry structural integrity: verbs acting as load-bearing columns, subordinate clauses as cantilevered balconies overlooking quiet courtyards of reflection.",
+          "In this proprietary edition, the text is sealed against casual dissemination. It exists only for the deliberate eye, held within an authenticated viewport where words retain their weight, unclouded by the frantic mechanisms of the digital crowd."
+        ).joinToString("\n\n")
+      )
+      dao.insertNovel(updatedNov1)
+    }
+
+    val nov2 = dao.getNovelById("nov_2")
+    if (nov2 != null && !nov2.contentText.contains("[chapter:")) {
+      val updatedNov2 = nov2.copy(
+        chapterTitle = "Chapter I • The Geometry of Solitude",
+        contentText = listOf(
+          "[chapter:Chapter I • The Geometry of Solitude]",
+          "Form is what happens when solitude is granted sufficient time to harden into outline. Left to itself, human contemplation is diffuse, mist-like, drifting across memories and unfinished gestures without settling into durable shape.",
+          "Only under the deliberate pressure of seclusion does the material crystallize. The sculptor knows that marble does not yield to haste; every chisel blow is a subtraction that reveals an inevitable contour already dormant within the quarry.",
+          "[photo:drawable:img_book_2:Plate I • Contemplation of the Stone Quarry & Solitary Form]",
+          "[chapter:Chapter II • The Chisel and the Marble Contour]",
+          "In our era of hyper-connectivity, solitude is often treated as an error code—a malfunction to be corrected by immediate notification. Yet throughout intellectual history, every profound contribution to philosophy and literature arose from sustained, uninterrupted seclusion.",
+          "The mind needs borders just as a painting requires a frame. Without limits, imagination dissipates into ambient noise. By establishing rigorous artistic constraints—restricting our shelf to three works, purifying our canvas of extraneous buttons—we return dignity to the reading act.",
+          "[chapter:Chapter III • The Contractual Stillness of Reading]",
+          "The reader who opens this volume enters a contractual stillness. No alerts will arrive; no algorithms will measure your scroll speed to optimize engagement. There is only the charcoal ligature upon cream fiber, and the silent covenant between author and witness."
+        ).joinToString("\n\n")
+      )
+      dao.insertNovel(updatedNov2)
+    }
+
+    val nov3 = dao.getNovelById("nov_3")
+    if (nov3 != null && !nov3.contentText.contains("[chapter:")) {
+      val updatedNov3 = nov3.copy(
+        chapterTitle = "Chapter I • Slant Light at Dawn",
+        contentText = listOf(
+          "[chapter:Chapter I • Slant Light at Dawn]",
+          "The most enduring ideas are those written with the lightness of dust floating across a sunbeam. They do not demand assent with theatrical rhetoric; they illuminate quietly, allowing the reader to discover the truth as if remembering a long-forgotten dream.",
+          "[photo:drawable:img_book_3:Plate I • Slant Light across the Ancient Library Gallery at Dawn]",
+          "[chapter:Chapter II • The Golden Foil of Forgotten Folios]",
+          "At dawn, before the city awakens, light enters sideways. It strikes the spine of a book shelved three decades ago, gilding the gold foil embossing with a momentary flash of gold. For five minutes, that forgotten object becomes the brightest thing in the library.",
+          "[chapter:Chapter III • Translucence and Memory]",
+          "Literature is that slant light. It illuminates what was already present in the reader's spirit, giving names to sensations that were previously mute. In designing these digital manuscripts, we sought the tactile tranquility of that early morning study.",
+          "The subtle grain of paper, the restraint of charcoal typography, and the absence of intrusive interface machinery all conspire toward one end: that nothing shall stand between the radiance of the sentence and the stillness of the reader's mind."
+        ).joinToString("\n\n")
+      )
+      dao.insertNovel(updatedNov3)
+    }
+
+    val novSchema = dao.getNovelById("nov_schema")
+    if (novSchema != null && !novSchema.contentText.contains("[chapter:")) {
+      val updatedNovSchema = novSchema.copy(
+        chapterTitle = "Chapter I • Physicality in Software",
+        contentText = listOf(
+          "[chapter:Chapter I • Physicality in Software & Ephemeral UI]",
+          "Substance over surface: The decline of ephemeral UI.",
+          "An exploration into durable software tools, tactile digital interfaces, and how the pursuit of hyper-velocity eroded deliberate human-computer ergonomics.",
+          "[photo:drawable:img_book_1:Plate I • Monolith Architecture Form & Spatial Persistence in Software]",
+          "[chapter:Chapter II • Determinism & Ambient Calmness]",
+          "Why predicting state mutation visually creates calmness: in deterministic interfaces, the ambient cognitive overhead of web applications drops to zero.",
+          "Opticals, Weights, and the Modern Sans: Tracing font rasterization behaviors from high-DPI glass screens back to Swiss modernism's raw strictness.",
+          "[chapter:Chapter III • Local-First Sovereignty & Tactile Friction]",
+          "Physical Levers in an Intangible Medium: The tactile feedback loops that mechanical craftsmen understood decades before mobile micro-haptics attempted replication.",
+          "Local-First Software and Sovereignty: Ownership paradigms in an era where network rent-seeking threatens the longevity of personal intellectual work.",
+          "Designing for Deliberate Friction: How frictionless flows encourage thoughtless actions, and where modern product designers must reintroduce hesitation.",
+          "The Monochrome Paradigm in App Design: Restricting color palette usage exclusively to semantic states as a discipline to uncover poor visual hierarchies."
+        ).joinToString("\n\n")
+      )
+      dao.insertNovel(updatedNovSchema)
     }
   }
 

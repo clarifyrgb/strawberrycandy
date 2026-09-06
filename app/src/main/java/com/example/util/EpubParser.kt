@@ -225,6 +225,9 @@ object EpubParser {
         // Convert HTML elements to paragraphs
         val formattedText = htmlToParagraphs(transformedHtml)
         if (formattedText.isNotBlank()) {
+          if (!candidateHeader.isNullOrBlank()) {
+            paragraphsList.add("[chapter:$candidateHeader]")
+          }
           paragraphsList.add(formattedText)
         }
       }

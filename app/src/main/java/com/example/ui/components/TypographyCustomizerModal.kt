@@ -12,20 +12,31 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.FontDownload
+import androidx.compose.material.icons.outlined.FormatAlignJustify
+import androidx.compose.material.icons.outlined.FormatAlignLeft
+import androidx.compose.material.icons.outlined.FormatLineSpacing
+import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material.icons.outlined.RestartAlt
+import androidx.compose.material.icons.outlined.SwapVert
 import androidx.compose.material.icons.outlined.UploadFile
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -48,8 +59,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -68,10 +81,18 @@ fun TypographyCustomizerModal(
   customFontName: String?,
   fontSizeScale: Float,
   lineHeightScale: Float,
+  pageTurnMode: String = "flip", // "flip" or "scroll"
+  paragraphSpacingScale: Float = 1.0f,
+  isJustified: Boolean = false,
+  isFirstLineIndent: Boolean = false,
   onSelectFontType: (String) -> Unit,
   onCustomFontUploaded: (filePath: String, fontName: String) -> Unit,
   onUpdateFontSizeScale: (Float) -> Unit,
   onUpdateLineHeightScale: (Float) -> Unit,
+  onSelectPageTurnMode: (String) -> Unit = {},
+  onUpdateParagraphSpacingScale: (Float) -> Unit = {},
+  onToggleJustified: (Boolean) -> Unit = {},
+  onToggleFirstLineIndent: (Boolean) -> Unit = {},
   onResetDefaults: () -> Unit,
   onDismiss: () -> Unit,
 ) {
@@ -113,13 +134,13 @@ fun TypographyCustomizerModal(
 
   Dialog(onDismissRequest = onDismiss) {
     Card(
-      shape = RoundedCornerShape(24.dp),
+      shape = RoundedCornerShape(26.dp),
       colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
-      border = BorderStroke(1.dp, SubtleBorder),
-      elevation = CardDefaults.cardElevation(defaultElevation = 14.dp),
+      border = BorderStroke(1.2.dp, SubtleBorder),
+      elevation = CardDefaults.cardElevation(defaultElevation = 18.dp),
       modifier = Modifier
         .fillMaxWidth()
-        .padding(horizontal = 8.dp, vertical = 24.dp)
+        .padding(horizontal = 4.dp, vertical = 16.dp)
         .testTag("typography_customizer_modal")
     ) {
       Column(
@@ -127,7 +148,7 @@ fun TypographyCustomizerModal(
           .fillMaxWidth()
           .padding(22.dp)
       ) {
-        // Header
+        // Modal Header
         Row(
           modifier = Modifier.fillMaxWidth(),
           horizontalArrangement = Arrangement.SpaceBetween,
@@ -136,7 +157,7 @@ fun TypographyCustomizerModal(
           Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
               modifier = Modifier
-                .size(36.dp)
+                .size(38.dp)
                 .clip(CircleShape)
                 .background(Color(0x18D4AF37)),
               contentAlignment = Alignment.Center
@@ -145,25 +166,26 @@ fun TypographyCustomizerModal(
                 imageVector = Icons.Outlined.FontDownload,
                 contentDescription = null,
                 tint = AntiqueGold,
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(19.dp)
               )
             }
-            Spacer(modifier = Modifier.width(10.dp))
+            Spacer(modifier = Modifier.width(12.dp))
             Column {
               Text(
-                text = "READER TYPOGRAPHY",
+                text = "READING EXPERIENCE",
                 style = MaterialTheme.typography.labelSmall.copy(
                   fontSize = 8.5.sp,
-                  letterSpacing = 1.6.sp,
+                  letterSpacing = 1.8.sp,
                   fontWeight = FontWeight.Bold
                 ),
                 color = AntiqueGold
               )
               Text(
-                text = "Font & Reading Variety",
+                text = "Page Turning & Typography",
                 style = MaterialTheme.typography.titleMedium.copy(
                   fontFamily = FontFamily.Serif,
-                  fontWeight = FontWeight.SemiBold
+                  fontWeight = FontWeight.SemiBold,
+                  fontSize = 15.sp
                 ),
                 color = CharcoalText
               )
@@ -183,190 +205,598 @@ fun TypographyCustomizerModal(
           }
         }
 
-        Spacer(modifier = Modifier.height(18.dp))
-
-        // Section: Font Family Selection
-        Text(
-          text = "FONT FAMILY",
-          style = MaterialTheme.typography.labelSmall.copy(
-            fontSize = 9.sp,
-            letterSpacing = 1.2.sp,
-            fontWeight = FontWeight.Bold
-          ),
-          color = CharcoalTertiary
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-          FontOptionRow(
-            title = "Classic Serif",
-            subtitle = "Literary editorial style • Recommended",
-            isSelected = currentFontType == "serif",
-            onClick = { onSelectFontType("serif") }
-          )
-
-          FontOptionRow(
-            title = "Modern Sans",
-            subtitle = "Clean geometric readability",
-            isSelected = currentFontType == "sans",
-            onClick = { onSelectFontType("sans") }
-          )
-
-          FontOptionRow(
-            title = "Literary Monospace",
-            subtitle = "Manuscript typescript aesthetic",
-            isSelected = currentFontType == "mono",
-            onClick = { onSelectFontType("mono") }
-          )
-
-          if (!customFontName.isNullOrBlank()) {
-            FontOptionRow(
-              title = customFontName,
-              subtitle = "Your uploaded custom font",
-              isSelected = currentFontType == "custom",
-              badge = "CUSTOM",
-              onClick = { onSelectFontType("custom") }
-            )
-          }
-        }
-
         Spacer(modifier = Modifier.height(14.dp))
 
-        // Upload custom font button
-        OutlinedButton(
-          onClick = {
-            fontPickerLauncher.launch(
-              arrayOf(
-                "font/ttf",
-                "font/otf",
-                "application/x-font-ttf",
-                "application/x-font-otf",
-                "application/font-sfnt",
-                "*/*"
-              )
-            )
-          },
-          shape = RoundedCornerShape(14.dp),
-          colors = ButtonDefaults.outlinedButtonColors(contentColor = AntiqueGold),
-          border = BorderStroke(1.2.dp, AntiqueGold.copy(alpha = 0.65f)),
+        // Scrollable Options Body
+        Column(
           modifier = Modifier
             .fillMaxWidth()
-            .testTag("upload_custom_font_button")
+            .weight(1f, fill = false)
+            .heightIn(max = 480.dp)
+            .verticalScroll(rememberScrollState())
         ) {
-          Icon(
-            imageVector = Icons.Outlined.UploadFile,
-            contentDescription = null,
-            tint = AntiqueGold,
-            modifier = Modifier.size(16.dp)
-          )
-          Spacer(modifier = Modifier.width(8.dp))
+          // 1. SECTION: PAGE TURNING STYLE
           Text(
-            text = if (customFontName.isNullOrBlank()) "Upload Your Own Font (.ttf / .otf)" else "Upload Different Font (.ttf / .otf)",
-            style = MaterialTheme.typography.labelMedium.copy(
-              fontSize = 11.5.sp,
-              fontWeight = FontWeight.SemiBold
+            text = "PAGE TURNING STYLE",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 9.sp,
+              letterSpacing = 1.4.sp,
+              fontWeight = FontWeight.Bold
             ),
-            color = AntiqueGold
+            color = CharcoalTertiary
           )
-        }
+          Spacer(modifier = Modifier.height(8.dp))
 
-        if (uploadStatusMessage != null) {
-          Spacer(modifier = Modifier.height(6.dp))
-          Text(
-            text = uploadStatusMessage ?: "",
-            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
-            color = if (isError) MaterialTheme.colorScheme.error else AntiqueGold
-          )
-        }
-
-        Spacer(modifier = Modifier.height(18.dp))
-
-        // Section: Font Size Scale
-        Text(
-          text = "TEXT SIZE",
-          style = MaterialTheme.typography.labelSmall.copy(
-            fontSize = 9.sp,
-            letterSpacing = 1.2.sp,
-            fontWeight = FontWeight.Bold
-          ),
-          color = CharcoalTertiary
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Row(
-          modifier = Modifier.fillMaxWidth(),
-          horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-          listOf(
-            Triple(0.88f, "Small", "15sp"),
-            Triple(1.0f, "Standard", "17.5sp"),
-            Triple(1.15f, "Large", "20sp"),
-            Triple(1.30f, "Editorial", "23sp")
-          ).forEach { (scale, label, _) ->
-            val isSelected = kotlin.math.abs(fontSizeScale - scale) < 0.05f
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+          ) {
+            // Option 1: Flip / Turn Pages
             Surface(
-              shape = RoundedCornerShape(12.dp),
-              color = if (isSelected) AntiqueGold else Color(0x0C000000),
-              border = BorderStroke(1.dp, if (isSelected) AntiqueGold else SubtleBorder),
+              shape = RoundedCornerShape(14.dp),
+              color = if (pageTurnMode == "flip") Color(0x1AD4AF37) else Color(0x0A000000),
+              border = BorderStroke(
+                width = if (pageTurnMode == "flip") 1.5.dp else 1.dp,
+                color = if (pageTurnMode == "flip") AntiqueGold else SubtleBorder
+              ),
               modifier = Modifier
                 .weight(1f)
-                .clickable { onUpdateFontSizeScale(scale) }
+                .clickable { onSelectPageTurnMode("flip") }
+                .testTag("page_mode_flip")
             ) {
-              Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall.copy(
-                  fontSize = 10.sp,
-                  fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                ),
-                color = if (isSelected) SoftCreamPaper else CharcoalText,
+              Column(modifier = Modifier.padding(12.dp)) {
+                Row(
+                  verticalAlignment = Alignment.CenterVertically,
+                  horizontalArrangement = Arrangement.SpaceBetween,
+                  modifier = Modifier.fillMaxWidth()
+                ) {
+                  Icon(
+                    imageVector = Icons.Outlined.AutoStories,
+                    contentDescription = null,
+                    tint = if (pageTurnMode == "flip") AntiqueGold else CharcoalSecondary,
+                    modifier = Modifier.size(20.dp)
+                  )
+                  if (pageTurnMode == "flip") {
+                    Icon(
+                      imageVector = Icons.Outlined.Check,
+                      contentDescription = null,
+                      tint = AntiqueGold,
+                      modifier = Modifier.size(16.dp)
+                    )
+                  }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                  text = "Flip Page Turn",
+                  style = MaterialTheme.typography.titleSmall.copy(
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.SemiBold
+                  ),
+                  color = CharcoalText
+                )
+                Text(
+                  text = "3D curl flip • Tap & swipe",
+                  style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
+                  color = CharcoalSecondary
+                )
+              }
+            }
+
+            // Option 2: Continuous Scroll
+            Surface(
+              shape = RoundedCornerShape(14.dp),
+              color = if (pageTurnMode == "scroll") Color(0x1AD4AF37) else Color(0x0A000000),
+              border = BorderStroke(
+                width = if (pageTurnMode == "scroll") 1.5.dp else 1.dp,
+                color = if (pageTurnMode == "scroll") AntiqueGold else SubtleBorder
+              ),
+              modifier = Modifier
+                .weight(1f)
+                .clickable { onSelectPageTurnMode("scroll") }
+                .testTag("page_mode_scroll")
+            ) {
+              Column(modifier = Modifier.padding(12.dp)) {
+                Row(
+                  verticalAlignment = Alignment.CenterVertically,
+                  horizontalArrangement = Arrangement.SpaceBetween,
+                  modifier = Modifier.fillMaxWidth()
+                ) {
+                  Icon(
+                    imageVector = Icons.Outlined.SwapVert,
+                    contentDescription = null,
+                    tint = if (pageTurnMode == "scroll") AntiqueGold else CharcoalSecondary,
+                    modifier = Modifier.size(20.dp)
+                  )
+                  if (pageTurnMode == "scroll") {
+                    Icon(
+                      imageVector = Icons.Outlined.Check,
+                      contentDescription = null,
+                      tint = AntiqueGold,
+                      modifier = Modifier.size(16.dp)
+                    )
+                  }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                  text = "Continuous Scroll",
+                  style = MaterialTheme.typography.titleSmall.copy(
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.SemiBold
+                  ),
+                  color = CharcoalText
+                )
+                Text(
+                  text = "Fluid vertical scroll flow",
+                  style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
+                  color = CharcoalSecondary
+                )
+              }
+            }
+          }
+
+          Spacer(modifier = Modifier.height(18.dp))
+
+          // 2. SECTION: FONT SIZE (BIGGER / SMALLER)
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Text(
+              text = "FONT SIZE (ADJUST BIGGER OR SMALLER)",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.sp,
+                letterSpacing = 1.4.sp,
+                fontWeight = FontWeight.Bold
+              ),
+              color = CharcoalTertiary
+            )
+            Text(
+              text = "${(fontSizeScale * 100).toInt()}%",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = AntiqueGold
+              )
+            )
+          }
+          Spacer(modifier = Modifier.height(8.dp))
+
+          // Stepper: Smaller [-] and [+] Bigger controls
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+          ) {
+            // Make Smaller Button
+            Surface(
+              shape = RoundedCornerShape(12.dp),
+              color = Color(0x0C000000),
+              border = BorderStroke(1.dp, SubtleBorder),
+              modifier = Modifier
+                .weight(1f)
+                .clickable {
+                  val newScale = (fontSizeScale - 0.10f).coerceIn(0.80f, 1.50f)
+                  onUpdateFontSizeScale(newScale)
+                }
+                .testTag("font_size_smaller")
+            ) {
+              Row(
+                modifier = Modifier.padding(vertical = 9.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Icon(
+                  imageVector = Icons.Outlined.Remove,
+                  contentDescription = "Make font smaller",
+                  tint = CharcoalText,
+                  modifier = Modifier.size(15.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                  text = "Smaller",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.SemiBold
+                  ),
+                  color = CharcoalText
+                )
+              }
+            }
+
+            // Make Bigger Button
+            Surface(
+              shape = RoundedCornerShape(12.dp),
+              color = Color(0x16D4AF37),
+              border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.7f)),
+              modifier = Modifier
+                .weight(1f)
+                .clickable {
+                  val newScale = (fontSizeScale + 0.10f).coerceIn(0.80f, 1.50f)
+                  onUpdateFontSizeScale(newScale)
+                }
+                .testTag("font_size_bigger")
+            ) {
+              Row(
+                modifier = Modifier.padding(vertical = 9.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Icon(
+                  imageVector = Icons.Outlined.Add,
+                  contentDescription = "Make font bigger",
+                  tint = AntiqueGold,
+                  modifier = Modifier.size(15.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                  text = "Bigger",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.Bold
+                  ),
+                  color = AntiqueGold
+                )
+              }
+            }
+          }
+
+          Spacer(modifier = Modifier.height(8.dp))
+
+          // Preset Chips
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+          ) {
+            listOf(
+              Triple(0.85f, "Small", "14sp"),
+              Triple(1.0f, "Standard", "17.5sp"),
+              Triple(1.15f, "Large", "20sp"),
+              Triple(1.35f, "Editorial", "24sp")
+            ).forEach { (scale, label, _) ->
+              val isSelected = kotlin.math.abs(fontSizeScale - scale) < 0.06f
+              Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = if (isSelected) AntiqueGold else Color(0x0C000000),
+                border = BorderStroke(1.dp, if (isSelected) AntiqueGold else SubtleBorder),
+                modifier = Modifier
+                  .weight(1f)
+                  .clickable { onUpdateFontSizeScale(scale) }
+              ) {
+                Text(
+                  text = label,
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 9.5.sp,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                  ),
+                  color = if (isSelected) SoftCreamPaper else CharcoalText,
+                  modifier = Modifier.padding(vertical = 7.dp),
+                  textAlign = TextAlign.Center
+                )
+              }
+            }
+          }
+
+          Spacer(modifier = Modifier.height(18.dp))
+
+          // 3. SECTION: PARAGRAPH LINING (LINE SPACING)
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Text(
+              text = "PARAGRAPH LINING (LINE SPACING)",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.sp,
+                letterSpacing = 1.4.sp,
+                fontWeight = FontWeight.Bold
+              ),
+              color = CharcoalTertiary
+            )
+            Icon(
+              imageVector = Icons.Outlined.FormatLineSpacing,
+              contentDescription = null,
+              tint = CharcoalSecondary,
+              modifier = Modifier.size(14.dp)
+            )
+          }
+          Spacer(modifier = Modifier.height(8.dp))
+
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+          ) {
+            listOf(
+              Pair(0.85f, "Compact"),
+              Pair(1.0f, "Balanced"),
+              Pair(1.20f, "Relaxed"),
+              Pair(1.40f, "Spacious")
+            ).forEach { (scale, label) ->
+              val isSelected = kotlin.math.abs(lineHeightScale - scale) < 0.06f
+              Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = if (isSelected) CharcoalText else Color(0x0C000000),
+                border = BorderStroke(1.dp, if (isSelected) CharcoalText else SubtleBorder),
+                modifier = Modifier
+                  .weight(1f)
+                  .clickable { onUpdateLineHeightScale(scale) }
+              ) {
+                Text(
+                  text = label,
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 9.5.sp,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                  ),
+                  color = if (isSelected) SoftCreamPaper else CharcoalText,
+                  modifier = Modifier.padding(vertical = 7.dp),
+                  textAlign = TextAlign.Center
+                )
+              }
+            }
+          }
+
+          Spacer(modifier = Modifier.height(18.dp))
+
+          // 4. SECTION: PARAGRAPH ALIGNMENT & INDENT
+          Text(
+            text = "PARAGRAPH FORMAT & ALIGNMENT",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 9.sp,
+              letterSpacing = 1.4.sp,
+              fontWeight = FontWeight.Bold
+            ),
+            color = CharcoalTertiary
+          )
+          Spacer(modifier = Modifier.height(8.dp))
+
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+          ) {
+            // Left Aligned
+            Surface(
+              shape = RoundedCornerShape(10.dp),
+              color = if (!isJustified) Color(0x1AD4AF37) else Color(0x0A000000),
+              border = BorderStroke(1.dp, if (!isJustified) AntiqueGold else SubtleBorder),
+              modifier = Modifier
+                .weight(1f)
+                .clickable { onToggleJustified(false) }
+            ) {
+              Row(
                 modifier = Modifier.padding(vertical = 8.dp),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Icon(
+                  imageVector = Icons.Outlined.FormatAlignLeft,
+                  contentDescription = null,
+                  tint = if (!isJustified) AntiqueGold else CharcoalSecondary,
+                  modifier = Modifier.size(15.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                  text = "Left-Aligned",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 10.sp,
+                    fontWeight = if (!isJustified) FontWeight.Bold else FontWeight.Normal
+                  ),
+                  color = if (!isJustified) AntiqueGold else CharcoalText
+                )
+              }
+            }
+
+            // Justified
+            Surface(
+              shape = RoundedCornerShape(10.dp),
+              color = if (isJustified) Color(0x1AD4AF37) else Color(0x0A000000),
+              border = BorderStroke(1.dp, if (isJustified) AntiqueGold else SubtleBorder),
+              modifier = Modifier
+                .weight(1f)
+                .clickable { onToggleJustified(true) }
+            ) {
+              Row(
+                modifier = Modifier.padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Icon(
+                  imageVector = Icons.Outlined.FormatAlignJustify,
+                  contentDescription = null,
+                  tint = if (isJustified) AntiqueGold else CharcoalSecondary,
+                  modifier = Modifier.size(15.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                  text = "Justified",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 10.sp,
+                    fontWeight = if (isJustified) FontWeight.Bold else FontWeight.Normal
+                  ),
+                  color = if (isJustified) AntiqueGold else CharcoalText
+                )
+              }
+            }
+
+            // First Line Indent Toggle
+            Surface(
+              shape = RoundedCornerShape(10.dp),
+              color = if (isFirstLineIndent) Color(0x1AD4AF37) else Color(0x0A000000),
+              border = BorderStroke(1.dp, if (isFirstLineIndent) AntiqueGold else SubtleBorder),
+              modifier = Modifier
+                .weight(1f)
+                .clickable { onToggleFirstLineIndent(!isFirstLineIndent) }
+            ) {
+              Row(
+                modifier = Modifier.padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Text(
+                  text = if (isFirstLineIndent) "Indent: ON" else "Indent: OFF",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 10.sp,
+                    fontWeight = if (isFirstLineIndent) FontWeight.Bold else FontWeight.Normal
+                  ),
+                  color = if (isFirstLineIndent) AntiqueGold else CharcoalText
+                )
+              }
+            }
+          }
+
+          Spacer(modifier = Modifier.height(18.dp))
+
+          // 5. SECTION: FONT FAMILY SELECTION
+          Text(
+            text = "FONT FAMILY",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 9.sp,
+              letterSpacing = 1.4.sp,
+              fontWeight = FontWeight.Bold
+            ),
+            color = CharcoalTertiary
+          )
+          Spacer(modifier = Modifier.height(8.dp))
+
+          Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            FontOptionRow(
+              title = "Classic Serif",
+              subtitle = "Editorial book typography • Recommended",
+              isSelected = currentFontType == "serif",
+              fontFamily = FontFamily.Serif,
+              onClick = { onSelectFontType("serif") }
+            )
+
+            FontOptionRow(
+              title = "Modern Sans",
+              subtitle = "Clean geometric readability",
+              isSelected = currentFontType == "sans",
+              fontFamily = FontFamily.SansSerif,
+              onClick = { onSelectFontType("sans") }
+            )
+
+            FontOptionRow(
+              title = "Literary Monospace",
+              subtitle = "Manuscript typewriter aesthetic",
+              isSelected = currentFontType == "mono",
+              fontFamily = FontFamily.Monospace,
+              onClick = { onSelectFontType("mono") }
+            )
+
+            FontOptionRow(
+              title = "Romantic Cursive",
+              subtitle = "Calligraphic manuscript elegance",
+              isSelected = currentFontType == "cursive",
+              fontFamily = FontFamily.Cursive,
+              onClick = { onSelectFontType("cursive") }
+            )
+
+            if (!customFontName.isNullOrBlank()) {
+              FontOptionRow(
+                title = customFontName,
+                subtitle = "Your uploaded custom font",
+                isSelected = currentFontType == "custom",
+                badge = "CUSTOM",
+                fontFamily = FontFamily.Serif,
+                onClick = { onSelectFontType("custom") }
               )
             }
           }
-        }
 
-        Spacer(modifier = Modifier.height(14.dp))
+          Spacer(modifier = Modifier.height(12.dp))
 
-        // Section: Line Spacing
-        Text(
-          text = "LINE SPACING",
-          style = MaterialTheme.typography.labelSmall.copy(
-            fontSize = 9.sp,
-            letterSpacing = 1.2.sp,
-            fontWeight = FontWeight.Bold
-          ),
-          color = CharcoalTertiary
-        )
-        Spacer(modifier = Modifier.height(8.dp))
+          // Upload custom font button
+          OutlinedButton(
+            onClick = {
+              fontPickerLauncher.launch(
+                arrayOf(
+                  "font/ttf",
+                  "font/otf",
+                  "application/x-font-ttf",
+                  "application/x-font-otf",
+                  "application/font-sfnt",
+                  "*/*"
+                )
+              )
+            },
+            shape = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = AntiqueGold),
+            border = BorderStroke(1.2.dp, AntiqueGold.copy(alpha = 0.65f)),
+            modifier = Modifier
+              .fillMaxWidth()
+              .testTag("upload_custom_font_button")
+          ) {
+            Icon(
+              imageVector = Icons.Outlined.UploadFile,
+              contentDescription = null,
+              tint = AntiqueGold,
+              modifier = Modifier.size(16.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+              text = if (customFontName.isNullOrBlank()) "Upload Custom Font (.ttf / .otf)" else "Change Custom Font (.ttf / .otf)",
+              style = MaterialTheme.typography.labelMedium.copy(
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.SemiBold
+              ),
+              color = AntiqueGold
+            )
+          }
 
-        Row(
-          modifier = Modifier.fillMaxWidth(),
-          horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-          listOf(
-            Pair(0.9f, "Compact"),
-            Pair(1.0f, "Balanced"),
-            Pair(1.15f, "Spacious")
-          ).forEach { (scale, label) ->
-            val isSelected = kotlin.math.abs(lineHeightScale - scale) < 0.05f
-            Surface(
-              shape = RoundedCornerShape(12.dp),
-              color = if (isSelected) CharcoalText else Color(0x0C000000),
-              border = BorderStroke(1.dp, if (isSelected) CharcoalText else SubtleBorder),
-              modifier = Modifier
-                .weight(1f)
-                .clickable { onUpdateLineHeightScale(scale) }
-            ) {
+          if (uploadStatusMessage != null) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+              text = uploadStatusMessage ?: "",
+              style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
+              color = if (isError) MaterialTheme.colorScheme.error else AntiqueGold
+            )
+          }
+
+          Spacer(modifier = Modifier.height(18.dp))
+
+          // 6. LIVE VISUAL SAMPLE PREVIEW CARD
+          Text(
+            text = "LIVE VISUAL SAMPLE",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 9.sp,
+              letterSpacing = 1.4.sp,
+              fontWeight = FontWeight.Bold
+            ),
+            color = CharcoalTertiary
+          )
+          Spacer(modifier = Modifier.height(8.dp))
+
+          val previewFontFamily = when (currentFontType) {
+            "sans" -> FontFamily.SansSerif
+            "mono" -> FontFamily.Monospace
+            "cursive" -> FontFamily.Cursive
+            else -> FontFamily.Serif
+          }
+
+          Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = Color(0xFFFAF6EE),
+            border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.4f)),
+            modifier = Modifier.fillMaxWidth()
+          ) {
+            Column(modifier = Modifier.padding(14.dp)) {
               Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall.copy(
-                  fontSize = 10.sp,
-                  fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                text = "“To construct a room for silence is not merely to subtract sound, but to tune the subtle resonance of what remains.”",
+                style = MaterialTheme.typography.bodyMedium.copy(
+                  fontFamily = previewFontFamily,
+                  fontSize = (15f * fontSizeScale).sp,
+                  lineHeight = (26f * fontSizeScale * lineHeightScale).sp,
+                  textAlign = if (isJustified) TextAlign.Justify else TextAlign.Start
                 ),
-                color = if (isSelected) SoftCreamPaper else CharcoalText,
-                modifier = Modifier.padding(vertical = 8.dp),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                color = CharcoalText
+              )
+              Spacer(modifier = Modifier.height(6.dp))
+              Text(
+                text = "Previewing ${(fontSizeScale * 100).toInt()}% text size • ${(lineHeightScale * 100).toInt()}% paragraph lining",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 8.5.sp,
+                  color = CharcoalSecondary
+                )
               )
             }
           }
@@ -383,7 +813,7 @@ fun TypographyCustomizerModal(
           OutlinedButton(
             onClick = onResetDefaults,
             shape = RoundedCornerShape(12.dp),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
           ) {
             Icon(
               imageVector = Icons.Outlined.RestartAlt,
@@ -393,7 +823,7 @@ fun TypographyCustomizerModal(
             )
             Spacer(modifier = Modifier.width(4.dp))
             Text(
-              text = "Reset",
+              text = "Reset Defaults",
               style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
               color = CharcoalSecondary
             )
@@ -403,10 +833,10 @@ fun TypographyCustomizerModal(
             onClick = onDismiss,
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(containerColor = CharcoalText),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp, vertical = 8.dp)
+            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp)
           ) {
             Text(
-              text = "Done",
+              text = "Apply Changes",
               style = MaterialTheme.typography.labelMedium.copy(
                 fontWeight = FontWeight.SemiBold,
                 color = SoftCreamPaper
@@ -424,6 +854,7 @@ private fun FontOptionRow(
   title: String,
   subtitle: String,
   isSelected: Boolean,
+  fontFamily: FontFamily,
   badge: String? = null,
   onClick: () -> Unit,
 ) {
@@ -450,7 +881,8 @@ private fun FontOptionRow(
           Text(
             text = title,
             style = MaterialTheme.typography.titleSmall.copy(
-              fontSize = 13.sp,
+              fontFamily = fontFamily,
+              fontSize = 13.5.sp,
               fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium
             ),
             color = CharcoalText
