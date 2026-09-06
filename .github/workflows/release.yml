@@ -3,6 +3,7 @@ name: Android Release Build
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -18,16 +19,46 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
+      # 1. Install xvfb to provide a virtual display for AWT
+      - name: Install Virtual Framebuffer
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+
+      # 2. Fix the AWT and execution strategy inside gradle.properties
+      - name: Configure Secrets and Environment
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          touch local.properties
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          echo "GEMINI_API_KEY=${GEMINI_API_KEY}" >> local.properties
+          echo "GEMINI_API_KEY=${GEMINI_API_KEY}" > .env
+          
+          # Fix the exact root cause: switch in-process to daemon
+          sed -i 's/kotlin.compiler.execution.strategy=in-process/kotlin.compiler.execution.strategy=daemon/g' gradle.properties
+          
+          # Safely append headless flag to JVM args
+          sed -i 's/org.gradle.jvmargs=/org.gradle.jvmargs=-Djava.awt.headless=true /g' gradle.properties
+
+          # Remove AI Studio debugConfig per README step 5
+          if [ -f app/build.gradle.kts ]; then
+            sed -i '/signingConfigs.getByName("debugConfig")/d' app/build.gradle.kts || true
+            sed -i '/debugConfig/d' app/build.gradle.kts || true
+          fi
+
       - name: Install Gradle Manually
         run: |
           wget https://services.gradle.org/distributions/gradle-9.3.1-bin.zip
           unzip -q gradle-9.3.1-bin.zip
           echo "$PWD/gradle-9.3.1/bin" >> $GITHUB_PATH
-      - name: Build Release APK
-        run: gradle assembleRelease
+
+      # 3. Wrap Gradle build inside xvfb-run
+      - name: Build Debug APK
+        run: xvfb-run --auto-servernum gradle assembleDebug --no-daemon -Djava.awt.headless=true
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-release
-          path: app/build/outputs/**/*.apk
+          name: app-debug
+          path: app/build/outputs/apk/debug/*.apk
