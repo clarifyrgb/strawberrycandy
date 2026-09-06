@@ -75,6 +75,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.example.data.local.AuthorSlotEntity
+import com.example.data.local.ReaderProfileEntity
 import com.example.model.NovelWithState
 import com.example.ui.theme.AntiqueGold
 import com.example.ui.theme.CharcoalSecondary
@@ -95,6 +96,7 @@ enum class UserRoleView {
 fun AuthorRoomsModal(
   authorSlots: List<AuthorSlotEntity>,
   novels: List<NovelWithState>,
+  currentUser: ReaderProfileEntity? = null,
   onDismiss: () -> Unit,
   onOpenUploadForSlot: (Int) -> Unit,
   onUpdateSlot: (slotNumber: Int, name: String, penName: String, bio: String) -> Unit,
@@ -103,7 +105,13 @@ fun AuthorRoomsModal(
   onViewTranslatorArchive: (AuthorSlotEntity) -> Unit,
 ) {
   val context = LocalContext.current
-  var activeRoleView by remember { mutableStateOf(UserRoleView.ADMIN_OWNER) }
+  val isOwnerUser = currentUser?.role == "OWNER"
+  val isTranslatorUser = currentUser?.role == "TRANSLATOR"
+  val isReaderUser = currentUser == null || currentUser.role == "READER"
+
+  var activeRoleView by remember(currentUser) {
+    mutableStateOf(if (isOwnerUser) UserRoleView.ADMIN_OWNER else UserRoleView.READER)
+  }
   var editingSlotNumber by remember { mutableIntStateOf(-1) }
   var editPenName by remember { mutableStateOf("") }
   var editBio by remember { mutableStateOf("") }
@@ -237,45 +245,47 @@ fun AuthorRoomsModal(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Role View Mode Switcher (Demonstrates Owner vs Reader vs Translator permissions)
-        Surface(
-          shape = RoundedCornerShape(14.dp),
-          color = AntiqueGold.copy(alpha = 0.08f),
-          border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.25f)),
-          modifier = Modifier.fillMaxWidth()
-        ) {
-          Row(
-            modifier = Modifier
-              .fillMaxWidth()
-              .padding(horizontal = 10.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+        // Role View Mode Switcher (ONLY shown if Owner, completely HIDDEN for readers and translators)
+        if (isOwnerUser) {
+          Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = AntiqueGold.copy(alpha = 0.08f),
+            border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.25f)),
+            modifier = Modifier.fillMaxWidth()
           ) {
-            Text(
-              text = "View Mode:",
-              style = MaterialTheme.typography.labelSmall.copy(
-                fontWeight = FontWeight.Bold,
-                fontSize = 10.5.sp
-              ),
-              color = AntiqueGold
-            )
+            Row(
+              modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+              horizontalArrangement = Arrangement.SpaceBetween,
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              Text(
+                text = "View Mode:",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontWeight = FontWeight.Bold,
+                  fontSize = 10.5.sp
+                ),
+                color = AntiqueGold
+              )
 
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-              RoleChip(
-                label = "Owner (Admin)",
-                selected = activeRoleView == UserRoleView.ADMIN_OWNER,
-                onClick = { activeRoleView = UserRoleView.ADMIN_OWNER }
-              )
-              RoleChip(
-                label = "Reader Mode",
-                selected = activeRoleView == UserRoleView.READER,
-                onClick = { activeRoleView = UserRoleView.READER }
-              )
+              Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                RoleChip(
+                  label = "Owner (Admin)",
+                  selected = activeRoleView == UserRoleView.ADMIN_OWNER,
+                  onClick = { activeRoleView = UserRoleView.ADMIN_OWNER }
+                )
+                RoleChip(
+                  label = "Reader Mode",
+                  selected = activeRoleView == UserRoleView.READER,
+                  onClick = { activeRoleView = UserRoleView.READER }
+                )
+              }
             }
           }
-        }
 
-        Spacer(modifier = Modifier.height(16.dp))
+          Spacer(modifier = Modifier.height(16.dp))
+        }
 
         // 1. OWNER / FOUNDER ARCHIVE PROFILE (Strawberrycandy - Slot 0)
         val ownerNovels = novels.filter { it.authorSlot == 0 }
@@ -284,6 +294,9 @@ fun AuthorRoomsModal(
           worksCount = ownerNovels.size,
           roleView = activeRoleView,
           isOwner = true,
+          isOwnerUser = isOwnerUser,
+          isTranslatorUser = isTranslatorUser,
+          isReaderUser = isReaderUser,
           isEditing = editingSlotNumber == 0,
           editPenName = editPenName,
           editBio = editBio,
@@ -361,6 +374,9 @@ fun AuthorRoomsModal(
             worksCount = slotNovels.size,
             roleView = activeRoleView,
             isOwner = false,
+            isOwnerUser = isOwnerUser,
+            isTranslatorUser = isTranslatorUser,
+            isReaderUser = isReaderUser,
             isEditing = isEditingThis,
             editPenName = editPenName,
             editBio = editBio,
@@ -440,6 +456,9 @@ private fun TranslatorCardItem(
   worksCount: Int,
   roleView: UserRoleView,
   isOwner: Boolean,
+  isOwnerUser: Boolean = false,
+  isTranslatorUser: Boolean = false,
+  isReaderUser: Boolean = false,
   isEditing: Boolean,
   editPenName: String,
   editBio: String,
@@ -453,8 +472,8 @@ private fun TranslatorCardItem(
   onOpenUpload: () -> Unit,
   onViewArchive: () -> Unit,
 ) {
-  val isReader = roleView == UserRoleView.READER
-  val canManage = !isReader // Owner or Translator can manage
+  val isReader = roleView == UserRoleView.READER || isReaderUser
+  val canManage = !isReader && !isReaderUser && (isOwnerUser || (isTranslatorUser && (slot.isPermissionGranted || isOwner)))
 
   Card(
     shape = RoundedCornerShape(18.dp),
@@ -728,7 +747,8 @@ private fun TranslatorCardItem(
       }
 
       // Admin / Owner Controls: Permission toggle & Upload Novel
-      if (canManage && !isOwner) {
+      // Strictly hide permission toggle from Readers and Translators (Only Owner can toggle permissions)
+      if (canManage && !isOwner && isOwnerUser) {
         Spacer(modifier = Modifier.height(8.dp))
         Row(
           modifier = Modifier.fillMaxWidth(),
@@ -754,7 +774,7 @@ private fun TranslatorCardItem(
           }
 
           Row(verticalAlignment = Alignment.CenterVertically) {
-            // Grant / Revoke switch
+            // Grant / Revoke switch: ONLY visible for Archive Owner
             Switch(
               checked = slot.isPermissionGranted,
               onCheckedChange = onTogglePermission,
@@ -788,7 +808,31 @@ private fun TranslatorCardItem(
             }
           }
         }
-      } else if (canManage && isOwner) {
+      } else if (canManage && !isOwner && isTranslatorUser && slot.isPermissionGranted) {
+        // Permitted translator can upload manuscript
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.End
+        ) {
+          OutlinedButton(
+            onClick = onOpenUpload,
+            shape = RoundedCornerShape(8.dp),
+            border = BorderStroke(1.dp, SubtleBorder),
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+            modifier = Modifier.height(28.dp)
+          ) {
+            Icon(
+              imageVector = Icons.Outlined.Upload,
+              contentDescription = null,
+              tint = AntiqueGold,
+              modifier = Modifier.size(11.dp)
+            )
+            Spacer(modifier = Modifier.width(3.dp))
+            Text("Upload Novel", fontSize = 10.sp, color = CharcoalText)
+          }
+        }
+      } else if (canManage && isOwner && (isOwnerUser || isTranslatorUser)) {
         Spacer(modifier = Modifier.height(8.dp))
         Row(
           modifier = Modifier.fillMaxWidth(),

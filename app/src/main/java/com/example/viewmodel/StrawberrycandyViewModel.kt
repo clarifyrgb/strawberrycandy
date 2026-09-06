@@ -125,19 +125,54 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     _isUploadDialogOpen.value = false
   }
 
-  fun signInWithGoogle(email: String = "reader.alex@gmail.com", displayName: String = "Alex Vance") {
+  fun isTranslatorOrOwner(user: ReaderProfileEntity? = activeUser.value): Boolean {
+    if (user == null) return false
+    return user.role == "OWNER" || user.role == "TRANSLATOR"
+  }
+
+  fun canUploadNovel(user: ReaderProfileEntity? = activeUser.value, slots: List<AuthorSlotEntity> = authorSlots.value): Boolean {
+    if (user == null) return false
+    if (user.role == "OWNER") return true
+    if (user.role == "TRANSLATOR") {
+      // Find matching slot or check if user's slot is permitted
+      val slot = if (user.authorSlot != null) {
+        slots.find { it.slotNumber == user.authorSlot }
+      } else {
+        slots.find {
+          it.penName.equals(user.displayName, ignoreCase = true) ||
+          it.authorName.equals(user.displayName, ignoreCase = true)
+        } ?: slots.filter { it.slotNumber > 0 }.firstOrNull { it.isPermissionGranted }
+      }
+      return slot?.isPermissionGranted ?: false
+    }
+    return false
+  }
+
+  fun signInWithGoogle(
+    email: String,
+    displayName: String = "",
+    role: String = "TRANSLATOR",
+    authorSlot: Int? = null,
+  ) {
     viewModelScope.launch {
-      repository.signIn(provider = "GOOGLE", email = email, displayName = displayName)
+      repository.signIn(provider = "GOOGLE", email = email, displayName = displayName, role = role, authorSlot = authorSlot)
       _isAuthDialogOpen.value = false
-      _snackbarMessage.value = "Signed in with Google"
+      val roleLabel = if (role == "OWNER") "Archive Owner" else if (role == "TRANSLATOR") "Translator" else "Reader"
+      _snackbarMessage.value = "Signed in as $roleLabel"
     }
   }
 
-  fun signInWithApple(email: String = "reader.user@privaterelay.appleid.com", displayName: String = "Apple Reader") {
+  fun signInWithApple(
+    email: String,
+    displayName: String = "",
+    role: String = "TRANSLATOR",
+    authorSlot: Int? = null,
+  ) {
     viewModelScope.launch {
-      repository.signIn(provider = "APPLE", email = email, displayName = displayName)
+      repository.signIn(provider = "APPLE", email = email, displayName = displayName, role = role, authorSlot = authorSlot)
       _isAuthDialogOpen.value = false
-      _snackbarMessage.value = "Signed in with Apple"
+      val roleLabel = if (role == "OWNER") "Archive Owner" else if (role == "TRANSLATOR") "Translator" else "Reader"
+      _snackbarMessage.value = "Signed in as $roleLabel"
     }
   }
 
@@ -296,6 +331,34 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
   fun deleteNovel(novelId: String) {
     viewModelScope.launch {
       repository.deleteNovel(novelId)
+      _snackbarMessage.value = "Novel deleted from archive"
+    }
+  }
+
+  fun updateNovel(
+    novelId: String,
+    title: String,
+    subtitle: String,
+    originalAuthor: String,
+    synopsis: String,
+    chapterTitle: String,
+    contentText: String,
+    coverColorHex: Long? = null,
+    coverImageUri: String? = null,
+  ) {
+    viewModelScope.launch {
+      repository.updateNovel(
+        novelId = novelId,
+        title = title,
+        subtitle = subtitle,
+        originalAuthor = originalAuthor,
+        synopsis = synopsis,
+        chapterTitle = chapterTitle,
+        contentText = contentText,
+        coverColorHex = coverColorHex,
+        coverImageUri = coverImageUri,
+      )
+      _snackbarMessage.value = "Novel '$title' updated successfully"
     }
   }
 

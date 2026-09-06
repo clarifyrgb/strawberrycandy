@@ -126,6 +126,33 @@ class StrawberrycandyRepository(
     dao.deleteNovelById(id)
   }
 
+  suspend fun updateNovel(
+    novelId: String,
+    title: String,
+    subtitle: String,
+    originalAuthor: String,
+    synopsis: String,
+    chapterTitle: String,
+    contentText: String,
+    coverColorHex: Long? = null,
+    coverImageUri: String? = null,
+  ) {
+    val existing = dao.getNovelById(novelId) ?: return
+    val cleanContent = contentText.trim()
+    val updated = existing.copy(
+      title = title.trim(),
+      subtitle = subtitle.trim(),
+      originalAuthor = originalAuthor.trim(),
+      excerpt = synopsis.trim(),
+      chapterTitle = chapterTitle.trim(),
+      contentText = cleanContent,
+      coverColorHex = coverColorHex ?: existing.coverColorHex,
+      coverImageUri = coverImageUri ?: existing.coverImageUri,
+      totalPages = maxOf(1, cleanContent.split("\n\n").count { it.isNotBlank() } * 2)
+    )
+    dao.insertNovel(updated)
+  }
+
   suspend fun updateNovelCover(id: String, coverImageUri: String) {
     dao.updateNovelCover(id, coverImageUri)
   }
@@ -134,13 +161,37 @@ class StrawberrycandyRepository(
     provider: String, // "GOOGLE" or "APPLE"
     email: String,
     displayName: String,
+    role: String = "TRANSLATOR",
+    authorSlot: Int? = null,
   ) {
-    val userId = "usr_" + provider.lowercase() + "_" + email.replace(Regex("[^a-zA-Z0-9]"), "").take(12)
+    val cleanEmail = email.trim()
+    val userId = "usr_" + provider.lowercase() + "_" + cleanEmail.replace(Regex("[^a-zA-Z0-9]"), "").take(12)
+    val finalName = if (displayName.isNotBlank()) {
+      displayName.trim()
+    } else {
+      val emailPrefix = cleanEmail.substringBefore("@").replace(".", " ").trim()
+      if (emailPrefix.isNotBlank()) {
+        emailPrefix.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+      } else {
+        if (role == "OWNER") "Strawberrycandy" else if (role == "TRANSLATOR") "Translator" else "Reader"
+      }
+    }
+
+    val finalRole = if (cleanEmail.contains("strawberrycandy", ignoreCase = true) || role == "OWNER") {
+      "OWNER"
+    } else {
+      role
+    }
+
+    val finalSlot = if (finalRole == "OWNER") 0 else authorSlot
+
     val profile = ReaderProfileEntity(
       userId = userId,
-      displayName = displayName.ifEmpty { if (provider == "GOOGLE") "Google Reader" else "Apple Reader" },
-      email = email,
+      displayName = finalName,
+      email = cleanEmail,
       provider = provider,
+      role = finalRole,
+      authorSlot = finalSlot,
       lastLoginTimestamp = System.currentTimeMillis()
     )
     dao.insertReaderProfile(profile)

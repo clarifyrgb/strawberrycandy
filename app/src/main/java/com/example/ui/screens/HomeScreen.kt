@@ -34,6 +34,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
@@ -41,6 +42,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.BookmarkAdd
 import androidx.compose.material.icons.outlined.BookmarkAdded
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Lock
@@ -57,6 +59,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -69,9 +72,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -80,8 +85,11 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
@@ -96,6 +104,7 @@ import com.example.data.local.ReaderProfileEntity
 import com.example.model.NovelWithState
 import com.example.ui.components.AuthModal
 import com.example.ui.components.AuthorRoomsModal
+import com.example.ui.components.EditNovelModal
 import com.example.ui.components.OwnerUploadDialog
 import com.example.ui.components.TranslatorProfileModal
 import com.example.ui.theme.AntiqueGold
@@ -109,6 +118,8 @@ import com.example.ui.theme.SubtleBorder
 import com.example.viewmodel.ShelfFilter
 import com.example.viewmodel.StrawberrycandyViewModel
 import com.example.util.formatStatCount
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
 
@@ -127,6 +138,7 @@ fun HomeScreen(
   var selectedUploadSlot by remember { mutableIntStateOf(0) }
   var selectedTranslatorForDetail by remember { mutableStateOf<AuthorSlotEntity?>(null) }
   var slotToGrantPermission by remember { mutableStateOf<AuthorSlotEntity?>(null) }
+  var novelToEdit by remember { mutableStateOf<NovelWithState?>(null) }
 
   val context = LocalContext.current
   var coverPickerTargetNovelId by remember { mutableStateOf<String?>(null) }
@@ -179,6 +191,9 @@ fun HomeScreen(
     allTranslatorSlots.filter { !it.isPermissionGranted }
   }
 
+  val isTranslatorOrOwner = viewModel.isTranslatorOrOwner(activeUser)
+  val canUploadNovel = viewModel.canUploadNovel(activeUser, uiState.authorSlots)
+
   Box(
     modifier = modifier
       .fillMaxSize()
@@ -197,11 +212,12 @@ fun HomeScreen(
       // 1. Top Utility Header: Reader Sign-in, Author Rooms & Upload actions
       TopUtilityBar(
         activeUser = activeUser,
+        canUpload = canUploadNovel,
         onOpenAuth = { viewModel.openAuthDialog() },
         onSignOut = { viewModel.signOut() },
         onOpenAuthorRooms = { isAuthorRoomsModalOpen = true },
         onOpenUpload = {
-          selectedUploadSlot = 0
+          selectedUploadSlot = activeUser?.authorSlot ?: 0
           viewModel.openUploadDialog()
         },
         activeTranslatorsCount = activeTranslators.size
@@ -517,7 +533,9 @@ fun HomeScreen(
       if (continueReadingNovel != null) {
         ContinueReadingBanner(
           novel = continueReadingNovel,
+          isTranslatorOrOwner = isTranslatorOrOwner,
           onResumeReading = { onSelectNovel(continueReadingNovel) },
+          onEditNovel = { novelToEdit = continueReadingNovel },
           modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
         )
       }
@@ -547,6 +565,7 @@ fun HomeScreen(
                 novel = novel,
                 index = index,
                 isFocused = isFocused,
+                isTranslatorOrOwner = isTranslatorOrOwner,
                 onCardClick = {
                   selectedIndex = index
                   onSelectNovel(novel)
@@ -556,6 +575,10 @@ fun HomeScreen(
                 },
                 onToggleFavorite = {
                   viewModel.toggleFavorite(novel.id)
+                },
+                onEditNovel = {
+                  selectedIndex = index
+                  novelToEdit = novel
                 }
               )
 
@@ -839,37 +862,67 @@ fun HomeScreen(
                   }
                 }
 
-                Spacer(modifier = Modifier.width(10.dp))
+                if (isTranslatorOrOwner) {
+                  Spacer(modifier = Modifier.width(10.dp))
 
-                // Upload / Change Cover Button for Room Translators & Owner
-                OutlinedButton(
-                  onClick = {
-                    coverPickerTargetNovelId = selectedNovel.id
-                    singleNovelCoverPickerLauncher.launch(
-                      PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                  // Upload / Change Cover Button for Room Translators & Owner
+                  OutlinedButton(
+                    onClick = {
+                      coverPickerTargetNovelId = selectedNovel.id
+                      singleNovelCoverPickerLauncher.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                      )
+                    },
+                    shape = RoundedCornerShape(24.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = CharcoalText),
+                    border = BorderStroke(1.dp, SubtleBorder),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 9.dp),
+                    modifier = Modifier.testTag("upload_cover_button_shelf")
+                  ) {
+                    Icon(
+                      imageVector = Icons.Outlined.AddPhotoAlternate,
+                      contentDescription = null,
+                      tint = AntiqueGold,
+                      modifier = Modifier.size(15.dp)
                     )
-                  },
-                  shape = RoundedCornerShape(24.dp),
-                  colors = ButtonDefaults.outlinedButtonColors(contentColor = CharcoalText),
-                  border = BorderStroke(1.dp, SubtleBorder),
-                  contentPadding = PaddingValues(horizontal = 14.dp, vertical = 9.dp),
-                  modifier = Modifier.testTag("upload_cover_button_shelf")
-                ) {
-                  Icon(
-                    imageVector = Icons.Outlined.AddPhotoAlternate,
-                    contentDescription = null,
-                    tint = AntiqueGold,
-                    modifier = Modifier.size(15.dp)
-                  )
-                  Spacer(modifier = Modifier.width(6.dp))
-                  Text(
-                    text = if (selectedNovel.coverImageUri != null) "Change Cover" else "Upload Cover",
-                    style = MaterialTheme.typography.labelMedium.copy(
-                      fontWeight = FontWeight.Medium,
-                      letterSpacing = 0.4.sp
-                    ),
-                    color = CharcoalText
-                  )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                      text = if (selectedNovel.coverImageUri != null) "Change Cover" else "Upload Cover",
+                      style = MaterialTheme.typography.labelMedium.copy(
+                        fontWeight = FontWeight.Medium,
+                        letterSpacing = 0.4.sp
+                      ),
+                      color = CharcoalText
+                    )
+                  }
+
+                  Spacer(modifier = Modifier.width(8.dp))
+
+                  // Edit Novel Button for Translators & Owner (Also triggers from 3-second hold)
+                  OutlinedButton(
+                    onClick = { novelToEdit = selectedNovel },
+                    shape = RoundedCornerShape(24.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = CharcoalText),
+                    border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.6f)),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 9.dp),
+                    modifier = Modifier.testTag("edit_novel_button_shelf")
+                  ) {
+                    Icon(
+                      imageVector = Icons.Outlined.Edit,
+                      contentDescription = null,
+                      tint = AntiqueGold,
+                      modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                      text = "Edit Novel",
+                      style = MaterialTheme.typography.labelMedium.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 0.4.sp
+                      ),
+                      color = CharcoalText
+                    )
+                  }
                 }
               }
             }
@@ -907,11 +960,11 @@ fun HomeScreen(
     if (uiState.isAuthDialogOpen) {
       AuthModal(
         onDismiss = { viewModel.closeAuthDialog() },
-        onSignInWithGoogle = { email, name ->
-          viewModel.signInWithGoogle(email, name)
+        onSignInWithGoogle = { email, name, role, authorSlot ->
+          viewModel.signInWithGoogle(email, name, role, authorSlot)
         },
-        onSignInWithApple = { email, name ->
-          viewModel.signInWithApple(email, name)
+        onSignInWithApple = { email, name, role, authorSlot ->
+          viewModel.signInWithApple(email, name, role, authorSlot)
         }
       )
     }
@@ -921,6 +974,7 @@ fun HomeScreen(
       AuthorRoomsModal(
         authorSlots = uiState.authorSlots,
         novels = allNovelsList,
+        currentUser = activeUser,
         onDismiss = { isAuthorRoomsModalOpen = false },
         onOpenUploadForSlot = { slot ->
           selectedUploadSlot = slot
@@ -948,7 +1002,7 @@ fun HomeScreen(
       TranslatorProfileModal(
         slot = activeSlot,
         novels = allNovelsList,
-        isOwnerOrTranslator = true,
+        isOwnerOrTranslator = isTranslatorOrOwner,
         onDismiss = { selectedTranslatorForDetail = null },
         onSelectNovel = { novel ->
           selectedTranslatorForDetail = null
@@ -1077,6 +1131,33 @@ fun HomeScreen(
         }
       )
     }
+
+    // Translator Editorial Studio (Editing title, subtitle, author, synopsis, content, cover, or deleting novel)
+    if (novelToEdit != null) {
+      EditNovelModal(
+        novel = novelToEdit!!,
+        onDismiss = { novelToEdit = null },
+        onUpdateNovel = { novelId, title, subtitle, originalAuthor, synopsis, chapterTitle, contentText, coverColorHex, coverImageUri ->
+          viewModel.updateNovel(
+            novelId = novelId,
+            title = title,
+            subtitle = subtitle,
+            originalAuthor = originalAuthor,
+            synopsis = synopsis,
+            chapterTitle = chapterTitle,
+            contentText = contentText,
+            coverColorHex = coverColorHex,
+            coverImageUri = coverImageUri
+          )
+        },
+        onDeleteNovel = { novelId ->
+          viewModel.deleteNovel(novelId)
+          if (safeIndex >= novels.size - 1 && selectedIndex > 0) {
+            selectedIndex--
+          }
+        }
+      )
+    }
   }
 }
 
@@ -1086,6 +1167,7 @@ fun HomeScreen(
 @Composable
 private fun TopUtilityBar(
   activeUser: ReaderProfileEntity?,
+  canUpload: Boolean = false,
   onOpenAuth: () -> Unit,
   onSignOut: () -> Unit,
   onOpenAuthorRooms: () -> Unit,
@@ -1214,34 +1296,36 @@ private fun TopUtilityBar(
         }
       }
 
-      Spacer(modifier = Modifier.width(8.dp))
+      if (canUpload) {
+        Spacer(modifier = Modifier.width(8.dp))
 
-      Surface(
-        onClick = onOpenUpload,
-        shape = RoundedCornerShape(20.dp),
-        color = AntiqueGoldLight.copy(alpha = 0.7f),
-        border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.5f)),
-        modifier = Modifier.testTag("owner_upload_button")
-      ) {
-        Row(
-          verticalAlignment = Alignment.CenterVertically,
-          modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+        Surface(
+          onClick = onOpenUpload,
+          shape = RoundedCornerShape(20.dp),
+          color = AntiqueGoldLight.copy(alpha = 0.7f),
+          border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.5f)),
+          modifier = Modifier.testTag("owner_upload_button")
         ) {
-          Icon(
-            imageVector = Icons.Outlined.Upload,
-            contentDescription = null,
-            tint = AntiqueGold,
-            modifier = Modifier.size(14.dp)
-          )
-          Spacer(modifier = Modifier.width(5.dp))
-          Text(
-            text = "Upload",
-            style = MaterialTheme.typography.labelSmall.copy(
-              fontWeight = FontWeight.Bold,
-              letterSpacing = 0.6.sp
-            ),
-            color = AntiqueGold
-          )
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+          ) {
+            Icon(
+              imageVector = Icons.Outlined.Upload,
+              contentDescription = null,
+              tint = AntiqueGold,
+              modifier = Modifier.size(14.dp)
+            )
+            Spacer(modifier = Modifier.width(5.dp))
+            Text(
+              text = "Upload",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.6.sp
+              ),
+              color = AntiqueGold
+            )
+          }
         }
       }
     }
@@ -1282,81 +1366,166 @@ private fun ShelfFilterChip(
 
 /**
  * "Continue where you stopped reading" Banner
+ * Pressing for 3 seconds opens the novel editor; tapping resumes reading immediately.
  */
 @Composable
 private fun ContinueReadingBanner(
   novel: NovelWithState,
+  isTranslatorOrOwner: Boolean = false,
   onResumeReading: () -> Unit,
+  onEditNovel: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
+  val haptic = LocalHapticFeedback.current
+  val coroutineScope = rememberCoroutineScope()
+  var holdProgress by remember { mutableFloatStateOf(0f) }
+
   Card(
     shape = RoundedCornerShape(16.dp),
     colors = CardDefaults.cardColors(containerColor = AntiqueGoldLight.copy(alpha = 0.45f)),
     border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.4f)),
     modifier = modifier
       .fillMaxWidth()
-      .clickable { onResumeReading() }
+      .pointerInput(novel.id, isTranslatorOrOwner) {
+        if (isTranslatorOrOwner) {
+          detectTapGestures(
+            onPress = {
+              val startTime = System.currentTimeMillis()
+              val totalMs = 3000L
+              val interval = 40L
+              val job = coroutineScope.launch {
+                var elapsed = 0L
+                while (elapsed < totalMs) {
+                  kotlinx.coroutines.delay(interval)
+                  elapsed += interval
+                  holdProgress = (elapsed.toFloat() / totalMs).coerceIn(0f, 1f)
+                  if (elapsed >= totalMs) {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onEditNovel()
+                    holdProgress = 0f
+                    return@launch
+                  }
+                }
+              }
+              try {
+                val released = tryAwaitRelease()
+                if (released) {
+                  val elapsed = System.currentTimeMillis() - startTime
+                  if (elapsed < 500L) {
+                    onResumeReading()
+                  }
+                }
+              } finally {
+                job.cancel()
+                holdProgress = 0f
+              }
+            }
+          )
+        } else {
+          detectTapGestures(
+            onTap = { onResumeReading() }
+          )
+        }
+      }
       .testTag("continue_reading_banner")
   ) {
-    Row(
-      modifier = Modifier
-        .fillMaxWidth()
-        .padding(horizontal = 16.dp, vertical = 12.dp),
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.SpaceBetween
-    ) {
+    Box(modifier = Modifier.fillMaxWidth()) {
       Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.weight(1f)
+        horizontalArrangement = Arrangement.SpaceBetween
       ) {
-        Icon(
-          imageVector = Icons.Outlined.History,
-          contentDescription = null,
-          tint = AntiqueGold,
-          modifier = Modifier.size(20.dp)
-        )
-        Spacer(modifier = Modifier.width(12.dp))
-        Column {
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          modifier = Modifier.weight(1f)
+        ) {
+          Icon(
+            imageVector = Icons.Outlined.History,
+            contentDescription = null,
+            tint = AntiqueGold,
+            modifier = Modifier.size(20.dp)
+          )
+          Spacer(modifier = Modifier.width(12.dp))
+          Column {
+            Text(
+              text = "CONTINUE READING",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 8.5.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.2.sp
+              ),
+              color = AntiqueGold
+            )
+            Text(
+              text = novel.title,
+              style = MaterialTheme.typography.titleSmall.copy(
+                fontFamily = FontFamily.Serif,
+                fontWeight = FontWeight.Medium
+              ),
+              color = CharcoalText,
+              maxLines = 1,
+              overflow = TextOverflow.Ellipsis
+            )
+            Text(
+              text = if (isTranslatorOrOwner) {
+                "Page ${novel.currentPage} of ${novel.totalPages} • Progress saved • Hold 3s to Edit"
+              } else {
+                "Page ${novel.currentPage} of ${novel.totalPages} • Progress saved"
+              },
+              style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
+              color = CharcoalSecondary
+            )
+          }
+        }
+
+        Surface(
+          shape = RoundedCornerShape(14.dp),
+          color = CharcoalText,
+          modifier = Modifier.padding(start = 8.dp)
+        ) {
           Text(
-            text = "CONTINUE READING",
+            text = "Resume",
             style = MaterialTheme.typography.labelSmall.copy(
-              fontSize = 8.5.sp,
-              fontWeight = FontWeight.Bold,
-              letterSpacing = 1.2.sp
+              color = SoftCreamPaper,
+              fontWeight = FontWeight.SemiBold
             ),
-            color = AntiqueGold
-          )
-          Text(
-            text = novel.title,
-            style = MaterialTheme.typography.titleSmall.copy(
-              fontFamily = FontFamily.Serif,
-              fontWeight = FontWeight.Medium
-            ),
-            color = CharcoalText,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-          )
-          Text(
-            text = "Page ${novel.currentPage} of ${novel.totalPages} • Progress saved",
-            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
-            color = CharcoalSecondary
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
           )
         }
       }
 
-      Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = CharcoalText,
-        modifier = Modifier.padding(start = 8.dp)
-      ) {
-        Text(
-          text = "Resume",
-          style = MaterialTheme.typography.labelSmall.copy(
-            color = SoftCreamPaper,
-            fontWeight = FontWeight.SemiBold
-          ),
-          modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-        )
+      // 3-Second Hold progress overlay
+      if (isTranslatorOrOwner && holdProgress > 0f) {
+        Box(
+          modifier = Modifier
+            .matchParentSize()
+            .background(Color(0xEE1E1815))
+            .padding(horizontal = 16.dp),
+          contentAlignment = Alignment.CenterStart
+        ) {
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+          ) {
+            CircularProgressIndicator(
+              progress = { holdProgress },
+              modifier = Modifier.size(22.dp),
+              color = AntiqueGold,
+              trackColor = AntiqueGold.copy(alpha = 0.25f),
+              strokeWidth = 2.5.dp
+            )
+            val remainingSec = maxOf(1, (3.2f * (1f - holdProgress)).toInt())
+            Text(
+              text = "Holding to Edit Novel (${remainingSec}s)...",
+              style = MaterialTheme.typography.labelMedium.copy(
+                fontWeight = FontWeight.Bold,
+                color = SoftCreamPaper
+              )
+            )
+          }
+        }
       }
     }
   }
@@ -1364,16 +1533,23 @@ private fun ContinueReadingBanner(
 
 /**
  * Individual Novel Card in the horizontal row
+ * Hold for 3 seconds to open the translator edit/delete modal; tap to select or read.
  */
 @Composable
 private fun HorizontalNovelCard(
   novel: NovelWithState,
   index: Int,
   isFocused: Boolean,
+  isTranslatorOrOwner: Boolean = false,
   onCardClick: () -> Unit,
   onFocusClick: () -> Unit,
   onToggleFavorite: () -> Unit,
+  onEditNovel: () -> Unit,
 ) {
+  val haptic = LocalHapticFeedback.current
+  val coroutineScope = rememberCoroutineScope()
+  var holdProgress by remember { mutableFloatStateOf(0f) }
+
   val scale by animateFloatAsState(targetValue = if (isFocused) 1.04f else 0.96f, label = "card_scale")
   val elevation by animateFloatAsState(targetValue = if (isFocused) 14f else 6f, label = "card_elevation")
   val borderColor by animateColorAsState(
@@ -1389,9 +1565,50 @@ private fun HorizontalNovelCard(
         scaleX = scale
         scaleY = scale
       }
-      .clickable {
-        onFocusClick()
-        onCardClick()
+      .pointerInput(novel.id, isTranslatorOrOwner) {
+        if (isTranslatorOrOwner) {
+          detectTapGestures(
+            onPress = {
+              onFocusClick()
+              val startTime = System.currentTimeMillis()
+              val totalMs = 3000L
+              val interval = 40L
+              val job = coroutineScope.launch {
+                var elapsed = 0L
+                while (elapsed < totalMs) {
+                  kotlinx.coroutines.delay(interval)
+                  elapsed += interval
+                  holdProgress = (elapsed.toFloat() / totalMs).coerceIn(0f, 1f)
+                  if (elapsed >= totalMs) {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onEditNovel()
+                    holdProgress = 0f
+                    return@launch
+                  }
+                }
+              }
+              try {
+                val released = tryAwaitRelease()
+                if (released) {
+                  val elapsed = System.currentTimeMillis() - startTime
+                  if (elapsed < 500L) {
+                    onCardClick()
+                  }
+                }
+              } finally {
+                job.cancel()
+                holdProgress = 0f
+              }
+            }
+          )
+        } else {
+          detectTapGestures(
+            onTap = {
+              onFocusClick()
+              onCardClick()
+            }
+          )
+        }
       }
       .testTag("novel_card_${novel.id}")
   ) {
@@ -1524,6 +1741,42 @@ private fun HorizontalNovelCard(
                 .height(3.dp)
                 .background(AntiqueGold)
             )
+          }
+        }
+
+        // 3-Second Hold Feedback Overlay for Translators and Owner
+        if (isTranslatorOrOwner && holdProgress > 0f) {
+          Box(
+            modifier = Modifier
+              .fillMaxSize()
+              .background(Color(0xEE1E1815))
+              .padding(8.dp),
+            contentAlignment = Alignment.Center
+          ) {
+            Column(
+              horizontalAlignment = Alignment.CenterHorizontally,
+              verticalArrangement = Arrangement.Center
+            ) {
+              CircularProgressIndicator(
+                progress = { holdProgress },
+                modifier = Modifier.size(38.dp),
+                color = AntiqueGold,
+                trackColor = AntiqueGold.copy(alpha = 0.25f),
+                strokeWidth = 3.5.dp
+              )
+              Spacer(modifier = Modifier.height(6.dp))
+              val remainingSec = maxOf(1, (3.2f * (1f - holdProgress)).toInt())
+              Text(
+                text = "Hold ${remainingSec}s\nto Edit",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 9.5.sp,
+                  fontWeight = FontWeight.Bold,
+                  textAlign = TextAlign.Center,
+                  lineHeight = 12.sp
+                ),
+                color = SoftCreamPaper
+              )
+            }
           }
         }
       }

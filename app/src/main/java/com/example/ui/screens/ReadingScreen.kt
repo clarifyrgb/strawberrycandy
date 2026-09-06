@@ -31,6 +31,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -93,6 +95,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.Font
@@ -112,10 +115,8 @@ import com.example.model.StoryContentItem
 import com.example.ui.components.BookmarksHighlightsModal
 import com.example.ui.components.ChapterCommentsSection
 import com.example.ui.components.ChapterSelectionModal
-import com.example.ui.components.GhostedSecurityBackground
 import com.example.ui.components.StoryPhotoItem
 import com.example.ui.components.StoryPhotoViewerModal
-import com.example.ui.components.SubtleWatermarkOverlay
 import com.example.ui.components.TypographyCustomizerModal
 import com.example.ui.theme.AntiqueGold
 import com.example.ui.theme.CharcoalSecondary
@@ -151,7 +152,7 @@ fun ReadingScreen(
 
   val context = LocalContext.current
   val coroutineScope = rememberCoroutineScope()
-  val scrollState = rememberScrollState()
+  val lazyListState = rememberLazyListState()
 
   // Typography preferences
   val typographyPrefs = remember {
@@ -263,20 +264,15 @@ fun ReadingScreen(
   val pagerState = rememberPagerState(initialPage = initialPageIndex) { pages.size }
 
   // Active chapter detection
-  val currentChapterIndex by remember(pageTurnMode, pagerState.currentPage, scrollState.value, scrollState.maxValue) {
+  val currentChapterIndex by remember(pageTurnMode, pagerState.currentPage, lazyListState.firstVisibleItemIndex) {
     derivedStateOf {
       if (pageTurnMode == "flip" && pages.isNotEmpty()) {
         val currentPage = pages[pagerState.currentPage.coerceIn(0, pages.size - 1)]
         currentPage.chapterIndex
       } else {
-        if (scrollState.maxValue > 0 && novel.storyItems.isNotEmpty()) {
-          val frac = scrollState.value.toFloat() / scrollState.maxValue.toFloat()
-          val targetItemIndex = (frac * (novel.storyItems.size - 1)).toInt()
-          val ch = novel.chapters.find { targetItemIndex in it.startParagraphIndex..it.endParagraphIndex }
-          ch?.index ?: 0
-        } else {
-          0
-        }
+        val currentItemIdx = (lazyListState.firstVisibleItemIndex - 1).coerceAtLeast(0)
+        val ch = novel.chapters.find { currentItemIdx in it.startParagraphIndex..it.endParagraphIndex }
+        ch?.index ?: 0
       }
     }
   }
@@ -284,17 +280,17 @@ fun ReadingScreen(
   val currentChapter = novel.chapters.getOrNull(currentChapterIndex) ?: novel.chapters.firstOrNull()
 
   // Track page progress
-  val estimatedCurrentPage by remember(pageTurnMode, pagerState.currentPage, scrollState.value, scrollState.maxValue) {
+  val estimatedCurrentPage by remember(pageTurnMode, pagerState.currentPage, lazyListState.firstVisibleItemIndex) {
     derivedStateOf {
       if (pageTurnMode == "flip" && pages.isNotEmpty()) {
         val frac = pagerState.currentPage.toFloat() / (pages.size - 1).coerceAtLeast(1).toFloat()
         val p = (frac * (novel.totalPages - 1)).toInt() + 1
         p.coerceIn(1, novel.totalPages)
       } else {
-        if (scrollState.maxValue > 0) {
-          val frac = scrollState.value.toFloat() / scrollState.maxValue.toFloat()
-          val calculated = (frac * (novel.totalPages - 1)).toInt() + 1
-          calculated.coerceIn(1, novel.totalPages)
+        if (novel.storyItems.isNotEmpty()) {
+          val frac = (lazyListState.firstVisibleItemIndex - 1).coerceAtLeast(0).toFloat() / novel.storyItems.size.toFloat()
+          val p = (frac * (novel.totalPages - 1)).toInt() + 1
+          p.coerceIn(1, novel.totalPages)
         } else {
           novel.currentPage.coerceAtLeast(1)
         }
@@ -311,9 +307,9 @@ fun ReadingScreen(
 
   // Restore scroll position in Scroll mode
   LaunchedEffect(novel.id, pageTurnMode) {
-    if (pageTurnMode == "scroll" && novel.currentPage > 1 && scrollState.maxValue > 0) {
-      val targetScroll = ((novel.currentPage - 1).toFloat() / (novel.totalPages - 1).toFloat() * scrollState.maxValue).toInt()
-      scrollState.scrollTo(targetScroll)
+    if (pageTurnMode == "scroll" && novel.currentPage > 1 && novel.storyItems.isNotEmpty()) {
+      val targetItem = ((novel.currentPage - 1).toFloat() / novel.totalPages.toFloat() * novel.storyItems.size).toInt()
+      lazyListState.scrollToItem((targetItem + 1).coerceIn(0, novel.storyItems.size), 0)
     }
   }
 
@@ -379,15 +375,12 @@ fun ReadingScreen(
       }
       if (targetPage != -1) {
         coroutineScope.launch {
-          pagerState.animateScrollToPage(targetPage)
+          pagerState.scrollToPage(targetPage)
         }
       }
     } else {
-      if (scrollState.maxValue > 0 && novel.storyItems.isNotEmpty()) {
-        val targetScroll = ((match.paragraphIndex.toFloat() / novel.storyItems.size.toFloat()) * scrollState.maxValue).toInt()
-        coroutineScope.launch {
-          scrollState.animateScrollTo(targetScroll)
-        }
+      coroutineScope.launch {
+        lazyListState.scrollToItem((match.paragraphIndex + 1).coerceIn(0, novel.storyItems.size), 0)
       }
     }
   }
@@ -398,15 +391,13 @@ fun ReadingScreen(
       val targetPage = pages.indexOfFirst { it.chapterIndex == chapterIndex }
       if (targetPage != -1) {
         coroutineScope.launch {
-          pagerState.animateScrollToPage(targetPage)
+          pagerState.scrollToPage(targetPage)
         }
       }
     } else {
-      if (scrollState.maxValue > 0 && novel.storyItems.isNotEmpty()) {
-        val targetScroll = ((startParagraphIndex.toFloat() / novel.storyItems.size.toFloat()) * scrollState.maxValue).toInt()
-        coroutineScope.launch {
-          scrollState.animateScrollTo(targetScroll)
-        }
+      coroutineScope.launch {
+        // Navigate accurately to the exact start paragraph of this chapter at offset 0
+        lazyListState.scrollToItem((startParagraphIndex + 1).coerceIn(0, novel.storyItems.size), 0)
       }
     }
   }
@@ -431,10 +422,7 @@ fun ReadingScreen(
         )
     )
 
-    // 2. Ghosted Security Background
-    GhostedSecurityBackground()
-
-    // 3. Reader Viewports (Flip vs Scroll)
+    // 2. Reader Viewports (Flip vs Scroll)
     Column(
       modifier = Modifier
         .fillMaxSize()
@@ -1024,8 +1012,7 @@ fun ReadingScreen(
                   Column(
                     modifier = Modifier
                       .weight(1f)
-                      .fillMaxWidth()
-                      .verticalScroll(rememberScrollState()),
+                      .fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(baseParagraphSpacing)
                   ) {
                     page.items.forEach { item ->
@@ -1166,58 +1153,54 @@ fun ReadingScreen(
                               )
                               .padding(if (isBookmarked) 8.dp else 0.dp)
                           ) {
-                            if (page.isChapterFirstPage && page.items.firstOrNull() == item && paragraph.isNotEmpty()) {
-                              // Drop cap on first paragraph of chapter
-                              val firstChar = paragraph.take(1)
-                              val rest = paragraph.drop(1)
-                              Row(modifier = Modifier.fillMaxWidth()) {
+                            val formatRes = buildSearchHighlightString(
+                              text = paragraph,
+                              query = searchQuery,
+                              isParagraphActive = searchMatches.getOrNull(currentSearchMatchIndex)?.paragraphIndex == pIndex
+                            )
+
+                            if (formatRes.isDivider) {
+                              Box(
+                                modifier = Modifier
+                                  .fillMaxWidth()
+                                  .padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                              ) {
                                 Text(
-                                  text = firstChar,
-                                  style = MaterialTheme.typography.displayLarge.copy(
-                                    fontFamily = readerFontFamily,
-                                    fontWeight = if (isBold) FontWeight.Bold else FontWeight.Light,
-                                    fontStyle = readerFontStyle,
-                                    fontSize = (52f * fontSizeScale).sp,
-                                    lineHeight = (50f * fontSizeScale).sp
-                                  ),
-                                  color = AntiqueGold,
-                                  modifier = Modifier.padding(end = 8.dp)
-                                )
-                                Text(
-                                  text = buildSearchHighlightString(
-                                    text = rest,
-                                    query = searchQuery,
-                                    isParagraphActive = searchMatches.getOrNull(currentSearchMatchIndex)?.paragraphIndex == pIndex
-                                  ),
-                                  style = MaterialTheme.typography.bodyLarge.copy(
-                                    fontFamily = readerFontFamily,
-                                    fontWeight = readerFontWeight,
-                                    fontStyle = readerFontStyle,
-                                    color = CharcoalText,
-                                    lineHeight = baseLineHeight.sp,
-                                    fontSize = baseFontSize.sp,
-                                    textAlign = if (isJustified) TextAlign.Justify else TextAlign.Start
-                                  )
+                                  text = "❦",
+                                  style = MaterialTheme.typography.titleMedium,
+                                  color = AntiqueGold.copy(alpha = 0.7f)
                                 )
                               }
                             } else {
+                              val finalAlign = if (formatRes.alignment != TextAlign.Start) {
+                                formatRes.alignment
+                              } else if (isJustified) {
+                                TextAlign.Justify
+                              } else {
+                                TextAlign.Start
+                              }
+
+                              val finalFontStyle = if (formatRes.isQuote) FontStyle.Italic else readerFontStyle
+
                               Text(
-                                text = buildSearchHighlightString(
-                                  text = paragraph,
-                                  query = searchQuery,
-                                  isParagraphActive = searchMatches.getOrNull(currentSearchMatchIndex)?.paragraphIndex == pIndex
-                                ),
+                                text = formatRes.annotatedString,
                                 style = MaterialTheme.typography.bodyLarge.copy(
                                   fontFamily = readerFontFamily,
                                   fontWeight = readerFontWeight,
-                                  fontStyle = readerFontStyle,
+                                  fontStyle = finalFontStyle,
                                   color = CharcoalText,
                                   lineHeight = baseLineHeight.sp,
                                   fontSize = baseFontSize.sp,
-                                  textAlign = if (isJustified) TextAlign.Justify else TextAlign.Start,
-                                  textIndent = TextIndent(firstLine = if (isFirstLineIndent) 22.sp else 0.sp)
+                                  textAlign = finalAlign,
+                                  textIndent = TextIndent(firstLine = if (isFirstLineIndent && !formatRes.isQuote && formatRes.alignment == TextAlign.Start) 22.sp else 0.sp)
                                 ),
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier
+                                  .fillMaxWidth()
+                                  .padding(
+                                    start = if (formatRes.isQuote) 14.dp else 0.dp,
+                                    end = if (formatRes.isQuote) 10.dp else 0.dp
+                                  )
                               )
                             }
                           }
@@ -1360,80 +1343,92 @@ fun ReadingScreen(
           // =========================================================
           // 2. CONTINUOUS SCROLL MODE (Fluid Vertical Flow)
           // =========================================================
-          Column(
+          LazyColumn(
+            state = lazyListState,
             modifier = Modifier
               .fillMaxSize()
-              .verticalScroll(scrollState)
               .padding(horizontal = 28.dp, vertical = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            horizontalAlignment = Alignment.CenterHorizontally,
+            contentPadding = PaddingValues(bottom = 48.dp)
           ) {
-            Spacer(modifier = Modifier.height(16.dp))
+            item(key = "reading_header") {
+              Column(
+                modifier = Modifier
+                  .widthIn(max = 640.dp)
+                  .fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+              ) {
+                Spacer(modifier = Modifier.height(16.dp))
 
-            // Chapter Header
-            Text(
-              text = (currentChapter?.title ?: novel.chapterTitle).uppercase(),
-              style = MaterialTheme.typography.labelMedium.copy(
-                letterSpacing = 2.4.sp,
-                fontWeight = FontWeight.Bold
-              ),
-              color = AntiqueGold,
-              textAlign = TextAlign.Center,
-              modifier = Modifier.testTag("reading_chapter_title")
-            )
+                // Chapter Header
+                Text(
+                  text = (currentChapter?.title ?: novel.chapterTitle).uppercase(),
+                  style = MaterialTheme.typography.labelMedium.copy(
+                    letterSpacing = 2.4.sp,
+                    fontWeight = FontWeight.Bold
+                  ),
+                  color = AntiqueGold,
+                  textAlign = TextAlign.Center,
+                  modifier = Modifier.testTag("reading_chapter_title")
+                )
 
-            Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-            // Novel Title
-            Text(
-              text = novel.title,
-              style = MaterialTheme.typography.headlineMedium.copy(
-                fontFamily = readerFontFamily,
-                fontWeight = FontWeight.Normal,
-                lineHeight = 28.sp
-              ),
-              color = CharcoalText,
-              textAlign = TextAlign.Center,
-              modifier = Modifier.testTag("reading_book_title")
-            )
+                // Novel Title
+                Text(
+                  text = novel.title,
+                  style = MaterialTheme.typography.headlineMedium.copy(
+                    fontFamily = readerFontFamily,
+                    fontWeight = FontWeight.Normal,
+                    lineHeight = 28.sp
+                  ),
+                  color = CharcoalText,
+                  textAlign = TextAlign.Center,
+                  modifier = Modifier.testTag("reading_book_title")
+                )
 
-            Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-            // Author Header
-            val authorHeader = if (novel.originalAuthor.isNotBlank()) {
-              if (novel.authorSlot > 0) {
-                "BY ${novel.originalAuthor.uppercase()} • TRANSLATED BY ${novel.author.uppercase()} (ROOM ${novel.authorSlot})"
-              } else if (novel.author.isNotBlank() && !novel.author.equals(novel.originalAuthor, ignoreCase = true)) {
-                "BY ${novel.originalAuthor.uppercase()} • CURATED BY ${novel.author.uppercase()}"
-              } else {
-                "BY ${novel.originalAuthor.uppercase()} • STRAWBERRYCANDY ARCHIVE"
+                // Author Header
+                val authorHeader = if (novel.originalAuthor.isNotBlank()) {
+                  if (novel.authorSlot > 0) {
+                    "BY ${novel.originalAuthor.uppercase()} • TRANSLATED BY ${novel.author.uppercase()} (ROOM ${novel.authorSlot})"
+                  } else if (novel.author.isNotBlank() && !novel.author.equals(novel.originalAuthor, ignoreCase = true)) {
+                    "BY ${novel.originalAuthor.uppercase()} • CURATED BY ${novel.author.uppercase()}"
+                  } else {
+                    "BY ${novel.originalAuthor.uppercase()} • STRAWBERRYCANDY ARCHIVE"
+                  }
+                } else if (novel.authorSlot > 0) {
+                  "BY ${novel.author.uppercase()} • ROOM ${novel.authorSlot} • STRAWBERRYCANDY"
+                } else {
+                  "BY ${novel.author.uppercase()} • STRAWBERRYCANDY ARCHIVE"
+                }
+
+                Text(
+                  text = authorHeader,
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 9.sp,
+                    letterSpacing = 1.2.sp,
+                    fontWeight = FontWeight.Bold
+                  ),
+                  color = CharcoalTertiary,
+                  textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(28.dp))
               }
-            } else if (novel.authorSlot > 0) {
-              "BY ${novel.author.uppercase()} • ROOM ${novel.authorSlot} • STRAWBERRYCANDY"
-            } else {
-              "BY ${novel.author.uppercase()} • STRAWBERRYCANDY ARCHIVE"
             }
 
-            Text(
-              text = authorHeader,
-              style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 9.sp,
-                letterSpacing = 1.2.sp,
-                fontWeight = FontWeight.Bold
-              ),
-              color = CharcoalTertiary,
-              textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(28.dp))
-
-            // Text Body & Plates
-            Column(
-              modifier = Modifier
-                .widthIn(max = 640.dp)
-                .fillMaxWidth(),
-              verticalArrangement = Arrangement.spacedBy(baseParagraphSpacing)
-            ) {
-              novel.storyItems.forEachIndexed { index, item ->
+            itemsIndexed(
+              items = novel.storyItems,
+              key = { index, _ -> "story_item_$index" }
+            ) { index, item ->
+              Box(
+                modifier = Modifier
+                  .widthIn(max = 640.dp)
+                  .fillMaxWidth()
+                  .padding(bottom = baseParagraphSpacing)
+              ) {
                 when (item) {
                   is StoryContentItem.ChapterBreak -> {
                     // Chapter Break Heading
@@ -1613,57 +1608,54 @@ fun ReadingScreen(
                             }
                           }
 
-                          if (index == 0 && paragraph.isNotEmpty()) {
-                            val firstChar = paragraph.take(1)
-                            val restOfFirst = paragraph.drop(1)
-                            Row(modifier = Modifier.fillMaxWidth()) {
+                          val formatRes = buildSearchHighlightString(
+                            text = paragraph,
+                            query = searchQuery,
+                            isParagraphActive = searchMatches.getOrNull(currentSearchMatchIndex)?.paragraphIndex == index
+                          )
+
+                          if (formatRes.isDivider) {
+                            Box(
+                              modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                              contentAlignment = Alignment.Center
+                            ) {
                               Text(
-                                text = firstChar,
-                                style = MaterialTheme.typography.displayLarge.copy(
-                                  fontFamily = readerFontFamily,
-                                  fontWeight = if (isBold) FontWeight.Bold else FontWeight.Light,
-                                  fontStyle = readerFontStyle,
-                                  fontSize = (62f * fontSizeScale).sp,
-                                  lineHeight = (60f * fontSizeScale).sp
-                                ),
-                                color = AntiqueGold,
-                                modifier = Modifier.padding(end = 10.dp, bottom = 2.dp)
-                              )
-                              Text(
-                                text = buildSearchHighlightString(
-                                  text = restOfFirst,
-                                  query = searchQuery,
-                                  isParagraphActive = searchMatches.getOrNull(currentSearchMatchIndex)?.paragraphIndex == index
-                                ),
-                                style = MaterialTheme.typography.bodyLarge.copy(
-                                  fontFamily = readerFontFamily,
-                                  fontWeight = readerFontWeight,
-                                  fontStyle = readerFontStyle,
-                                  color = CharcoalText,
-                                  lineHeight = baseLineHeight.sp,
-                                  fontSize = baseFontSize.sp,
-                                  textAlign = if (isJustified) TextAlign.Justify else TextAlign.Start
-                                )
+                                text = "❦",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = AntiqueGold.copy(alpha = 0.7f)
                               )
                             }
                           } else {
+                            val finalAlign = if (formatRes.alignment != TextAlign.Start) {
+                              formatRes.alignment
+                            } else if (isJustified) {
+                              TextAlign.Justify
+                            } else {
+                              TextAlign.Start
+                            }
+
+                            val finalFontStyle = if (formatRes.isQuote) FontStyle.Italic else readerFontStyle
+
                             Text(
-                              text = buildSearchHighlightString(
-                                text = paragraph,
-                                query = searchQuery,
-                                isParagraphActive = searchMatches.getOrNull(currentSearchMatchIndex)?.paragraphIndex == index
-                              ),
+                              text = formatRes.annotatedString,
                               style = MaterialTheme.typography.bodyLarge.copy(
                                 fontFamily = readerFontFamily,
                                 fontWeight = readerFontWeight,
-                                fontStyle = readerFontStyle,
+                                fontStyle = finalFontStyle,
                                 color = CharcoalText,
                                 lineHeight = baseLineHeight.sp,
                                 fontSize = baseFontSize.sp,
-                                textAlign = if (isJustified) TextAlign.Justify else TextAlign.Start,
-                                textIndent = TextIndent(firstLine = if (isFirstLineIndent) 22.sp else 0.sp)
+                                textAlign = finalAlign,
+                                textIndent = TextIndent(firstLine = if (isFirstLineIndent && !formatRes.isQuote && formatRes.alignment == TextAlign.Start) 22.sp else 0.sp)
                               ),
-                              modifier = Modifier.fillMaxWidth()
+                              modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(
+                                  start = if (formatRes.isQuote) 14.dp else 0.dp,
+                                  end = if (formatRes.isQuote) 10.dp else 0.dp
+                                )
                             )
                           }
                         }
@@ -1718,7 +1710,7 @@ fun ReadingScreen(
                             onClick = {
                               activeHighlightedIndex = null
                               coroutineScope.launch {
-                                scrollState.animateScrollTo(scrollState.maxValue)
+                                lazyListState.animateScrollToItem(novel.storyItems.size + 1)
                               }
                             },
                             shape = RoundedCornerShape(10.dp),
@@ -1746,52 +1738,54 @@ fun ReadingScreen(
               }
             }
 
-            Spacer(modifier = Modifier.height(44.dp))
+            item(key = "reading_footer") {
+              Column(
+                modifier = Modifier
+                  .widthIn(max = 640.dp)
+                  .fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+              ) {
+                Spacer(modifier = Modifier.height(44.dp))
 
-            // Colophon
-            Text(
-              text = "— ❦ —",
-              style = MaterialTheme.typography.bodyMedium,
-              color = AntiqueGold.copy(alpha = 0.6f)
-            )
+                // Colophon
+                Text(
+                  text = "— ❦ —",
+                  style = MaterialTheme.typography.bodyMedium,
+                  color = AntiqueGold.copy(alpha = 0.6f)
+                )
 
-            Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-            Text(
-              text = "Read by ${formatStatCount(novel.readsCount)} readers • Favorited by ${formatStatCount(novel.favoritesCount)} members",
-              style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 9.5.sp,
-                letterSpacing = 0.8.sp
-              ),
-              color = CharcoalTertiary
-            )
+                Text(
+                  text = "Read by ${formatStatCount(novel.readsCount)} readers • Favorited by ${formatStatCount(novel.favoritesCount)} members",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 9.5.sp,
+                    letterSpacing = 0.8.sp
+                  ),
+                  color = CharcoalTertiary
+                )
 
-            Spacer(modifier = Modifier.height(36.dp))
+                Spacer(modifier = Modifier.height(36.dp))
 
-            // Comments Section
-            ChapterCommentsSection(
-              chapterTitle = novel.chapterTitle,
-              comments = commentsList,
-              activeReaderName = activeUser?.displayName,
-              onPostComment = { text, penName ->
-                viewModel?.postComment(novel.id, novel.chapterTitle, text, penName)
-              },
-              onLikeComment = { commentId ->
-                viewModel?.likeComment(commentId)
-              },
-              modifier = Modifier.widthIn(max = 640.dp)
-            )
+                // Comments Section
+                ChapterCommentsSection(
+                  chapterTitle = novel.chapterTitle,
+                  comments = commentsList,
+                  activeReaderName = activeUser?.displayName,
+                  onPostComment = { text, penName ->
+                    viewModel?.postComment(novel.id, novel.chapterTitle, text, penName)
+                  },
+                  onLikeComment = { commentId ->
+                    viewModel?.likeComment(commentId)
+                  },
+                  modifier = Modifier.widthIn(max = 640.dp)
+                )
 
-            Spacer(modifier = Modifier.height(48.dp))
+                Spacer(modifier = Modifier.height(48.dp))
+              }
+            }
           }
         }
-
-        // Watermark Overlay
-        SubtleWatermarkOverlay(
-          modifier = Modifier.matchParentSize(),
-          text = "LICENSED TO READER • STRAWBERRYCANDY SECURE ARCHIVE • PROPRIETARY COPY",
-          textColor = CharcoalText.copy(alpha = 0.038f)
-        )
       }
 
       // -------------------------------------------------------------
@@ -2115,172 +2109,251 @@ fun ReadingScreen(
   }
 }
 
+data class FormattedTextResult(
+  val annotatedString: AnnotatedString,
+  val alignment: TextAlign,
+  val isQuote: Boolean,
+  val isDivider: Boolean
+)
+
 /**
- * Builds an AnnotatedString highlighting any occurrences of searchQuery.
+ * Builds an AnnotatedString highlighting any occurrences of searchQuery,
+ * while preserving EPUB formatting (bold, italics, alignments, quotes, dividers).
  */
 private fun buildSearchHighlightString(
   text: String,
   query: String,
   isParagraphActive: Boolean,
-) = buildAnnotatedString {
-  if (query.isBlank() || query.trim().length < 2) {
-    append(text)
-    return@buildAnnotatedString
+): FormattedTextResult {
+  val trimmed = text.trim()
+  if (trimmed == "❦" || trimmed == "[divider]" || trimmed == "***" || trimmed == "---") {
+    return FormattedTextResult(
+      annotatedString = buildAnnotatedString { append("❦") },
+      alignment = TextAlign.Center,
+      isQuote = false,
+      isDivider = true
+    )
   }
 
-  val q = query.trim()
-  var startIndex = 0
+  var isCenter = false
+  var isRight = false
+  var isQuote = false
+  var cleanText = trimmed
 
-  while (startIndex < text.length) {
-    val index = text.indexOf(q, startIndex, ignoreCase = true)
-    if (index == -1) {
-      append(text.substring(startIndex))
-      break
-    }
-
-    // Append text leading up to match
-    if (index > startIndex) {
-      append(text.substring(startIndex, index))
-    }
-
-    // Append highlighted match
-    val matchText = text.substring(index, index + q.length)
-    withStyle(
-      SpanStyle(
-        background = if (isParagraphActive) AntiqueGold else Color(0x45D4AF37),
-        color = if (isParagraphActive) Color.White else CharcoalText,
-        fontWeight = FontWeight.Bold
-      )
-    ) {
-      append(matchText)
-    }
-
-    startIndex = index + q.length
+  if (cleanText.startsWith("[align:center]") && cleanText.endsWith("[/align]")) {
+    isCenter = true
+    cleanText = cleanText.removePrefix("[align:center]").removeSuffix("[/align]").trim()
+  } else if (cleanText.startsWith("[align:right]") && cleanText.endsWith("[/align]")) {
+    isRight = true
+    cleanText = cleanText.removePrefix("[align:right]").removeSuffix("[/align]").trim()
   }
+
+  if (cleanText.startsWith("[quote]") && cleanText.endsWith("[/quote]")) {
+    isQuote = true
+    cleanText = cleanText.removePrefix("[quote]").removeSuffix("[/quote]").trim()
+  }
+
+  // Parse inline tags <b>, <strong>, <i>, <em>
+  val styleSpans = mutableListOf<Triple<Int, Int, SpanStyle>>()
+  val plainBuilder = StringBuilder()
+  val tagRegex = Regex("""<(b|strong|i|em)>(.*?)</\1>""", RegexOption.IGNORE_CASE)
+  var cursor = 0
+  for (match in tagRegex.findAll(cleanText)) {
+    if (match.range.first > cursor) {
+      plainBuilder.append(cleanText.substring(cursor, match.range.first))
+    }
+    val tag = match.groupValues[1].lowercase()
+    val inner = match.groupValues[2]
+    val start = plainBuilder.length
+    plainBuilder.append(inner)
+    val end = plainBuilder.length
+    if (tag == "b" || tag == "strong") {
+      styleSpans.add(Triple(start, end, SpanStyle(fontWeight = FontWeight.Bold)))
+    } else if (tag == "i" || tag == "em") {
+      styleSpans.add(Triple(start, end, SpanStyle(fontStyle = FontStyle.Italic)))
+    }
+    cursor = match.range.last + 1
+  }
+  if (cursor < cleanText.length) {
+    plainBuilder.append(cleanText.substring(cursor))
+  }
+  val plainText = plainBuilder.toString()
+
+  val annotated = buildAnnotatedString {
+    append(plainText)
+    for ((start, end, style) in styleSpans) {
+      addStyle(style, start, end)
+    }
+    if (query.isNotBlank() && query.trim().length >= 2) {
+      val q = query.trim()
+      var sIdx = 0
+      while (sIdx < plainText.length) {
+        val found = plainText.indexOf(q, sIdx, ignoreCase = true)
+        if (found == -1) break
+        addStyle(
+          SpanStyle(
+            background = if (isParagraphActive) AntiqueGold else Color(0x45D4AF37),
+            color = if (isParagraphActive) Color.White else CharcoalText,
+            fontWeight = FontWeight.Bold
+          ),
+          found,
+          found + q.length
+        )
+        sIdx = found + q.length
+      }
+    }
+  }
+
+  val align = when {
+    isCenter -> TextAlign.Center
+    isRight -> TextAlign.End
+    else -> TextAlign.Start
+  }
+
+  return FormattedTextResult(
+    annotatedString = annotated,
+    alignment = align,
+    isQuote = isQuote,
+    isDivider = false
+  )
 }
 
 /**
  * Converts a list of StoryContentItems into paginated ReadingPage units
- * formatted for horizontal page turning.
+ * formatted for comfortable horizontal page turning without blank gaps.
  */
 private fun buildReadingPages(novel: NovelWithState): List<ReadingPage> {
   val pages = mutableListOf<ReadingPage>()
-  var currentPageItems = mutableListOf<StoryContentItem>()
-  var currentChapter = novel.chapters.firstOrNull()
-  var currentChapterIndex = 0
-  var pageNumber = 1
-  var isChapterFirst = true
+  val chapters = novel.chapters
+  if (novel.storyItems.isEmpty()) return emptyList()
 
-  novel.storyItems.forEachIndexed { index, item ->
-    // Check if this item starts a new chapter
-    val matchingChapter = novel.chapters.find { it.startParagraphIndex == index }
-    if (matchingChapter != null && matchingChapter != currentChapter) {
-      if (currentPageItems.isNotEmpty()) {
-        pages.add(
-          ReadingPage(
-            pageIndex = pages.size,
-            displayPageNumber = pageNumber++,
-            chapterIndex = currentChapterIndex,
-            chapterTitle = currentChapter?.title ?: novel.chapterTitle,
-            chapterNumber = currentChapter?.number ?: (currentChapterIndex + 1),
-            items = currentPageItems.toList(),
-            isChapterFirstPage = isChapterFirst
+  val targetCharsPerPage = 1350
+
+  chapters.forEach { chapter ->
+    val start = chapter.startParagraphIndex.coerceIn(0, novel.storyItems.size)
+    val end = (chapter.endParagraphIndex + 1).coerceIn(start, novel.storyItems.size)
+    val chapterItems = novel.storyItems.subList(start, end)
+    if (chapterItems.isEmpty()) return@forEach
+
+    var currentPageItems = mutableListOf<StoryContentItem>()
+    var currentCharsOnPage = 0
+    var isChapterFirst = true
+
+    for (item in chapterItems) {
+      when (item) {
+        is StoryContentItem.ChapterBreak -> {
+          if (currentPageItems.isNotEmpty()) {
+            pages.add(
+              ReadingPage(
+                pageIndex = pages.size,
+                displayPageNumber = pages.size + 1,
+                chapterIndex = chapter.index,
+                chapterTitle = chapter.title,
+                chapterNumber = chapter.number,
+                items = currentPageItems.toList(),
+                isChapterFirstPage = isChapterFirst
+              )
+            )
+            currentPageItems = mutableListOf()
+            isChapterFirst = false
+            currentCharsOnPage = 0
+          }
+          currentPageItems.add(item)
+          currentCharsOnPage += 120
+        }
+
+        is StoryContentItem.Photo -> {
+          if (currentPageItems.isNotEmpty()) {
+            pages.add(
+              ReadingPage(
+                pageIndex = pages.size,
+                displayPageNumber = pages.size + 1,
+                chapterIndex = chapter.index,
+                chapterTitle = chapter.title,
+                chapterNumber = chapter.number,
+                items = currentPageItems.toList(),
+                isChapterFirstPage = isChapterFirst
+              )
+            )
+            currentPageItems = mutableListOf()
+            isChapterFirst = false
+            currentCharsOnPage = 0
+          }
+          // Dedicated plate page
+          pages.add(
+            ReadingPage(
+              pageIndex = pages.size,
+              displayPageNumber = pages.size + 1,
+              chapterIndex = chapter.index,
+              chapterTitle = chapter.title,
+              chapterNumber = chapter.number,
+              items = listOf(item),
+              isChapterFirstPage = false
+            )
           )
-        )
-        currentPageItems.clear()
-        isChapterFirst = false
+        }
+
+        is StoryContentItem.Text -> {
+          val text = item.paragraph
+          if (text.length > targetCharsPerPage + 200) {
+            val chunks = splitTextIntoBalancedChunks(text, targetCharsPerPage)
+            for (chunk in chunks) {
+              if (currentCharsOnPage + chunk.length > targetCharsPerPage && currentPageItems.isNotEmpty()) {
+                pages.add(
+                  ReadingPage(
+                    pageIndex = pages.size,
+                    displayPageNumber = pages.size + 1,
+                    chapterIndex = chapter.index,
+                    chapterTitle = chapter.title,
+                    chapterNumber = chapter.number,
+                    items = currentPageItems.toList(),
+                    isChapterFirstPage = isChapterFirst
+                  )
+                )
+                currentPageItems = mutableListOf()
+                isChapterFirst = false
+                currentCharsOnPage = 0
+              }
+              currentPageItems.add(StoryContentItem.Text(chunk))
+              currentCharsOnPage += chunk.length
+            }
+          } else {
+            if (currentCharsOnPage + text.length > targetCharsPerPage && currentPageItems.isNotEmpty()) {
+              pages.add(
+                ReadingPage(
+                  pageIndex = pages.size,
+                  displayPageNumber = pages.size + 1,
+                  chapterIndex = chapter.index,
+                  chapterTitle = chapter.title,
+                  chapterNumber = chapter.number,
+                  items = currentPageItems.toList(),
+                  isChapterFirstPage = isChapterFirst
+                )
+              )
+              currentPageItems = mutableListOf()
+              isChapterFirst = false
+              currentCharsOnPage = 0
+            }
+            currentPageItems.add(item)
+            currentCharsOnPage += text.length
+          }
+        }
       }
-      currentChapter = matchingChapter
-      currentChapterIndex = matchingChapter.index
-      isChapterFirst = true
     }
 
-    when (item) {
-      is StoryContentItem.ChapterBreak -> {
-        if (currentPageItems.isNotEmpty()) {
-          pages.add(
-            ReadingPage(
-              pageIndex = pages.size,
-              displayPageNumber = pageNumber++,
-              chapterIndex = currentChapterIndex,
-              chapterTitle = currentChapter?.title ?: novel.chapterTitle,
-              chapterNumber = currentChapter?.number ?: (currentChapterIndex + 1),
-              items = currentPageItems.toList(),
-              isChapterFirstPage = isChapterFirst
-            )
-          )
-          currentPageItems.clear()
-        }
-        currentPageItems.add(item)
-        isChapterFirst = true
-      }
-
-      is StoryContentItem.Photo -> {
-        if (currentPageItems.isNotEmpty()) {
-          pages.add(
-            ReadingPage(
-              pageIndex = pages.size,
-              displayPageNumber = pageNumber++,
-              chapterIndex = currentChapterIndex,
-              chapterTitle = currentChapter?.title ?: novel.chapterTitle,
-              chapterNumber = currentChapter?.number ?: (currentChapterIndex + 1),
-              items = currentPageItems.toList(),
-              isChapterFirstPage = isChapterFirst
-            )
-          )
-          currentPageItems.clear()
-          isChapterFirst = false
-        }
-        pages.add(
-          ReadingPage(
-            pageIndex = pages.size,
-            displayPageNumber = pageNumber++,
-            chapterIndex = currentChapterIndex,
-            chapterTitle = currentChapter?.title ?: novel.chapterTitle,
-            chapterNumber = currentChapter?.number ?: (currentChapterIndex + 1),
-            items = listOf(item),
-            isChapterFirstPage = false
-          )
+    if (currentPageItems.isNotEmpty()) {
+      pages.add(
+        ReadingPage(
+          pageIndex = pages.size,
+          displayPageNumber = pages.size + 1,
+          chapterIndex = chapter.index,
+          chapterTitle = chapter.title,
+          chapterNumber = chapter.number,
+          items = currentPageItems.toList(),
+          isChapterFirstPage = isChapterFirst
         )
-      }
-
-      is StoryContentItem.Text -> {
-        val textLength = item.paragraph.length
-        val hasChapterBreak = currentPageItems.any { it is StoryContentItem.ChapterBreak }
-        if ((hasChapterBreak && currentPageItems.size >= 2) ||
-            (!hasChapterBreak && currentPageItems.size >= 2) ||
-            (currentPageItems.isNotEmpty() && textLength > 320)) {
-          pages.add(
-            ReadingPage(
-              pageIndex = pages.size,
-              displayPageNumber = pageNumber++,
-              chapterIndex = currentChapterIndex,
-              chapterTitle = currentChapter?.title ?: novel.chapterTitle,
-              chapterNumber = currentChapter?.number ?: (currentChapterIndex + 1),
-              items = currentPageItems.toList(),
-              isChapterFirstPage = isChapterFirst
-            )
-          )
-          currentPageItems.clear()
-          isChapterFirst = false
-        }
-        currentPageItems.add(item)
-      }
-    }
-  }
-
-  if (currentPageItems.isNotEmpty()) {
-    pages.add(
-      ReadingPage(
-        pageIndex = pages.size,
-        displayPageNumber = pageNumber++,
-        chapterIndex = currentChapterIndex,
-        chapterTitle = currentChapter?.title ?: novel.chapterTitle,
-        chapterNumber = currentChapter?.number ?: (currentChapterIndex + 1),
-        items = currentPageItems.toList(),
-        isChapterFirstPage = isChapterFirst
       )
-    )
+    }
   }
 
   return if (pages.isEmpty()) {
@@ -2296,6 +2369,35 @@ private fun buildReadingPages(novel: NovelWithState): List<ReadingPage> {
       )
     )
   } else pages
+}
+
+private fun splitTextIntoBalancedChunks(text: String, targetSize: Int): List<String> {
+  val chunks = mutableListOf<String>()
+  var remaining = text
+  while (remaining.length > targetSize) {
+    var splitIndex = remaining.lastIndexOf(". ", targetSize)
+    if (splitIndex == -1 || splitIndex < targetSize / 2) {
+      splitIndex = remaining.lastIndexOf("! ", targetSize)
+    }
+    if (splitIndex == -1 || splitIndex < targetSize / 2) {
+      splitIndex = remaining.lastIndexOf("? ", targetSize)
+    }
+    if (splitIndex == -1 || splitIndex < targetSize / 2) {
+      splitIndex = remaining.lastIndexOf(" ", targetSize)
+    }
+    if (splitIndex == -1 || splitIndex < targetSize / 3) {
+      splitIndex = targetSize
+    } else {
+      splitIndex += 1
+    }
+
+    chunks.add(remaining.substring(0, splitIndex).trim())
+    remaining = remaining.substring(splitIndex).trim()
+  }
+  if (remaining.isNotEmpty()) {
+    chunks.add(remaining)
+  }
+  return chunks
 }
 
 private fun toRomanNumeral(n: Int): String {

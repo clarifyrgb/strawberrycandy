@@ -173,17 +173,52 @@ object EpubParser {
       var firstChapterHeader = ""
 
       var imageCounter = 1
+      var chapterIndexCounter = 1
 
       for (chapterFile in chapterFiles) {
         val chapterHtml = chapterFile.readText()
         val chapterDir = chapterFile.parentFile ?: opfDir
 
-        // Extract title of this chapter if available
-        val hTagMatch = Regex("""<h[1-3][^>]*>(.*?)</h[1-3]>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+        // Extract title of this chapter with comprehensive heuristics
+        var candidateHeader: String? = null
+        
+        // 1. Check h1 to h6 tags
+        val hTagMatch = Regex("""<h[1-6][^>]*>(.*?)</h[1-6]>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
           .find(chapterHtml)
-        val candidateHeader = hTagMatch?.let { stripHtmlTags(cleanHtmlEntities(it.groupValues[1])).trim() }
-        if (candidateHeader.isNullOrBlank().not() && firstChapterHeader.isEmpty()) {
-          firstChapterHeader = candidateHeader!!
+        if (hTagMatch != null) {
+          val clean = stripHtmlTags(cleanHtmlEntities(hTagMatch.groupValues[1])).trim()
+          if (clean.isNotBlank()) candidateHeader = clean
+        }
+
+        // 2. Check elements with class or id referencing chapter/title
+        if (candidateHeader.isNullOrBlank()) {
+          val classTitleMatch = Regex("""<(?:p|div|span)[^>]*(?:class|id)=["'][^"']*(?:chapter|title|heading|subhead)[^"']*["'][^>]*>(.*?)</(?:p|div|span)>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+            .find(chapterHtml)
+          if (classTitleMatch != null) {
+            val clean = stripHtmlTags(cleanHtmlEntities(classTitleMatch.groupValues[1])).trim()
+            if (clean.isNotBlank()) candidateHeader = clean
+          }
+        }
+
+        // 3. Check HTML <title> tag
+        if (candidateHeader.isNullOrBlank()) {
+          val titleMatch = Regex("""<title[^>]*>(.*?)</title>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+            .find(chapterHtml)
+          if (titleMatch != null) {
+            val clean = stripHtmlTags(cleanHtmlEntities(titleMatch.groupValues[1])).trim()
+            if (clean.isNotBlank() && !clean.equals(bookTitle, ignoreCase = true)) {
+              candidateHeader = clean
+            }
+          }
+        }
+
+        // 4. Check file name for chapter indicators
+        if (candidateHeader.isNullOrBlank()) {
+          val nameWithoutExt = chapterFile.nameWithoutExtension
+          val chNumMatch = Regex("""(?:chapter|ch)[-_]?(\d+)""", RegexOption.IGNORE_CASE).find(nameWithoutExt)
+          if (chNumMatch != null) {
+            candidateHeader = "Chapter ${chNumMatch.groupValues[1]}"
+          }
         }
 
         // Extract internal images inside this chapter and convert to [image:uri:caption] markers
@@ -225,9 +260,16 @@ object EpubParser {
         // Convert HTML elements to paragraphs
         val formattedText = htmlToParagraphs(transformedHtml)
         if (formattedText.isNotBlank()) {
-          if (!candidateHeader.isNullOrBlank()) {
-            paragraphsList.add("[chapter:$candidateHeader]")
+          val finalChapterTitle = if (!candidateHeader.isNullOrBlank()) {
+            candidateHeader
+          } else {
+            "Chapter $chapterIndexCounter"
           }
+          if (firstChapterHeader.isEmpty()) {
+            firstChapterHeader = finalChapterTitle
+          }
+          paragraphsList.add("[chapter:$finalChapterTitle]")
+          chapterIndexCounter++
           paragraphsList.add(formattedText)
         }
       }
@@ -355,17 +397,40 @@ object EpubParser {
 
   private fun htmlToParagraphs(html: String): String {
     var text = html
-    // Preserve custom [image:...] markers
+    // Strip styles, scripts, head
     text = text.replace(Regex("""<style[^>]*>.*?</style>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
     text = text.replace(Regex("""<script[^>]*>.*?</script>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
     text = text.replace(Regex("""<head[^>]*>.*?</head>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
 
+    // Preserve CSS text alignment
+    text = text.replace(Regex("""<(?:p|div)[^>]*style=["'][^"']*text-align:\s*center[^"']*["'][^>]*>(.*?)</(?:p|div)>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))) {
+      "\n\n[align:center]${it.groupValues[1].trim()}[/align]\n\n"
+    }
+    text = text.replace(Regex("""<center[^>]*>(.*?)</center>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))) {
+      "\n\n[align:center]${it.groupValues[1].trim()}[/align]\n\n"
+    }
+    text = text.replace(Regex("""<(?:p|div)[^>]*style=["'][^"']*text-align:\s*right[^"']*["'][^>]*>(.*?)</(?:p|div)>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))) {
+      "\n\n[align:right]${it.groupValues[1].trim()}[/align]\n\n"
+    }
+
+    // Preserve blockquotes
+    text = text.replace(Regex("""<blockquote[^>]*>(.*?)</blockquote>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))) {
+      "\n\n[quote]${it.groupValues[1].trim()}[/quote]\n\n"
+    }
+
+    // Preserve decorative horizontal rules and breaks
+    text = text.replace(Regex("""<hr\s*/?>""", RegexOption.IGNORE_CASE), "\n\n❦\n\n")
+
+    // Normalize inline tags to standard bold and italic
+    text = text.replace(Regex("""<strong[^>]*>(.*?)</strong>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "<b>$1</b>")
+    text = text.replace(Regex("""<em[^>]*>(.*?)</em>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "<i>$1</i>")
+
     // Line breaks
     text = text.replace(Regex("""<br\s*/?>""", RegexOption.IGNORE_CASE), "\n")
-    text = text.replace(Regex("""</?(?:p|div|h[1-6]|blockquote|li|tr)[^>]*>""", RegexOption.IGNORE_CASE), "\n\n")
+    text = text.replace(Regex("""</?(?:p|div|h[1-6]|li|tr)[^>]*>""", RegexOption.IGNORE_CASE), "\n\n")
 
-    // Strip remaining tags
-    text = text.replace(Regex("""<[^>]+>"""), "")
+    // Strip remaining tags except our preserved tags: <b>, </b>, <i>, </i>
+    text = text.replace(Regex("""<(?!/?(?:b|i)\b)[^>]+>""", RegexOption.IGNORE_CASE), "")
 
     text = cleanHtmlEntities(text)
 

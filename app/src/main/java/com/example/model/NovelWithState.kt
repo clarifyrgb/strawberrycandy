@@ -25,6 +25,7 @@ data class NovelWithState(
   val coverImageUri: String? get() = novel.coverImageUri
   val coverColorHex: Long get() = novel.coverColorHex
   val chapterTitle: String get() = novel.chapterTitle
+  val contentText: String get() = novel.contentText
   val totalPages: Int get() = novel.totalPages
   val excerpt: String get() = novel.excerpt
   val paragraphs: List<String> get() = novel.contentText.split("\n\n").filter {
@@ -65,48 +66,52 @@ data class NovelWithState(
 
   val chapters: List<BookChapter> get() {
     val items = storyItems
-    val chapterList = mutableListOf<BookChapter>()
-    var currentChapterStart = 0
-    var currentTitle = chapterTitle.ifBlank { "Chapter I • Opening Folio" }
-    var chapterCounter = 1
+    if (items.isEmpty()) return emptyList()
 
-    items.forEachIndexed { index, item ->
-      if (item is StoryContentItem.ChapterBreak) {
-        if (index > currentChapterStart) {
-          chapterList.add(
-            BookChapter(
-              id = "${id}_ch_${chapterCounter}",
-              index = chapterCounter - 1,
-              number = chapterCounter,
-              title = currentTitle,
-              startParagraphIndex = currentChapterStart,
-              endParagraphIndex = index - 1,
-              previewSnippet = getSnippetForRange(items, currentChapterStart, index - 1)
-            )
-          )
-          chapterCounter++
-        }
-        currentChapterStart = index
-        currentTitle = item.title
-      }
+    val breakIndices = items.mapIndexedNotNull { index, item ->
+      if (item is StoryContentItem.ChapterBreak) Pair(index, item) else null
     }
 
-    if (currentChapterStart < items.size) {
-      chapterList.add(
-        BookChapter(
-          id = "${id}_ch_${chapterCounter}",
-          index = chapterCounter - 1,
-          number = chapterCounter,
-          title = currentTitle,
-          startParagraphIndex = currentChapterStart,
-          endParagraphIndex = (items.size - 1).coerceAtLeast(currentChapterStart),
-          previewSnippet = getSnippetForRange(items, currentChapterStart, items.size - 1)
+    if (breakIndices.isNotEmpty()) {
+      val chapterList = mutableListOf<BookChapter>()
+      val firstBreakIndex = breakIndices.first().first
+
+      // If there are paragraphs preceding the first explicit chapter break
+      if (firstBreakIndex > 0) {
+        chapterList.add(
+          BookChapter(
+            id = "${id}_ch_0",
+            index = 0,
+            number = 1,
+            title = chapterTitle.ifBlank { "Prologue • Opening Folio" },
+            startParagraphIndex = 0,
+            endParagraphIndex = firstBreakIndex - 1,
+            previewSnippet = getSnippetForRange(items, 0, firstBreakIndex - 1)
+          )
         )
-      )
+      }
+
+      breakIndices.forEachIndexed { i, (bIndex, bItem) ->
+        val nextBreakIndex = breakIndices.getOrNull(i + 1)?.first ?: items.size
+        val chIdx = chapterList.size
+        val chNum = if (firstBreakIndex > 0) chIdx + 1 else bItem.chapterNumber
+        chapterList.add(
+          BookChapter(
+            id = "${id}_ch_${chIdx}_${bItem.chapterNumber}",
+            index = chIdx,
+            number = chNum,
+            title = bItem.title,
+            startParagraphIndex = bIndex,
+            endParagraphIndex = (nextBreakIndex - 1).coerceAtLeast(bIndex),
+            previewSnippet = getSnippetForRange(items, bIndex, nextBreakIndex - 1)
+          )
+        )
+      }
+      return chapterList
     }
 
     // If only 1 chapter was detected and there are multiple paragraphs, create logical chapters
-    if (chapterList.size <= 1 && items.size >= 4) {
+    if (items.size >= 4) {
       val total = items.size
       val part1End = (total / 3).coerceAtLeast(1)
       val part2End = (2 * total / 3).coerceAtLeast(part1End + 1)
@@ -145,7 +150,17 @@ data class NovelWithState(
       )
     }
 
-    return chapterList
+    return listOf(
+      BookChapter(
+        id = "${id}_ch_1",
+        index = 0,
+        number = 1,
+        title = chapterTitle.ifBlank { "Chapter I • Opening Folio" },
+        startParagraphIndex = 0,
+        endParagraphIndex = (items.size - 1).coerceAtLeast(0),
+        previewSnippet = getSnippetForRange(items, 0, items.size - 1)
+      )
+    )
   }
 
   private fun getSnippetForRange(items: List<StoryContentItem>, start: Int, end: Int): String {
