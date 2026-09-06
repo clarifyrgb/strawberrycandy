@@ -15,4 +15,6 @@ data class ChapterCommentEntity(
   val avatarColorHex: Long = 0xFF5C2D3B,
   val likesCount: Int = 0,
   val isLikedByMe: Boolean = false,
+  val parentCommentId: String? = null,
+  val replyToReaderName: String? = null,
 )

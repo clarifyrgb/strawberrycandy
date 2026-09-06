@@ -913,6 +913,9 @@ fun HomeScreen(
         },
         onGrantPermissionByEmail = if (isSoleOwner) { email, slot ->
           viewModel.grantPermissionByEmail(email, slot)
+        } else null,
+        onUpdateSlotByOwner = if (isSoleOwner) { slot, email, penName, bio, isGranted ->
+          viewModel.updateAuthorSlotByOwner(slot, email, penName, bio, isGranted)
         } else null
       )
     }
@@ -1135,223 +1138,237 @@ private fun TopUtilityBar(
   onOpenUpload: () -> Unit,
   activeTranslatorsCount: Int = 4,
 ) {
-  Row(
+  Column(
     modifier = Modifier
       .fillMaxWidth()
-      .padding(horizontal = 16.dp, vertical = 8.dp),
-    horizontalArrangement = Arrangement.SpaceBetween,
-    verticalAlignment = Alignment.CenterVertically
+      .padding(horizontal = 16.dp, vertical = 6.dp)
   ) {
-    // Left: Brand Title STRAWBERRYCANDY
-    Column {
-      Text(
-        text = "STRAWBERRYCANDY",
-        style = MaterialTheme.typography.titleMedium.copy(
-          letterSpacing = 2.sp,
-          fontWeight = FontWeight.Medium,
-          fontFamily = FontFamily.Serif,
-          fontSize = 15.sp
-        ),
-        color = CharcoalText,
-        modifier = Modifier.testTag("app_brand_title")
-      )
-      Text(
-        text = "NOVEL ARCHIVE",
-        style = MaterialTheme.typography.labelSmall.copy(
-          letterSpacing = 1.sp,
-          fontSize = 7.5.sp,
-          fontWeight = FontWeight.Bold
-        ),
-        color = AntiqueGold
-      )
+    // Primary Header Row: Brand Title on Left, Profile + Sign Out on Right
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.SpaceBetween,
+      verticalAlignment = Alignment.CenterVertically
+    ) {
+      // Left: Brand Title STRAWBERRYCANDY
+      Column {
+        Text(
+          text = "STRAWBERRYCANDY",
+          style = MaterialTheme.typography.titleMedium.copy(
+            letterSpacing = 2.sp,
+            fontWeight = FontWeight.Medium,
+            fontFamily = FontFamily.Serif,
+            fontSize = 15.sp
+          ),
+          color = CharcoalText,
+          modifier = Modifier.testTag("app_brand_title")
+        )
+        Text(
+          text = "NOVEL ARCHIVE",
+          style = MaterialTheme.typography.labelSmall.copy(
+            letterSpacing = 1.sp,
+            fontSize = 7.5.sp,
+            fontWeight = FontWeight.Bold
+          ),
+          color = AntiqueGold
+        )
+      }
+
+      // Right: User Profile + Sign Out (or Sign In)
+      Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+      ) {
+        if (activeUser != null) {
+          // Profile Pill
+          Surface(
+            onClick = onOpenProfile,
+            shape = RoundedCornerShape(16.dp),
+            color = SoftCreamPaper,
+            border = BorderStroke(1.dp, if (isSoleOwner) AntiqueGold.copy(alpha = 0.6f) else SubtleBorder),
+            modifier = Modifier.testTag("reader_profile_pill")
+          ) {
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
+            ) {
+              Box(
+                modifier = Modifier
+                  .size(18.dp)
+                  .clip(CircleShape)
+                  .background(if (activeUser.provider == "GOOGLE") Color(0xFF4285F4) else Color(0xFF1E1D1B)),
+                contentAlignment = Alignment.Center
+              ) {
+                Text(
+                  text = if (activeUser.provider == "GOOGLE") "G" else "",
+                  color = Color.White,
+                  fontSize = 9.sp,
+                  fontWeight = FontWeight.Bold
+                )
+              }
+              Spacer(modifier = Modifier.width(4.dp))
+              val safeDisplayName = activeUser.displayName
+                .replace(Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"), "")
+                .substringBefore("@")
+                .trim()
+                .ifBlank { if (activeUser.role == "TRANSLATOR") "Translator" else "Reader" }
+              Text(
+                text = safeDisplayName.take(10),
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 10.sp,
+                  fontWeight = FontWeight.Medium
+                ),
+                color = CharcoalText
+              )
+              Spacer(modifier = Modifier.width(4.dp))
+              Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = AntiqueGold.copy(alpha = 0.15f),
+                border = BorderStroke(0.5.dp, AntiqueGold.copy(alpha = 0.5f)),
+                modifier = Modifier.testTag("user_points_indicator")
+              ) {
+                Text(
+                  text = "${activeUser.penNamePoints}pt",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Bold
+                  ),
+                  color = AntiqueGold,
+                  modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
+                )
+              }
+            }
+          }
+
+          // Direct, Prominent Sign Out Button (Always visible!)
+          Surface(
+            onClick = onSignOut,
+            shape = RoundedCornerShape(16.dp),
+            color = Color(0xFFFDEDEC),
+            border = BorderStroke(1.dp, Color(0xFFEF9A9A)),
+            modifier = Modifier.testTag("top_utility_sign_out_button")
+          ) {
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+            ) {
+              Icon(
+                imageVector = Icons.Outlined.Logout,
+                contentDescription = "Sign Out",
+                tint = Color(0xFFC62828),
+                modifier = Modifier.size(13.dp)
+              )
+              Spacer(modifier = Modifier.width(3.dp))
+              Text(
+                text = "Sign Out",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontWeight = FontWeight.Bold,
+                  fontSize = 9.5.sp,
+                  color = Color(0xFFC62828)
+                )
+              )
+            }
+          }
+        } else {
+          // Clean Sign In button
+          Surface(
+            onClick = onOpenAuth,
+            shape = RoundedCornerShape(16.dp),
+            color = SoftCreamPaper,
+            border = BorderStroke(1.dp, AntiqueGold),
+            modifier = Modifier.testTag("sign_in_prompt_button")
+          ) {
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+            ) {
+              Icon(
+                imageVector = Icons.Outlined.Person,
+                contentDescription = null,
+                tint = AntiqueGold,
+                modifier = Modifier.size(14.dp)
+              )
+              Spacer(modifier = Modifier.width(4.dp))
+              Text(
+                text = "Sign In",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontWeight = FontWeight.Bold,
+                  fontSize = 11.sp
+                ),
+                color = CharcoalText
+              )
+            }
+          }
+        }
+      }
     }
 
-    // Right: Actions (Translators, Upload, Profile/Sign-in)
-    Row(
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-      // Translators / Curators button (only clickable when logged in)
-      Surface(
-        onClick = onOpenAuthorRooms,
-        enabled = activeUser != null,
-        shape = RoundedCornerShape(16.dp),
-        color = if (activeUser != null) SoftCreamPaper else SoftCreamPaper.copy(alpha = 0.5f),
-        border = BorderStroke(1.dp, if (activeUser != null) SubtleBorder else SubtleBorder.copy(alpha = 0.4f)),
-        modifier = Modifier.testTag("author_rooms_button")
+    // Secondary Row: Curators & Upload buttons (only when logged in)
+    if (activeUser != null) {
+      Spacer(modifier = Modifier.height(6.dp))
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.End,
+        verticalAlignment = Alignment.CenterVertically
       ) {
-        Row(
-          verticalAlignment = Alignment.CenterVertically,
-          modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
-        ) {
-          Icon(
-            imageVector = if (activeUser != null) Icons.Outlined.WorkspacePremium else Icons.Outlined.Lock,
-            contentDescription = if (activeUser != null) "Curators" else "Curators (Log in required)",
-            tint = if (activeUser != null) AntiqueGold else CharcoalSecondary.copy(alpha = 0.5f),
-            modifier = Modifier.size(13.dp)
-          )
-          Spacer(modifier = Modifier.width(4.dp))
-          Text(
-            text = if (activeUser != null) "$activeTranslatorsCount Curators" else "Curators (Log In)",
-            style = MaterialTheme.typography.labelSmall.copy(
-              fontWeight = FontWeight.SemiBold,
-              fontSize = 9.5.sp
-            ),
-            color = if (activeUser != null) CharcoalText else CharcoalSecondary.copy(alpha = 0.5f)
-          )
-        }
-      }
-
-      if (canUpload) {
+        // Curators button
         Surface(
-          onClick = onOpenUpload,
-          shape = RoundedCornerShape(16.dp),
-          color = AntiqueGoldLight.copy(alpha = 0.7f),
-          border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.5f)),
-          modifier = Modifier.testTag("owner_upload_button")
+          onClick = onOpenAuthorRooms,
+          shape = RoundedCornerShape(14.dp),
+          color = SoftCreamPaper,
+          border = BorderStroke(1.dp, SubtleBorder),
+          modifier = Modifier.testTag("author_rooms_button")
         ) {
           Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
           ) {
             Icon(
-              imageVector = Icons.Outlined.Upload,
-              contentDescription = null,
+              imageVector = Icons.Outlined.WorkspacePremium,
+              contentDescription = "Curators",
               tint = AntiqueGold,
-              modifier = Modifier.size(13.dp)
-            )
-            Spacer(modifier = Modifier.width(3.dp))
-            Text(
-              text = "Upload",
-              style = MaterialTheme.typography.labelSmall.copy(
-                fontWeight = FontWeight.Bold,
-                fontSize = 9.5.sp
-              ),
-              color = AntiqueGold
-            )
-          }
-        }
-      }
-
-      // Profile / Sign-in
-      if (activeUser != null) {
-        Surface(
-          onClick = onOpenProfile,
-          shape = RoundedCornerShape(16.dp),
-          color = SoftCreamPaper,
-          border = BorderStroke(1.dp, if (isSoleOwner) AntiqueGold.copy(alpha = 0.6f) else SubtleBorder),
-          modifier = Modifier.testTag("reader_profile_pill")
-        ) {
-          Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
-          ) {
-            Box(
-              modifier = Modifier
-                .size(18.dp)
-                .clip(CircleShape)
-                .background(if (activeUser.provider == "GOOGLE") Color(0xFF4285F4) else Color(0xFF1E1D1B)),
-              contentAlignment = Alignment.Center
-            ) {
-              Text(
-                text = if (activeUser.provider == "GOOGLE") "G" else "",
-                color = Color.White,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold
-              )
-            }
-            Spacer(modifier = Modifier.width(4.dp))
-            val safeDisplayName = activeUser.displayName
-              .replace(Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"), "")
-              .substringBefore("@")
-              .trim()
-              .ifBlank { if (activeUser.role == "TRANSLATOR") "Translator" else "Reader" }
-            Text(
-              text = safeDisplayName.take(10),
-              style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Medium
-              ),
-              color = CharcoalText
-            )
-            Spacer(modifier = Modifier.width(4.dp))
-            Surface(
-              shape = RoundedCornerShape(6.dp),
-              color = AntiqueGold.copy(alpha = 0.15f),
-              border = BorderStroke(0.5.dp, AntiqueGold.copy(alpha = 0.5f)),
-              modifier = Modifier.testTag("user_points_indicator")
-            ) {
-              Text(
-                text = "${activeUser.penNamePoints}pt",
-                style = MaterialTheme.typography.labelSmall.copy(
-                  fontSize = 8.sp,
-                  fontWeight = FontWeight.Bold
-                ),
-                color = AntiqueGold,
-                modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
-              )
-            }
-          }
-        }
-
-        Spacer(modifier = Modifier.width(4.dp))
-
-        // Prominent Top Bar Sign Out Button
-        Surface(
-          onClick = onSignOut,
-          shape = RoundedCornerShape(16.dp),
-          color = SoftCreamPaper,
-          border = BorderStroke(1.dp, Color(0xFFC62828).copy(alpha = 0.4f)),
-          modifier = Modifier.testTag("top_utility_sign_out_button")
-        ) {
-          Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp)
-          ) {
-            Icon(
-              imageVector = Icons.Outlined.Logout,
-              contentDescription = "Sign Out",
-              tint = Color(0xFFC62828),
               modifier = Modifier.size(12.dp)
             )
             Spacer(modifier = Modifier.width(3.dp))
             Text(
-              text = "Sign Out",
+              text = "$activeTranslatorsCount Translators",
               style = MaterialTheme.typography.labelSmall.copy(
                 fontWeight = FontWeight.SemiBold,
-                fontSize = 9.sp,
-                color = Color(0xFFC62828)
-              )
-            )
-          }
-        }
-      } else {
-        Surface(
-          onClick = onOpenAuth,
-          shape = RoundedCornerShape(16.dp),
-          color = SoftCreamPaper,
-          border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.5f)),
-          modifier = Modifier.testTag("sign_in_prompt_button")
-        ) {
-          Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
-          ) {
-            Icon(
-              imageVector = Icons.Outlined.Person,
-              contentDescription = null,
-              tint = AntiqueGold,
-              modifier = Modifier.size(13.dp)
-            )
-            Spacer(modifier = Modifier.width(3.dp))
-            Text(
-              text = "Sign In",
-              style = MaterialTheme.typography.labelSmall.copy(
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 10.sp
+                fontSize = 9.5.sp
               ),
               color = CharcoalText
             )
+          }
+        }
+
+        if (canUpload) {
+          Spacer(modifier = Modifier.width(6.dp))
+          Surface(
+            onClick = onOpenUpload,
+            shape = RoundedCornerShape(14.dp),
+            color = AntiqueGoldLight.copy(alpha = 0.7f),
+            border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.6f)),
+            modifier = Modifier.testTag("owner_upload_button")
+          ) {
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+            ) {
+              Icon(
+                imageVector = Icons.Outlined.Upload,
+                contentDescription = null,
+                tint = AntiqueGold,
+                modifier = Modifier.size(12.dp)
+              )
+              Spacer(modifier = Modifier.width(3.dp))
+              Text(
+                text = "Upload",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontWeight = FontWeight.Bold,
+                  fontSize = 9.5.sp
+                ),
+                color = AntiqueGold
+              )
+            }
           }
         }
       }

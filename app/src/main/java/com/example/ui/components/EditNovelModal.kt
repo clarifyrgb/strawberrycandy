@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
@@ -120,6 +121,7 @@ fun EditNovelModal(
   var isPerVolumeRelease by remember { mutableStateOf(novel.isPerVolume) }
 
   var isConfirmDeleteOpen by remember { mutableStateOf(false) }
+  var isAddChapterDialogOpen by remember { mutableStateOf(false) }
 
   val singleCoverPickerLauncher = rememberLauncherForActivityResult(
     contract = ActivityResultContracts.PickVisualMedia()
@@ -400,6 +402,35 @@ fun EditNovelModal(
             unfocusedTextColor = CharcoalText
           )
         )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        OutlinedButton(
+          onClick = { isAddChapterDialogOpen = true },
+          shape = RoundedCornerShape(12.dp),
+          border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.6f)),
+          contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+          modifier = Modifier
+            .fillMaxWidth()
+            .height(38.dp)
+            .testTag("append_chapter_button")
+        ) {
+          Icon(
+            imageVector = Icons.Outlined.Add,
+            contentDescription = null,
+            tint = AntiqueGold,
+            modifier = Modifier.size(15.dp)
+          )
+          Spacer(modifier = Modifier.width(6.dp))
+          Text(
+            text = "+ Add / Append New Chapter",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontWeight = FontWeight.Bold,
+              fontSize = 11.5.sp,
+              color = CharcoalText
+            )
+          )
+        }
 
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -807,6 +838,24 @@ fun EditNovelModal(
       },
       containerColor = SoftCreamPaper,
       shape = RoundedCornerShape(20.dp)
+    )
+  }
+
+  // Add Chapter Dialog
+  if (isAddChapterDialogOpen) {
+    AddChapterDialog(
+      novel = novel,
+      onDismiss = { isAddChapterDialogOpen = false },
+      onAddChapter = { _, newTitle, newContent ->
+        contentText = buildString {
+          append(contentText.trimEnd())
+          append("\n\n### ")
+          append(newTitle.trim().ifBlank { "New Chapter" })
+          append("\n\n")
+          append(newContent.trim())
+        }
+        isAddChapterDialogOpen = false
+      }
     )
   }
 }

@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
@@ -62,6 +63,7 @@ fun ChapterSelectionModal(
   chapters: List<BookChapter>,
   currentChapterIndex: Int,
   onSelectChapter: (chapterIndex: Int, startParagraphIndex: Int) -> Unit,
+  onAddChapterClick: (() -> Unit)? = null,
   onDismiss: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
@@ -236,7 +238,7 @@ fun ChapterSelectionModal(
                         text = chapter.title,
                         style = MaterialTheme.typography.titleSmall.copy(
                           fontFamily = FontFamily.Serif,
-                          fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
+                          fontWeight = FontWeight.Bold,
                           fontSize = 13.5.sp
                         ),
                         color = if (isCurrent) CharcoalText else CharcoalText.copy(alpha = 0.9f)
@@ -380,6 +382,35 @@ fun ChapterSelectionModal(
               contentDescription = null,
               modifier = Modifier.size(14.dp),
               tint = if (canGoNext) CharcoalText else CharcoalTertiary
+            )
+          }
+        }
+
+        if (onAddChapterClick != null) {
+          Spacer(modifier = Modifier.height(14.dp))
+          OutlinedButton(
+            onClick = onAddChapterClick,
+            shape = RoundedCornerShape(14.dp),
+            border = BorderStroke(1.2.dp, AntiqueGold),
+            modifier = Modifier
+              .fillMaxWidth()
+              .height(38.dp)
+              .testTag("add_chapter_from_toc_button"),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = AntiqueGold)
+          ) {
+            Icon(
+              imageVector = Icons.Outlined.Add,
+              contentDescription = null,
+              modifier = Modifier.size(14.dp),
+              tint = AntiqueGold
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+              text = "+ Add New Chapter to Novel",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp
+              )
             )
           }
         }

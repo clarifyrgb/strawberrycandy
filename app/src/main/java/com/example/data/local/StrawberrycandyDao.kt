@@ -126,6 +126,9 @@ interface StrawberrycandyDao {
   @Query("SELECT COUNT(*) FROM author_slots")
   suspend fun getAuthorSlotCount(): Int
 
+  @Query("SELECT * FROM author_slots ORDER BY slotNumber ASC")
+  suspend fun getAllAuthorSlotsSync(): List<AuthorSlotEntity>
+
   // Chapter Comments per Chapter
   @Query("SELECT * FROM chapter_comments WHERE novelId = :novelId AND chapterTitle = :chapterTitle ORDER BY timestamp DESC")
   fun getCommentsForChapter(novelId: String, chapterTitle: String): Flow<List<ChapterCommentEntity>>

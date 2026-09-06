@@ -54,6 +54,7 @@ class StrawberrycandyRepository(
       dao.sanitizeSlotPenNames()
       dao.sanitizeCommentNames()
       syncOwnerConfiguration()
+      eraseExampleTranslators()
       ensureQuickFindCategoriesExist()
     }
   }
@@ -142,11 +143,32 @@ class StrawberrycandyRepository(
         lastActiveTimestamp = System.currentTimeMillis()
       )
       dao.updateAuthorSlot(updated)
+      if (existing.translatorEmail != null) {
+        val prof = dao.getReaderProfileByEmail(existing.translatorEmail)
+        if (prof != null) {
+          dao.insertReaderProfile(prof.copy(displayName = cleanPenName))
+        }
+      }
     }
   }
 
   suspend fun updateAuthorSlotCover(slotNumber: Int, coverImageUri: String) {
     dao.updateAuthorSlotCover(slotNumber, coverImageUri)
+  }
+
+  suspend fun addChapterToNovel(novelId: String, chapterTitle: String, chapterContent: String) {
+    val existing = dao.getNovelById(novelId) ?: return
+    val cleanTitle = chapterTitle.trim().ifBlank { "Next Chapter" }
+    val cleanContent = chapterContent.trim()
+    val separator = if (existing.contentText.isNotBlank()) "\n\n" else ""
+    val formattedChapter = "$separator[chapter: $cleanTitle]\n\n$cleanContent"
+    val newFullContent = existing.contentText + formattedChapter
+    val newTotalPages = maxOf(existing.totalPages + 1, newFullContent.split("\n\n").count { it.isNotBlank() } * 2)
+    val updated = existing.copy(
+      contentText = newFullContent,
+      totalPages = newTotalPages
+    )
+    dao.insertNovel(updated)
   }
 
   suspend fun setSlotPermission(slotNumber: Int, isGranted: Boolean) {
@@ -234,7 +256,9 @@ class StrawberrycandyRepository(
       "OWNER"
     } else if (preGrantedSlot != null && preGrantedSlot.isPermissionGranted) {
       "TRANSLATOR"
-    } else if (role == "TRANSLATOR" || existingProfile?.role == "TRANSLATOR") {
+    } else if (existingProfile?.role == "TRANSLATOR") {
+      "TRANSLATOR"
+    } else if (role == "TRANSLATOR") {
       "TRANSLATOR"
     } else {
       "READER"
@@ -242,10 +266,10 @@ class StrawberrycandyRepository(
 
     val finalSlot = if (finalRole == "OWNER") {
       0
-    } else if (preGrantedSlot != null) {
-      preGrantedSlot.slotNumber
+    } else if (finalRole == "TRANSLATOR") {
+      preGrantedSlot?.slotNumber ?: existingProfile?.authorSlot ?: authorSlot
     } else {
-      authorSlot ?: existingProfile?.authorSlot
+      null
     }
 
     val emailRegex = Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}")
@@ -924,130 +948,100 @@ class StrawberrycandyRepository(
         isClaimed = true,
         isPermissionGranted = true,
         translatorEmail = "clarifymanga@gmail.com"
-      ),
-      AuthorSlotEntity(
-        slotNumber = 1,
-        authorName = "Aria Thorne",
-        penName = "Aria Thorne",
-        bio = "Atmospheric gothic fiction, liminal romances, and cathedral solitude.",
-        avatarColorHex = 0xFF5C2D3B,
-        accessCode = "AUTH-ROOM-1",
-        isClaimed = true,
-        isPermissionGranted = true,
-        translatorEmail = "aria.thorne@gmail.com"
-      ),
-      AuthorSlotEntity(
-        slotNumber = 2,
-        authorName = "Felix Moreau",
-        penName = "Felix Moreau",
-        bio = "Speculative architectural essays, existential monographs, and twilight studies.",
-        avatarColorHex = 0xFF28362D,
-        accessCode = "AUTH-ROOM-2",
-        isClaimed = true,
-        isPermissionGranted = true,
-        translatorEmail = "felix.moreau@gmail.com"
-      ),
-      AuthorSlotEntity(
-        slotNumber = 3,
-        authorName = "Clara O'Connor",
-        penName = "Clara O'Connor",
-        bio = "Chronicles of quiet coastal landscapes, mist-shrouded poetry, and dawn light.",
-        avatarColorHex = 0xFF21252D,
-        accessCode = "AUTH-ROOM-3",
-        isClaimed = true,
-        isPermissionGranted = true,
-        translatorEmail = "clara.oconnor@gmail.com"
-      ),
-      AuthorSlotEntity(
-        slotNumber = 4,
-        authorName = "Dante Valeri",
-        penName = "Dante Valeri",
-        bio = "Modernist psychological realism, chamber memoirs, and classical dialogue.",
-        avatarColorHex = 0xFF4A3428,
-        accessCode = "AUTH-ROOM-4",
-        isClaimed = true,
-        isPermissionGranted = true,
-        translatorEmail = "dante.valeri@gmail.com"
-      ),
-      AuthorSlotEntity(
-        slotNumber = 5,
-        authorName = "Evelyn Vance",
-        penName = "Evelyn Vance",
-        bio = "Mythic folklore adaptations, lyrical historical drama, and translated ballads.",
-        avatarColorHex = 0xFF3D405B,
-        accessCode = "AUTH-ROOM-5",
-        isClaimed = false,
-        isPermissionGranted = false,
-        translatorEmail = "evelyn.vance@gmail.com"
-      ),
-      AuthorSlotEntity(
-        slotNumber = 6,
-        authorName = "Julian Croft",
-        penName = "Julian Croft",
-        bio = "Philosophical noir novellas, urban rain memoirs, and midnight translations.",
-        avatarColorHex = 0xFF4A5859,
-        accessCode = "AUTH-ROOM-6",
-        isClaimed = false,
-        isPermissionGranted = false,
-        translatorEmail = "julian.croft@gmail.com"
-      ),
-      AuthorSlotEntity(
-        slotNumber = 7,
-        authorName = "Mira Hashimoto",
-        penName = "Mira Hashimoto",
-        bio = "Quiet magical realism, tea garden parables, and celestial vignettes.",
-        avatarColorHex = 0xFF6B4E71,
-        accessCode = "AUTH-ROOM-7",
-        isClaimed = false,
-        isPermissionGranted = false,
-        translatorEmail = "mira.hashimoto@gmail.com"
-      ),
-      AuthorSlotEntity(
-        slotNumber = 8,
-        authorName = "Lucian Bell",
-        penName = "Lucian Bell",
-        bio = "Neo-Victorian detective mysteries and classical gothic archives.",
-        avatarColorHex = 0xFF583E26,
-        accessCode = "AUTH-ROOM-8",
-        isClaimed = false,
-        isPermissionGranted = false,
-        translatorEmail = "lucian.bell@gmail.com"
-      ),
-      AuthorSlotEntity(
-        slotNumber = 9,
-        authorName = "Sophie Lind",
-        penName = "Sophie Lind",
-        bio = "Nordic minimalist fiction, winter journals, and island solitude.",
-        avatarColorHex = 0xFF2E4057,
-        accessCode = "AUTH-ROOM-9",
-        isClaimed = false,
-        isPermissionGranted = false,
-        translatorEmail = "sophie.lind@gmail.com"
-      ),
-      AuthorSlotEntity(
-        slotNumber = 10,
-        authorName = "Rowan Mercer",
-        penName = "Rowan Mercer",
-        bio = "Antiquity chronicles, lost library manuscripts, and epistolary tragedies.",
-        avatarColorHex = 0xFF4B3832,
-        accessCode = "AUTH-ROOM-10",
-        isClaimed = false,
-        isPermissionGranted = false,
-        translatorEmail = "rowan.mercer@gmail.com"
       )
-    )
+    ) + (1..10).map { slotNum ->
+      AuthorSlotEntity(
+        slotNumber = slotNum,
+        authorName = "",
+        penName = "",
+        bio = "",
+        avatarColorHex = 0xFF353C48,
+        accessCode = "AUTH-ROOM-$slotNum",
+        isClaimed = false,
+        isPermissionGranted = false,
+        translatorEmail = null
+      )
+    }
 
     if (dao.getAuthorSlotCount() == 0) {
       dao.insertAuthorSlots(defaultSlots)
     } else {
-      // Ensure all 10 translator slots plus slot 0 exist and have emails
       for (slot in defaultSlots) {
         val current = dao.getAuthorSlot(slot.slotNumber)
         if (current == null) {
           dao.updateAuthorSlot(slot)
-        } else if (current.translatorEmail.isNullOrBlank()) {
-          dao.updateAuthorSlot(current.copy(translatorEmail = slot.translatorEmail))
         }
+      }
+    }
+  }
+
+  private suspend fun eraseExampleTranslators() {
+    val exampleNames = setOf(
+      "Aria Thorne", "Felix Moreau", "Clara O'Connor", "Dante Valeri",
+      "Evelyn Vance", "Julian Croft", "Mira Hashimoto", "Lucian Bell",
+      "Sophie Lind", "Rowan Mercer"
+    )
+    val exampleEmails = setOf(
+      "aria.thorne@gmail.com", "felix.moreau@gmail.com", "clara.oconnor@gmail.com",
+      "dante.valeri@gmail.com", "evelyn.vance@gmail.com", "julian.croft@gmail.com",
+      "mira.hashimoto@gmail.com", "lucian.bell@gmail.com", "sophie.lind@gmail.com",
+      "rowan.mercer@gmail.com"
+    )
+    val slots = dao.getAllAuthorSlotsSync()
+    for (slot in slots) {
+      if (slot.slotNumber > 0) {
+        val hasExampleName = slot.penName in exampleNames || slot.authorName in exampleNames
+        val hasExampleEmail = slot.translatorEmail != null && slot.translatorEmail.lowercase() in exampleEmails
+        if (hasExampleName || hasExampleEmail) {
+          dao.updateAuthorSlot(
+            slot.copy(
+              authorName = "",
+              penName = "",
+              bio = "",
+              coverImageUri = null,
+              translatorEmail = null,
+              isClaimed = false,
+              isPermissionGranted = false
+            )
+          )
+        }
+      }
+    }
+  }
+
+  suspend fun updateAuthorSlotByOwner(
+    slotNumber: Int,
+    translatorEmail: String?,
+    penName: String,
+    bio: String,
+    isPermissionGranted: Boolean
+  ) {
+    val existing = dao.getAuthorSlot(slotNumber) ?: return
+    val cleanEmail = translatorEmail?.trim()?.lowercase()?.ifBlank { null }
+    val cleanPenName = penName.trim()
+    val cleanBio = bio.trim()
+    val updated = existing.copy(
+      translatorEmail = cleanEmail,
+      penName = cleanPenName,
+      authorName = cleanPenName,
+      bio = cleanBio,
+      isPermissionGranted = isPermissionGranted,
+      isClaimed = cleanEmail != null
+    )
+    dao.updateAuthorSlot(updated)
+
+    if (cleanEmail != null) {
+      val existingProfile = dao.getReaderProfileByEmail(cleanEmail)
+      if (existingProfile != null && existingProfile.role != "OWNER") {
+        val updatedRole = if (isPermissionGranted) "TRANSLATOR" else "READER"
+        val updatedSlot = if (isPermissionGranted) slotNumber else null
+        dao.insertReaderProfile(
+          existingProfile.copy(
+            role = updatedRole,
+            authorSlot = updatedSlot,
+            displayName = if (cleanPenName.isNotBlank()) cleanPenName else existingProfile.displayName
+          )
+        )
       }
     }
   }
@@ -1082,6 +1076,8 @@ class StrawberrycandyRepository(
     readerEmail: String = "",
     commentText: String,
     avatarColorHex: Long = 0xFF5C2D3B,
+    parentCommentId: String? = null,
+    replyToReaderName: String? = null,
   ) {
     val cleanReaderName = if (readerName.contains("@")) {
       val prefix = readerName.substringBefore("@").replace(".", " ").trim()
@@ -1099,7 +1095,9 @@ class StrawberrycandyRepository(
       timestamp = System.currentTimeMillis(),
       avatarColorHex = avatarColorHex,
       likesCount = 0,
-      isLikedByMe = false
+      isLikedByMe = false,
+      parentCommentId = parentCommentId,
+      replyToReaderName = replyToReaderName,
     )
     dao.insertComment(comment)
   }
@@ -1128,10 +1126,35 @@ class StrawberrycandyRepository(
     paragraphIndex: Int,
     note: String = ""
   ): Boolean {
-    val existing = dao.findBookmarkByQuote(novelId, quoteText)
+    return saveHighlight(
+      novelId = novelId,
+      chapterTitle = chapterTitle,
+      quoteText = quoteText,
+      paragraphIndex = paragraphIndex,
+      colorHex = 0xFFD4AF37,
+      note = note
+    )
+  }
+
+  suspend fun saveHighlight(
+    novelId: String,
+    chapterTitle: String,
+    quoteText: String,
+    paragraphIndex: Int,
+    colorHex: Long,
+    note: String = ""
+  ): Boolean {
+    val existing = dao.findBookmarkByQuote(novelId, quoteText.trim())
     return if (existing != null) {
-      dao.deleteBookmark(existing.id)
-      false // removed
+      if (existing.colorHex == colorHex) {
+        // Tapping same color removes highlight
+        dao.deleteBookmark(existing.id)
+        false
+      } else {
+        // Change highlight color
+        dao.insertBookmark(existing.copy(colorHex = colorHex, timestamp = System.currentTimeMillis()))
+        true
+      }
     } else {
       val bookmark = BookmarkHighlightEntity(
         id = "bmk_" + UUID.randomUUID().toString().take(8),
@@ -1140,11 +1163,11 @@ class StrawberrycandyRepository(
         quoteText = quoteText.trim(),
         paragraphIndex = paragraphIndex,
         timestamp = System.currentTimeMillis(),
-        colorHex = 0xFFD4AF37,
+        colorHex = colorHex,
         note = note
       )
       dao.insertBookmark(bookmark)
-      true // added
+      true
     }
   }
 

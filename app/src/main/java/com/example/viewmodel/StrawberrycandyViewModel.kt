@@ -380,6 +380,23 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     }
   }
 
+  fun updateAuthorSlotByOwner(
+    slotNumber: Int,
+    translatorEmail: String?,
+    penName: String,
+    bio: String,
+    isPermissionGranted: Boolean
+  ) {
+    viewModelScope.launch {
+      repository.updateAuthorSlotByOwner(slotNumber, translatorEmail, penName, bio, isPermissionGranted)
+      _snackbarMessage.value = if (isPermissionGranted) {
+        "Translator permission granted to ${translatorEmail ?: "Seat $slotNumber"}"
+      } else {
+        "Updated Seat $slotNumber"
+      }
+    }
+  }
+
   fun signOut() {
     viewModelScope.launch {
       repository.signOut()
@@ -471,18 +488,15 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
       _isAuthDialogOpen.value = true
       return
     }
-    if (user.penNamePoints < 1 && !isOwner(user)) {
-      _snackbarMessage.value = "🔒 Changing your pen name requires 1 point. Finish a novel to earn 1 point!"
-      return
-    }
     viewModelScope.launch {
-      val success = repository.changePenNameWithPoint(user.userId, newPenName)
-      if (success) {
-        _snackbarMessage.value = "Pen name changed successfully! 1 point used. ⭐"
-        _isProfileDialogOpen.value = false
-      } else {
-        _snackbarMessage.value = "Unable to change pen name. 1 novel completion point required."
+      repository.updateReaderDisplayName(user.userId, newPenName)
+      if (user.authorSlot != null) {
+        val slot = uiState.value.authorSlots.find { it.slotNumber == user.authorSlot }
+        if (slot != null) {
+          repository.updateAuthorSlot(user.authorSlot, newPenName, newPenName, slot.bio)
+        }
       }
+      _snackbarMessage.value = "Pen name updated to '$newPenName' ✨"
     }
   }
 
@@ -503,44 +517,7 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
   }
 
   fun updateAuthorSlotWithPoint(slotNumber: Int, authorName: String, penName: String, bio: String) {
-    val user = activeUser.value ?: return
-    val isSoleOwner = isOwner(user)
-
-    if (isSoleOwner) {
-      viewModelScope.launch {
-        repository.updateAuthorSlot(slotNumber, authorName, penName, bio)
-        _snackbarMessage.value = "Curator profile updated"
-      }
-      return
-    }
-
-    val currentSlot = user.authorSlot
-    if (currentSlot == slotNumber) {
-      val existingSlot = uiState.value.authorSlots.find { it.slotNumber == slotNumber }
-      val isChangingPenName = existingSlot != null && existingSlot.penName != penName.trim()
-
-      if (isChangingPenName) {
-        if (user.penNamePoints < 1) {
-          _snackbarMessage.value = "🔒 Changing your pen name requires 1 point earned from finishing a novel!"
-          return
-        }
-        viewModelScope.launch {
-          val success = repository.changePenNameWithPoint(user.userId, penName)
-          if (success) {
-            repository.updateAuthorSlot(slotNumber, penName, penName, bio)
-            _snackbarMessage.value = "Pen name updated! 1 point deducted. ⭐"
-          } else {
-            _snackbarMessage.value = "Insufficient points to change pen name."
-          }
-        }
-      } else {
-        // Only bio or photo updated
-        viewModelScope.launch {
-          repository.updateAuthorSlot(slotNumber, penName, penName, bio)
-          _snackbarMessage.value = "Profile bio updated"
-        }
-      }
-    }
+    updateAuthorSlot(slotNumber, authorName, penName, bio)
   }
 
   fun uploadNovel(
@@ -589,7 +566,14 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     return repository.getCommentCountForChapter(novelId, chapterTitle)
   }
 
-  fun postComment(novelId: String, chapterTitle: String, text: String, penName: String? = null) {
+  fun postComment(
+    novelId: String,
+    chapterTitle: String,
+    text: String,
+    penName: String? = null,
+    parentCommentId: String? = null,
+    replyToReaderName: String? = null,
+  ) {
     val user = activeUser.value
     val readerName = penName?.trim()?.takeIf { it.isNotBlank() }
       ?: user?.displayName
@@ -608,9 +592,15 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
         readerName = readerName,
         readerEmail = readerEmail,
         commentText = text,
-        avatarColorHex = avatarHex
+        avatarColorHex = avatarHex,
+        parentCommentId = parentCommentId,
+        replyToReaderName = replyToReaderName,
       )
-      _snackbarMessage.value = "Thought posted on $chapterTitle"
+      _snackbarMessage.value = if (replyToReaderName != null) {
+        "Reply posted to @$replyToReaderName"
+      } else {
+        "Thought posted on $chapterTitle"
+      }
     }
   }
 
@@ -639,6 +629,20 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     }
   }
 
+  fun saveHighlight(
+    novelId: String,
+    chapterTitle: String,
+    quoteText: String,
+    paragraphIndex: Int,
+    colorHex: Long,
+    note: String = ""
+  ) {
+    viewModelScope.launch {
+      val added = repository.saveHighlight(novelId, chapterTitle, quoteText, paragraphIndex, colorHex, note)
+      _snackbarMessage.value = if (added) "Line highlighted in your favorite colors" else "Highlight removed"
+    }
+  }
+
   fun deleteBookmark(bookmarkId: String) {
     viewModelScope.launch {
       repository.deleteBookmark(bookmarkId)
@@ -649,7 +653,18 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
   fun updateAuthorSlot(slotNumber: Int, authorName: String, penName: String, bio: String) {
     viewModelScope.launch {
       repository.updateAuthorSlot(slotNumber, authorName, penName, bio)
+      val user = activeUser.value
+      if (user != null && user.authorSlot == slotNumber) {
+        repository.updateReaderDisplayName(user.userId, penName)
+      }
       _snackbarMessage.value = "Translator Profile updated ($penName)"
+    }
+  }
+
+  fun addChapterToNovel(novelId: String, chapterTitle: String, chapterContent: String) {
+    viewModelScope.launch {
+      repository.addChapterToNovel(novelId, chapterTitle, chapterContent)
+      _snackbarMessage.value = "Chapter '$chapterTitle' added successfully!"
     }
   }
 

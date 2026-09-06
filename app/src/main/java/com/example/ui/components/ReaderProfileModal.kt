@@ -177,18 +177,54 @@ fun ReaderProfileModal(
             )
           }
 
-          IconButton(
-            onClick = onDismiss,
-            modifier = Modifier
-              .size(28.dp)
-              .testTag("profile_close_button")
-          ) {
-            Icon(
-              imageVector = Icons.Outlined.Close,
-              contentDescription = "Close dialog",
-              tint = CharcoalSecondary,
-              modifier = Modifier.size(18.dp)
-            )
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Surface(
+              onClick = {
+                onDismiss()
+                onSignOut()
+              },
+              shape = RoundedCornerShape(8.dp),
+              color = Color(0xFFFDEDEC),
+              border = BorderStroke(1.dp, Color(0xFFE57373)),
+              modifier = Modifier.testTag("profile_top_sign_out_button")
+            ) {
+              Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+              ) {
+                Icon(
+                  imageVector = Icons.Outlined.Logout,
+                  contentDescription = "Sign Out",
+                  tint = Color(0xFFC62828),
+                  modifier = Modifier.size(12.dp)
+                )
+                Spacer(modifier = Modifier.width(3.dp))
+                Text(
+                  text = "Sign Out",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFC62828)
+                  )
+                )
+              }
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            IconButton(
+              onClick = onDismiss,
+              modifier = Modifier
+                .size(28.dp)
+                .testTag("profile_close_button")
+            ) {
+              Icon(
+                imageVector = Icons.Outlined.Close,
+                contentDescription = "Close dialog",
+                tint = CharcoalSecondary,
+                modifier = Modifier.size(18.dp)
+              )
+            }
           }
         }
 

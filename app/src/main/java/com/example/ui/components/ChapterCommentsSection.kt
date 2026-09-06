@@ -18,8 +18,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Reply
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material3.Button
@@ -27,6 +29,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -66,7 +69,7 @@ fun ChapterCommentsSection(
   chapterTitle: String,
   comments: List<ChapterCommentEntity>,
   activeReaderName: String?,
-  onPostComment: (text: String, penName: String?) -> Unit,
+  onPostComment: (text: String, penName: String?, parentCommentId: String?, replyToReaderName: String?) -> Unit,
   onLikeComment: (commentId: String) -> Unit,
   modifier: Modifier = Modifier,
 ) {
@@ -75,6 +78,7 @@ fun ChapterCommentsSection(
     mutableStateOf(activeReaderName ?: "")
   }
   var isEditingPenName by remember { mutableStateOf(false) }
+  var replyingToComment by remember { mutableStateOf<ChapterCommentEntity?>(null) }
 
   var liveTickerMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
   LaunchedEffect(Unit) {
@@ -236,13 +240,80 @@ fun ChapterCommentsSection(
 
       Spacer(modifier = Modifier.height(12.dp))
 
+      // Replying to banner if active
+      if (replyingToComment != null) {
+        Surface(
+          shape = RoundedCornerShape(10.dp),
+          color = AntiqueGold.copy(alpha = 0.12f),
+          border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.4f)),
+          modifier = Modifier
+            .fillMaxWidth()
+            .testTag("replying_to_banner")
+        ) {
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .padding(horizontal = 10.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              modifier = Modifier.weight(1f)
+            ) {
+              Icon(
+                imageVector = Icons.AutoMirrored.Outlined.Reply,
+                contentDescription = null,
+                tint = AntiqueGold,
+                modifier = Modifier.size(14.dp)
+              )
+              Spacer(modifier = Modifier.width(6.dp))
+              Column {
+                Text(
+                  text = "Replying to ${replyingToComment!!.readerName}",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = AntiqueGold
+                  )
+                )
+                Text(
+                  text = "“${replyingToComment!!.commentText.take(45)}${if (replyingToComment!!.commentText.length > 45) "…" else ""}”",
+                  style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Serif,
+                    color = CharcoalSecondary
+                  ),
+                  maxLines = 1
+                )
+              }
+            }
+            IconButton(
+              onClick = { replyingToComment = null },
+              modifier = Modifier.size(24.dp)
+            ) {
+              Icon(
+                imageVector = Icons.Outlined.Close,
+                contentDescription = "Cancel reply",
+                tint = CharcoalSecondary,
+                modifier = Modifier.size(14.dp)
+              )
+            }
+          }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+      }
+
       // Input field
       OutlinedTextField(
         value = newCommentText,
         onValueChange = { newCommentText = it },
         placeholder = {
           Text(
-            text = "Share your thoughts or critique on this chapter...",
+            text = if (replyingToComment != null)
+              "Write your reply to ${replyingToComment!!.readerName}..."
+            else
+              "Share your thoughts or critique on this chapter...",
             style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.5.sp)
           )
         },
@@ -268,8 +339,16 @@ fun ChapterCommentsSection(
         Button(
           onClick = {
             if (newCommentText.isNotBlank()) {
-              onPostComment(newCommentText.trim(), customPenName.ifBlank { null })
+              val parentId = replyingToComment?.let { it.parentCommentId ?: it.id }
+              val replyToName = replyingToComment?.readerName
+              onPostComment(
+                newCommentText.trim(),
+                customPenName.ifBlank { null },
+                parentId,
+                replyToName
+              )
               newCommentText = ""
+              replyingToComment = null
             }
           },
           enabled = newCommentText.isNotBlank(),
@@ -281,14 +360,14 @@ fun ChapterCommentsSection(
           modifier = Modifier.testTag("submit_chapter_comment")
         ) {
           Icon(
-            imageVector = Icons.Outlined.Send,
+            imageVector = if (replyingToComment != null) Icons.AutoMirrored.Outlined.Reply else Icons.Outlined.Send,
             contentDescription = null,
             tint = SoftCreamPaper,
             modifier = Modifier.size(13.dp)
           )
           Spacer(modifier = Modifier.width(6.dp))
           Text(
-            text = "Post Thought",
+            text = if (replyingToComment != null) "Post Reply" else "Post Thought",
             style = MaterialTheme.typography.labelSmall.copy(
               fontSize = 11.sp,
               fontWeight = FontWeight.SemiBold,
@@ -318,13 +397,40 @@ fun ChapterCommentsSection(
           )
         }
       } else {
+        val rootComments = comments.filter { it.parentCommentId == null }
+        val repliesMap = comments.filter { it.parentCommentId != null }.groupBy { it.parentCommentId!! }
+
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-          comments.forEach { comment ->
-            CommentCardItem(
-              comment = comment,
-              liveTickerMs = liveTickerMs,
-              onLike = { onLikeComment(comment.id) }
-            )
+          rootComments.forEach { rootComment ->
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+              CommentCardItem(
+                comment = rootComment,
+                liveTickerMs = liveTickerMs,
+                onLike = { onLikeComment(rootComment.id) },
+                onReply = { replyingToComment = rootComment }
+              )
+
+              // Nested replies
+              val replies = repliesMap[rootComment.id] ?: emptyList()
+              if (replies.isNotEmpty()) {
+                Column(
+                  modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 20.dp),
+                  verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                  replies.forEach { reply ->
+                    CommentCardItem(
+                      comment = reply,
+                      liveTickerMs = liveTickerMs,
+                      isNestedReply = true,
+                      onLike = { onLikeComment(reply.id) },
+                      onReply = { replyingToComment = reply }
+                    )
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -350,7 +456,9 @@ private fun formatRealtimeCommentDate(timestamp: Long, liveNow: Long): String {
 private fun CommentCardItem(
   comment: ChapterCommentEntity,
   liveTickerMs: Long,
+  isNestedReply: Boolean = false,
   onLike: () -> Unit,
+  onReply: () -> Unit,
 ) {
   val dateFormatted = remember(comment.timestamp, liveTickerMs) {
     formatRealtimeCommentDate(comment.timestamp, liveTickerMs)
@@ -359,8 +467,13 @@ private fun CommentCardItem(
 
   Card(
     shape = RoundedCornerShape(14.dp),
-    colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
-    border = BorderStroke(1.dp, if (isRealtimeRecent) AntiqueGold.copy(alpha = 0.5f) else SubtleBorder),
+    colors = CardDefaults.cardColors(
+      containerColor = if (isNestedReply) Color(0xFFFDFBF7) else SoftCreamPaper
+    ),
+    border = BorderStroke(
+      width = if (isNestedReply) 0.8.dp else 1.dp,
+      color = if (isRealtimeRecent) AntiqueGold.copy(alpha = 0.5f) else if (isNestedReply) AntiqueGold.copy(alpha = 0.25f) else SubtleBorder
+    ),
     modifier = Modifier.fillMaxWidth()
   ) {
     Column(
@@ -382,7 +495,7 @@ private fun CommentCardItem(
 
           Box(
             modifier = Modifier
-              .size(26.dp)
+              .size(if (isNestedReply) 22.dp else 26.dp)
               .clip(CircleShape)
               .background(Color(comment.avatarColorHex)),
             contentAlignment = Alignment.Center
@@ -390,7 +503,7 @@ private fun CommentCardItem(
             Text(
               text = safeReaderName.take(1).uppercase(),
               style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 11.sp,
+                fontSize = if (isNestedReply) 9.5.sp else 11.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White
               )
@@ -409,6 +522,24 @@ private fun CommentCardItem(
                 ),
                 color = CharcoalText
               )
+              if (comment.replyToReaderName != null) {
+                Spacer(modifier = Modifier.width(4.dp))
+                Icon(
+                  imageVector = Icons.AutoMirrored.Outlined.Reply,
+                  contentDescription = null,
+                  tint = AntiqueGold,
+                  modifier = Modifier.size(11.dp)
+                )
+                Spacer(modifier = Modifier.width(2.dp))
+                Text(
+                  text = "@${comment.replyToReaderName}",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = AntiqueGold
+                  )
+                )
+              }
               if (isRealtimeRecent) {
                 Spacer(modifier = Modifier.width(5.dp))
                 Surface(
@@ -450,31 +581,64 @@ private fun CommentCardItem(
           }
         }
 
-        // Like button & counter
+        // Reply & Like buttons
         Row(
           verticalAlignment = Alignment.CenterVertically,
-          modifier = Modifier
-            .clip(RoundedCornerShape(10.dp))
-            .background(if (comment.isLikedByMe) Color(0x18C74350) else Color(0x0C000000))
-            .clickable(onClick = onLike)
-            .padding(horizontal = 7.dp, vertical = 3.dp)
+          horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-          Icon(
-            imageVector = if (comment.isLikedByMe) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-            contentDescription = "Like comment",
-            tint = if (comment.isLikedByMe) Color(0xFFC74350) else CharcoalSecondary,
-            modifier = Modifier.size(12.dp)
-          )
-          if (comment.likesCount > 0) {
-            Spacer(modifier = Modifier.width(4.dp))
+          // Reply button
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+              .clip(RoundedCornerShape(10.dp))
+              .background(Color(0x0A000000))
+              .clickable(onClick = onReply)
+              .padding(horizontal = 7.dp, vertical = 3.dp)
+              .testTag("reply_comment_${comment.id}")
+          ) {
+            Icon(
+              imageVector = Icons.AutoMirrored.Outlined.Reply,
+              contentDescription = "Reply to comment",
+              tint = CharcoalSecondary,
+              modifier = Modifier.size(11.dp)
+            )
+            Spacer(modifier = Modifier.width(3.dp))
             Text(
-              text = comment.likesCount.toString(),
+              text = "Reply",
               style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 10.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = if (comment.isLikedByMe) Color(0xFFC74350) else CharcoalSecondary
+                fontSize = 9.5.sp,
+                fontWeight = FontWeight.Medium,
+                color = CharcoalSecondary
               )
             )
+          }
+
+          // Like button & counter
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+              .clip(RoundedCornerShape(10.dp))
+              .background(if (comment.isLikedByMe) Color(0x18C74350) else Color(0x0C000000))
+              .clickable(onClick = onLike)
+              .padding(horizontal = 7.dp, vertical = 3.dp)
+          ) {
+            Icon(
+              imageVector = if (comment.isLikedByMe) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+              contentDescription = "Like comment",
+              tint = if (comment.isLikedByMe) Color(0xFFC74350) else CharcoalSecondary,
+              modifier = Modifier.size(12.dp)
+            )
+            if (comment.likesCount > 0) {
+              Spacer(modifier = Modifier.width(4.dp))
+              Text(
+                text = comment.likesCount.toString(),
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 10.sp,
+                  fontWeight = FontWeight.SemiBold,
+                  color = if (comment.isLikedByMe) Color(0xFFC74350) else CharcoalSecondary
+                )
+              )
+            }
           }
         }
       }
@@ -484,7 +648,7 @@ private fun CommentCardItem(
       Text(
         text = comment.commentText,
         style = MaterialTheme.typography.bodyMedium.copy(
-          fontSize = 12.5.sp,
+          fontSize = if (isNestedReply) 12.sp else 12.5.sp,
           lineHeight = 18.sp
         ),
         color = CharcoalText

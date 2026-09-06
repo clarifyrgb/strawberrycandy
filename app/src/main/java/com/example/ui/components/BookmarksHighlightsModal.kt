@@ -192,22 +192,49 @@ fun BookmarksHighlightsModal(
                     .fillMaxWidth()
                     .padding(14.dp)
                 ) {
-                  // Chapter context tag and date
+                  // Chapter context tag, color badge, and date
                   Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                   ) {
-                    Text(
-                      text = bookmark.chapterTitle.uppercase(),
-                      style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 8.sp,
-                        letterSpacing = 1.sp,
-                        fontWeight = FontWeight.Bold
-                      ),
-                      color = AntiqueGold,
-                      maxLines = 1
-                    )
+                    val colorInfo = when (bookmark.colorHex) {
+                      0xFFFF6B81 -> Pair("Rose Blush", "🌸")
+                      0xFF58B368 -> Pair("Sage Mint", "🌿")
+                      0xFF3D9BE9 -> Pair("Ocean Sky", "🌊")
+                      0xFFA569BD -> Pair("Lilac Violet", "💜")
+                      0xFFFF8C42 -> Pair("Sunset Coral", "🍑")
+                      else -> Pair("Amber Gold", "🍯")
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                      Box(
+                        modifier = Modifier
+                          .size(10.dp)
+                          .clip(CircleShape)
+                          .background(Color(bookmark.colorHex))
+                      )
+                      Spacer(modifier = Modifier.width(6.dp))
+                      Text(
+                        text = "${colorInfo.second} ${colorInfo.first}",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                          fontSize = 8.5.sp,
+                          fontWeight = FontWeight.Bold,
+                          color = Color(bookmark.colorHex)
+                        )
+                      )
+                      Spacer(modifier = Modifier.width(8.dp))
+                      Text(
+                        text = "• ${bookmark.chapterTitle.uppercase()}",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                          fontSize = 8.sp,
+                          letterSpacing = 0.8.sp,
+                          fontWeight = FontWeight.Medium
+                        ),
+                        color = CharcoalSecondary,
+                        maxLines = 1
+                      )
+                    }
 
                     Text(
                       text = dateFormatter.format(Date(bookmark.timestamp)),

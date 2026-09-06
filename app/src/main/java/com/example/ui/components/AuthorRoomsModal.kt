@@ -23,7 +23,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
@@ -110,6 +112,7 @@ fun AuthorRoomsModal(
   onToggleSlotPermission: (slotNumber: Int, isGranted: Boolean) -> Unit,
   onViewTranslatorArchive: (AuthorSlotEntity) -> Unit,
   onGrantPermissionByEmail: ((email: String, slotNumber: Int?) -> Unit)? = null,
+  onUpdateSlotByOwner: ((slotNumber: Int, translatorEmail: String?, penName: String, bio: String, isPermissionGranted: Boolean) -> Unit)? = null,
 ) {
   val context = LocalContext.current
   val isOwnerUser = currentUser != null && StrawberrycandyViewModel.isOwnerEmail(currentUser.email)
@@ -122,10 +125,12 @@ fun AuthorRoomsModal(
   var editingSlotNumber by remember { mutableIntStateOf(-1) }
   var editPenName by remember { mutableStateOf("") }
   var editBio by remember { mutableStateOf("") }
+  var editEmail by remember { mutableStateOf("") }
+  var editPermissionGranted by remember { mutableStateOf(false) }
   var targetPhotoSlot by remember { mutableIntStateOf(-1) }
   var isGrantByGmailDialogOpen by remember { mutableStateOf(false) }
   var inputGrantEmail by remember { mutableStateOf("") }
-  var selectedGrantSlot by remember { mutableIntStateOf(5) }
+  var selectedGrantSlot by remember { mutableIntStateOf(1) }
   var grantEmailError by remember { mutableStateOf<String?>(null) }
 
   val photoPickerLauncher = rememberLauncherForActivityResult(
@@ -403,13 +408,14 @@ fun AuthorRoomsModal(
           (1..10).map { slotNum ->
             authorSlots.find { it.slotNumber == slotNum } ?: AuthorSlotEntity(
               slotNumber = slotNum,
-              authorName = "Translator $slotNum",
-              penName = "Translator $slotNum",
-              bio = "Contributing translator at Strawberrycandy Archive",
+              authorName = "",
+              penName = "",
+              bio = "",
               avatarColorHex = 0xFF353C48,
               accessCode = "AUTH-ROOM-$slotNum",
               isClaimed = false,
-              isPermissionGranted = slotNum <= 4
+              isPermissionGranted = false,
+              translatorEmail = null
             )
           }
         }
@@ -431,14 +437,24 @@ fun AuthorRoomsModal(
             isEditing = isEditingThis,
             editPenName = editPenName,
             editBio = editBio,
+            editEmail = editEmail,
+            onEmailChange = { editEmail = it },
+            editPermissionGranted = editPermissionGranted,
+            onPermissionChange = { editPermissionGranted = it },
             onEditStart = {
               editingSlotNumber = slotNum
               editPenName = slot.penName
               editBio = slot.bio
+              editEmail = slot.translatorEmail ?: ""
+              editPermissionGranted = slot.isPermissionGranted
             },
             onEditCancel = { editingSlotNumber = -1 },
             onEditSave = { penName, bio ->
               onUpdateSlot(slotNum, penName, penName, bio)
+              editingSlotNumber = -1
+            },
+            onOwnerSave = { email, penName, bio, isGranted ->
+              onUpdateSlotByOwner?.invoke(slotNum, email.ifBlank { null }, penName, bio, isGranted)
               editingSlotNumber = -1
             },
             onPenNameChange = { editPenName = it },
@@ -722,9 +738,14 @@ private fun TranslatorCardItem(
   isEditing: Boolean,
   editPenName: String,
   editBio: String,
+  editEmail: String = "",
+  onEmailChange: (String) -> Unit = {},
+  editPermissionGranted: Boolean = false,
+  onPermissionChange: (Boolean) -> Unit = {},
   onEditStart: () -> Unit,
   onEditCancel: () -> Unit,
   onEditSave: (String, String) -> Unit,
+  onOwnerSave: ((String, String, String, Boolean) -> Unit)? = null,
   onPenNameChange: (String) -> Unit,
   onBioChange: (String) -> Unit,
   onPickPhoto: () -> Unit,
@@ -887,8 +908,13 @@ private fun TranslatorCardItem(
           }
 
           val emailRegex = Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}")
-          val safePenName = slot.penName.replace(emailRegex, "").trim().ifBlank {
-            if (isOwner) "Strawberrycandy" else "Translator ${slot.slotNumber}"
+          val rawPenName = slot.penName.replace(emailRegex, "").trim()
+          val safePenName = if (rawPenName.isNotBlank()) {
+            rawPenName
+          } else if (isOwner) {
+            "Strawberrycandy"
+          } else {
+            "Curator Seat #${slot.slotNumber}"
           }
 
           Text(
@@ -897,7 +923,7 @@ private fun TranslatorCardItem(
               fontWeight = FontWeight.Bold,
               fontFamily = FontFamily.Serif
             ),
-            color = CharcoalText
+            color = if (rawPenName.isNotBlank() || isOwner) CharcoalText else CharcoalSecondary
           )
 
           if (isOwnerUser && !isOwner) {
@@ -908,16 +934,17 @@ private fun TranslatorCardItem(
               Icon(
                 imageVector = Icons.Outlined.Mail,
                 contentDescription = null,
-                tint = AntiqueGold,
+                tint = if (slot.translatorEmail != null) AntiqueGold else CharcoalTertiary,
                 modifier = Modifier.size(11.dp)
               )
               Spacer(modifier = Modifier.width(3.dp))
               Text(
-                text = slot.translatorEmail ?: "translator${slot.slotNumber}@gmail.com",
+                text = slot.translatorEmail ?: "No Gmail assigned (Tap Edit to assign)",
                 style = MaterialTheme.typography.labelSmall.copy(
                   fontSize = 10.sp,
                   fontWeight = FontWeight.Bold,
-                  color = AntiqueGold
+                  fontStyle = if (slot.translatorEmail == null) androidx.compose.ui.text.font.FontStyle.Italic else androidx.compose.ui.text.font.FontStyle.Normal,
+                  color = if (slot.translatorEmail != null) AntiqueGold else CharcoalTertiary
                 )
               )
             }
@@ -984,6 +1011,67 @@ private fun TranslatorCardItem(
         val hasPointForRename = currentUserPoints >= 1 || isOwnerUser
 
         Spacer(modifier = Modifier.height(10.dp))
+
+        if (isOwnerUser && !isOwner) {
+          OutlinedTextField(
+            value = editEmail,
+            onValueChange = onEmailChange,
+            label = { Text("Translator Gmail (Owner Grant)") },
+            placeholder = { Text("e.g. translator@gmail.com") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+            colors = OutlinedTextFieldDefaults.colors(
+              focusedBorderColor = AntiqueGold,
+              unfocusedBorderColor = SubtleBorder
+            ),
+            modifier = Modifier.fillMaxWidth()
+          )
+          Spacer(modifier = Modifier.height(6.dp))
+
+          // Owner Permission Toggle
+          Surface(
+            shape = RoundedCornerShape(10.dp),
+            color = if (editPermissionGranted) Color(0xFFE8F5E9) else Color(0xFFFDEDEC),
+            border = BorderStroke(1.dp, if (editPermissionGranted) Color(0xFFA5D6A7) else Color(0xFFEF9A9A)),
+            modifier = Modifier
+              .fillMaxWidth()
+              .clickable { onPermissionChange(!editPermissionGranted) }
+          ) {
+            Row(
+              modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+              Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                  imageVector = if (editPermissionGranted) Icons.Outlined.CheckCircle else Icons.Outlined.Lock,
+                  contentDescription = null,
+                  tint = if (editPermissionGranted) Color(0xFF2E7D32) else Color(0xFFC62828),
+                  modifier = Modifier.size(15.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                  text = if (editPermissionGranted) "Translation Permission: GRANTED" else "Translation Permission: REVOKED",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 10.5.sp,
+                    color = if (editPermissionGranted) Color(0xFF2E7D32) else Color(0xFFC62828)
+                  )
+                )
+              }
+              Text(
+                text = if (editPermissionGranted) "Revoke" else "Grant",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 10.sp,
+                  fontWeight = FontWeight.Bold,
+                  color = if (editPermissionGranted) Color(0xFFC62828) else Color(0xFF2E7D32)
+                )
+              )
+            }
+          }
+          Spacer(modifier = Modifier.height(6.dp))
+        }
+
         OutlinedTextField(
           value = editPenName,
           onValueChange = onPenNameChange,
@@ -1045,7 +1133,13 @@ private fun TranslatorCardItem(
           }
           Spacer(modifier = Modifier.width(8.dp))
           Button(
-            onClick = { onEditSave(editPenName, editBio) },
+            onClick = {
+              if (isOwnerUser && !isOwner) {
+                onOwnerSave?.invoke(editEmail, editPenName, editBio, editPermissionGranted)
+              } else {
+                onEditSave(editPenName, editBio)
+              }
+            },
             enabled = !isChangingPenName || hasPointForRename,
             shape = RoundedCornerShape(8.dp),
             colors = ButtonDefaults.buttonColors(
@@ -1055,7 +1149,7 @@ private fun TranslatorCardItem(
             modifier = Modifier.height(32.dp)
           ) {
             Text(
-              text = if (isChangingPenName && !isOwnerUser) "Save (Cost: 1 Pt)" else "Save Profile",
+              text = if (isOwnerUser && !isOwner) "Save Seat Details" else if (isChangingPenName && !isOwnerUser) "Save (Cost: 1 Pt)" else "Save Profile",
               fontSize = 11.sp
             )
           }

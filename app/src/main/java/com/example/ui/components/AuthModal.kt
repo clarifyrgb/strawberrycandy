@@ -2,12 +2,10 @@ package com.example.ui.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,20 +19,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Mail
-import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Person
-import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.outlined.WorkspacePremium
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -86,9 +78,6 @@ fun AuthModal(
   var passwordInput by remember { mutableStateOf("") }
   var isPasswordVisible by remember { mutableStateOf(false) }
   var nameInput by remember { mutableStateOf("") }
-  var selectedRole by remember {
-    mutableStateOf(if (StrawberrycandyRepository.isOwnerEmail(initialEmail)) "OWNER" else "READER")
-  }
   var localError by remember { mutableStateOf<String?>(null) }
   val displayErrorMessage = localError ?: externalErrorMessage
 
@@ -98,7 +87,7 @@ fun AuthModal(
     var trimmedEmail = emailInput.trim()
     if (provider == "GOOGLE") {
       if (trimmedEmail.isBlank()) {
-        localError = "Please enter your Gmail address (e.g. username@gmail.com)."
+        localError = "Please enter your Gmail address."
         return
       }
       if (!trimmedEmail.contains("@")) {
@@ -112,30 +101,25 @@ fun AuthModal(
       }
     } else {
       if (trimmedEmail.isBlank()) {
-        localError = "Please enter your email address before signing in."
+        localError = "Please enter your email address."
         return
       }
       if (!trimmedEmail.contains("@") || !trimmedEmail.contains(".")) {
-        localError = "Please enter a valid email address (e.g. reader@example.com)."
+        localError = "Please enter a valid email address."
         return
       }
     }
 
     if (passwordInput.isBlank()) {
-      localError = "Please enter your account password."
+      localError = "Please enter your password."
       return
     }
 
     localError = null
     onClearError()
+
     val isOwner = StrawberrycandyRepository.isOwnerEmail(trimmedEmail)
-    val effectiveRole = if (isOwner) {
-      "OWNER"
-    } else if (selectedRole == "TRANSLATOR") {
-      "TRANSLATOR"
-    } else {
-      "READER"
-    }
+    val effectiveRole = if (isOwner) "OWNER" else "READER"
 
     val emailRegex = Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}")
     val sanitizedNameInput = nameInput.replace(emailRegex, "").trim()
@@ -145,21 +129,15 @@ fun AuthModal(
     } else {
       if (isOwner) {
         "Clarify"
-      } else if (effectiveRole == "TRANSLATOR") {
-        "Translator"
       } else {
         val prefix = trimmedEmail.substringBefore("@").replace(".", " ")
         prefix.split(" ").joinToString(" ") { word ->
           word.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
-        }
+        }.ifBlank { "Reader" }
       }
     }
 
-    val assignedSlot: Int? = when (effectiveRole) {
-      "OWNER" -> 0
-      "TRANSLATOR" -> 1
-      else -> null
-    }
+    val assignedSlot: Int? = if (isOwner) 0 else null
 
     if (provider == "GOOGLE") {
       onSignInWithGoogle(trimmedEmail, passwordInput, finalName, effectiveRole, assignedSlot)
@@ -173,23 +151,23 @@ fun AuthModal(
     properties = DialogProperties(usePlatformDefaultWidth = false)
   ) {
     Card(
-      shape = RoundedCornerShape(26.dp),
+      shape = RoundedCornerShape(22.dp),
       colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
       border = BorderStroke(1.dp, SubtleBorder),
-      elevation = CardDefaults.cardElevation(defaultElevation = 14.dp),
+      elevation = CardDefaults.cardElevation(defaultElevation = 10.dp),
       modifier = Modifier
         .fillMaxWidth()
-        .padding(horizontal = 16.dp, vertical = 24.dp)
+        .padding(horizontal = 20.dp, vertical = 24.dp)
         .testTag("auth_dialog")
     ) {
       Column(
         modifier = Modifier
           .fillMaxWidth()
           .verticalScroll(rememberScrollState())
-          .padding(24.dp),
+          .padding(horizontal = 22.dp, vertical = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally
       ) {
-        // Header
+        // Header Row
         Row(
           modifier = Modifier.fillMaxWidth(),
           horizontalArrangement = Arrangement.SpaceBetween,
@@ -198,16 +176,17 @@ fun AuthModal(
           Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
               modifier = Modifier
-                .size(8.dp)
+                .size(7.dp)
                 .clip(CircleShape)
                 .background(AntiqueGold)
             )
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(6.dp))
             Text(
-              text = "STRAWBERRYCANDY ARCHIVE ID",
+              text = "STRAWBERRYCANDY",
               style = MaterialTheme.typography.labelSmall.copy(
                 letterSpacing = 1.6.sp,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp
               ),
               color = AntiqueGold
             )
@@ -228,141 +207,80 @@ fun AuthModal(
           }
         }
 
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
         Text(
-          text = "Sign In to Your Account",
+          text = "Sign In",
           style = MaterialTheme.typography.headlineSmall.copy(
             fontFamily = FontFamily.Serif,
-            fontWeight = FontWeight.Bold
+            fontWeight = FontWeight.Bold,
+            fontSize = 22.sp
           ),
           color = CharcoalText,
           textAlign = TextAlign.Center
         )
 
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(4.dp))
 
         Text(
-          text = if (isOwnerDetected) {
-            "Sole Archive Owner Authentication. You have exclusive administrative control and manuscript editing rights."
-          } else {
-            "Sign in with your Gmail. Standard users enjoy clean read-only immersion. Translators require permission from Clarify to edit manuscripts."
-          },
+          text = "Sign in to access your personal reading library, favorites, or translation tools.",
           style = MaterialTheme.typography.bodySmall.copy(
-            lineHeight = 18.sp
+            fontSize = 12.sp,
+            lineHeight = 16.sp
           ),
           color = CharcoalSecondary,
           textAlign = TextAlign.Center
         )
 
-        Spacer(modifier = Modifier.height(18.dp))
-
-        // Role Selector Section
+        // Owner indicator badge if owner email detected
         if (isOwnerDetected) {
-          // Prominent Sole Owner Banner
+          Spacer(modifier = Modifier.height(10.dp))
           Surface(
-            shape = RoundedCornerShape(14.dp),
-            color = AntiqueGoldLight.copy(alpha = 0.6f),
-            border = BorderStroke(1.2.dp, AntiqueGold),
-            modifier = Modifier.fillMaxWidth().testTag("auth_owner_verified_banner")
+            shape = RoundedCornerShape(10.dp),
+            color = AntiqueGoldLight.copy(alpha = 0.7f),
+            border = BorderStroke(1.dp, AntiqueGold),
+            modifier = Modifier
+              .fillMaxWidth()
+              .testTag("auth_owner_verified_banner")
           ) {
             Row(
-              modifier = Modifier.padding(14.dp),
+              modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
               verticalAlignment = Alignment.CenterVertically
             ) {
-              Box(
-                modifier = Modifier
-                  .size(36.dp)
-                  .clip(CircleShape)
-                  .background(AntiqueGold),
-                contentAlignment = Alignment.Center
-              ) {
-                Icon(
-                  imageVector = Icons.Outlined.WorkspacePremium,
-                  contentDescription = null,
-                  tint = SoftCreamPaper,
-                  modifier = Modifier.size(20.dp)
-                )
-              }
-              Spacer(modifier = Modifier.width(12.dp))
-              Column(modifier = Modifier.weight(1f)) {
-                Text(
-                  text = "SOLE ARCHIVE OWNER VERIFIED",
-                  style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 9.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.2.sp
-                  ),
-                  color = AntiqueGold
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                  text = "Welcome back, Clarify. Full editing, uploading, and translator permission controls are unlocked.",
-                  style = MaterialTheme.typography.bodySmall.copy(
-                    fontSize = 11.5.sp,
-                    lineHeight = 16.sp
-                  ),
+              Icon(
+                imageVector = Icons.Outlined.WorkspacePremium,
+                contentDescription = null,
+                tint = AntiqueGold,
+                modifier = Modifier.size(16.dp)
+              )
+              Spacer(modifier = Modifier.width(8.dp))
+              Text(
+                text = "Founder & Sole Owner Account (Clarify)",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontWeight = FontWeight.Bold,
+                  fontSize = 11.sp,
                   color = CharcoalText
                 )
-              }
-            }
-          }
-        } else {
-          // Standard User Role Options: Reader (Default) or Translator
-          Column(modifier = Modifier.fillMaxWidth()) {
-            Text(
-              text = "SELECT YOUR ACCOUNT ROLE",
-              style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.2.sp
-              ),
-              color = AntiqueGold
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(
-              modifier = Modifier.fillMaxWidth(),
-              horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-              // Reader Role (Default)
-              RoleSelectionCard(
-                title = "Reader Mode",
-                subtitle = "Pure reading immersion • Edits hidden",
-                isSelected = selectedRole == "READER",
-                icon = Icons.Outlined.MenuBook,
-                onClick = { selectedRole = "READER" },
-                modifier = Modifier.weight(1f)
-              )
-
-              // Translator Role
-              RoleSelectionCard(
-                title = "Translator",
-                subtitle = "Requires owner permission to edit",
-                isSelected = selectedRole == "TRANSLATOR",
-                icon = Icons.Outlined.Edit,
-                onClick = { selectedRole = "TRANSLATOR" },
-                modifier = Modifier.weight(1f)
               )
             }
           }
         }
 
-        Spacer(modifier = Modifier.height(18.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-        // Email Text Field (Google / Email)
+        // Gmail Input
         Column(modifier = Modifier.fillMaxWidth()) {
           Text(
-            text = "GMAIL / EMAIL ADDRESS *",
+            text = "GMAIL ADDRESS",
             style = MaterialTheme.typography.labelSmall.copy(
-              fontSize = 9.sp,
+              fontSize = 9.5.sp,
               fontWeight = FontWeight.Bold,
-              letterSpacing = 1.1.sp
+              letterSpacing = 1.sp
             ),
             color = CharcoalText
           )
 
-          Spacer(modifier = Modifier.height(6.dp))
+          Spacer(modifier = Modifier.height(5.dp))
 
           OutlinedTextField(
             value = emailInput,
@@ -371,13 +289,13 @@ fun AuthModal(
               localError = null
               onClearError()
             },
-            placeholder = { Text("reader@gmail.com", color = CharcoalTertiary) },
+            placeholder = { Text("username@gmail.com", color = CharcoalTertiary, fontSize = 13.sp) },
             leadingIcon = {
               Icon(
                 imageVector = Icons.Outlined.Mail,
                 contentDescription = null,
                 tint = if (isOwnerDetected) AntiqueGold else CharcoalSecondary,
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(16.dp)
               )
             },
             singleLine = true,
@@ -386,8 +304,8 @@ fun AuthModal(
             colors = OutlinedTextFieldDefaults.colors(
               focusedBorderColor = AntiqueGold,
               unfocusedBorderColor = SubtleBorder,
-              focusedContainerColor = SoftCreamPaper,
-              unfocusedContainerColor = SoftCreamPaper,
+              focusedContainerColor = Color.White,
+              unfocusedContainerColor = Color.White,
               focusedTextColor = CharcoalText,
               unfocusedTextColor = CharcoalText
             ),
@@ -397,54 +315,45 @@ fun AuthModal(
           )
 
           if (emailInput.isNotBlank() && !emailInput.contains("@")) {
-            Spacer(modifier = Modifier.height(6.dp))
-            Row(
-              modifier = Modifier.fillMaxWidth(),
-              horizontalArrangement = Arrangement.Start
+            Spacer(modifier = Modifier.height(4.dp))
+            Surface(
+              onClick = {
+                emailInput = "${emailInput.trim()}@gmail.com"
+                localError = null
+              },
+              shape = RoundedCornerShape(8.dp),
+              color = AntiqueGold.copy(alpha = 0.12f),
+              border = BorderStroke(0.5.dp, AntiqueGold.copy(alpha = 0.4f)),
+              modifier = Modifier.align(Alignment.Start)
             ) {
-              Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = Color(0xFF4285F4).copy(alpha = 0.12f),
-                border = BorderStroke(1.dp, Color(0xFF4285F4).copy(alpha = 0.3f)),
-                onClick = {
-                  emailInput = "$emailInput@gmail.com"
-                  localError = null
-                  onClearError()
-                }
-              ) {
-                Row(
-                  modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                  verticalAlignment = Alignment.CenterVertically
-                ) {
-                  Text(
-                    text = "+ @gmail.com",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                      fontSize = 10.sp,
-                      fontWeight = FontWeight.SemiBold,
-                      color = Color(0xFF1A73E8)
-                    )
-                  )
-                }
-              }
+              Text(
+                text = "+ @gmail.com",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 10.sp,
+                  fontWeight = FontWeight.SemiBold
+                ),
+                color = AntiqueGold,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+              )
             }
           }
         }
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Password Text Field
+        // Password Input
         Column(modifier = Modifier.fillMaxWidth()) {
           Text(
-            text = "GMAIL / ACCOUNT PASSWORD *",
+            text = "PASSWORD",
             style = MaterialTheme.typography.labelSmall.copy(
-              fontSize = 9.sp,
+              fontSize = 9.5.sp,
               fontWeight = FontWeight.Bold,
-              letterSpacing = 1.1.sp
+              letterSpacing = 1.sp
             ),
             color = CharcoalText
           )
 
-          Spacer(modifier = Modifier.height(6.dp))
+          Spacer(modifier = Modifier.height(5.dp))
 
           OutlinedTextField(
             value = passwordInput,
@@ -453,37 +362,33 @@ fun AuthModal(
               localError = null
               onClearError()
             },
-            placeholder = { Text("Enter your Google account password", color = CharcoalTertiary) },
+            placeholder = { Text("Enter your account password", color = CharcoalTertiary, fontSize = 13.sp) },
             leadingIcon = {
               Icon(
                 imageVector = Icons.Outlined.Lock,
                 contentDescription = null,
-                tint = if (isOwnerDetected) AntiqueGold else CharcoalSecondary,
-                modifier = Modifier.size(18.dp)
+                tint = CharcoalSecondary,
+                modifier = Modifier.size(16.dp)
               )
             },
             trailingIcon = {
-              IconButton(
-                onClick = { isPasswordVisible = !isPasswordVisible },
-                modifier = Modifier.size(24.dp)
-              ) {
+              IconButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
                 Icon(
                   imageVector = if (isPasswordVisible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
                   contentDescription = if (isPasswordVisible) "Hide password" else "Show password",
                   tint = CharcoalSecondary,
-                  modifier = Modifier.size(18.dp)
+                  modifier = Modifier.size(16.dp)
                 )
               }
             },
-            singleLine = true,
             visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            singleLine = true,
             shape = RoundedCornerShape(12.dp),
             colors = OutlinedTextFieldDefaults.colors(
               focusedBorderColor = AntiqueGold,
               unfocusedBorderColor = SubtleBorder,
-              focusedContainerColor = SoftCreamPaper,
-              unfocusedContainerColor = SoftCreamPaper,
+              focusedContainerColor = Color.White,
+              unfocusedContainerColor = Color.White,
               focusedTextColor = CharcoalText,
               unfocusedTextColor = CharcoalText
             ),
@@ -491,60 +396,34 @@ fun AuthModal(
               .fillMaxWidth()
               .testTag("auth_password_input")
           )
-
-          Spacer(modifier = Modifier.height(4.dp))
-          Text(
-            text = "• Enter your Google account password (letters-only passwords without numbers or symbols are accepted).",
-            style = MaterialTheme.typography.bodySmall.copy(
-              fontSize = 10.sp,
-              color = CharcoalSecondary,
-              lineHeight = 13.sp
-            )
-          )
         }
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Name / Pen Name Text Field
+        // Optional Display / Pen Name Input
         Column(modifier = Modifier.fillMaxWidth()) {
-          Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-          ) {
-            Text(
-              text = if (selectedRole == "TRANSLATOR") "TRANSLATOR PEN NAME (PUBLIC)" else "NAME OR PEN NAME",
-              style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.1.sp
-              ),
-              color = CharcoalText
-            )
-            if (selectedRole == "TRANSLATOR") {
-              Text(
-                text = "VISIBLE TO OWNER",
-                style = MaterialTheme.typography.labelSmall.copy(
-                  fontSize = 8.sp,
-                  fontWeight = FontWeight.Bold,
-                  letterSpacing = 0.8.sp,
-                  color = AntiqueGold
-                )
-              )
-            }
-          }
-          Spacer(modifier = Modifier.height(6.dp))
+          Text(
+            text = "DISPLAY OR PEN NAME (OPTIONAL)",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 9.5.sp,
+              fontWeight = FontWeight.Bold,
+              letterSpacing = 1.sp
+            ),
+            color = CharcoalSecondary
+          )
+
+          Spacer(modifier = Modifier.height(5.dp))
 
           OutlinedTextField(
             value = nameInput,
             onValueChange = { nameInput = it },
-            placeholder = { Text(if (selectedRole == "TRANSLATOR") "Pen name (e.g. Aria Thorne)" else "Your pen name or reader display name", color = CharcoalTertiary) },
+            placeholder = { Text("Leave blank to use email prefix", color = CharcoalTertiary, fontSize = 13.sp) },
             leadingIcon = {
               Icon(
                 imageVector = Icons.Outlined.Person,
                 contentDescription = null,
                 tint = CharcoalSecondary,
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(16.dp)
               )
             },
             singleLine = true,
@@ -552,8 +431,8 @@ fun AuthModal(
             colors = OutlinedTextFieldDefaults.colors(
               focusedBorderColor = AntiqueGold,
               unfocusedBorderColor = SubtleBorder,
-              focusedContainerColor = SoftCreamPaper,
-              unfocusedContainerColor = SoftCreamPaper,
+              focusedContainerColor = Color.White,
+              unfocusedContainerColor = Color.White,
               focusedTextColor = CharcoalText,
               unfocusedTextColor = CharcoalText
             ),
@@ -561,101 +440,51 @@ fun AuthModal(
               .fillMaxWidth()
               .testTag("auth_name_input")
           )
-
-          if (selectedRole == "TRANSLATOR") {
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-              text = "Note: Translators' Gmail addresses are visible to Owner Clarify so they can grant you translation permission.",
-              style = MaterialTheme.typography.bodySmall.copy(
-                fontSize = 10.5.sp,
-                color = CharcoalSecondary
-              )
-            )
-          }
         }
 
         // Error message banner
         if (displayErrorMessage != null) {
           Spacer(modifier = Modifier.height(12.dp))
-          Row(
+          Surface(
+            shape = RoundedCornerShape(10.dp),
+            color = Color(0xFFFDEDEC),
+            border = BorderStroke(1.dp, Color(0xFFE57373)),
             modifier = Modifier
               .fillMaxWidth()
-              .clip(RoundedCornerShape(10.dp))
-              .background(Color(0xFFFBE9E7))
-              .border(1.dp, Color(0xFFFFCCBC), RoundedCornerShape(10.dp))
-              .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
+              .testTag("auth_error_banner")
           ) {
-            Icon(
-              imageVector = Icons.Outlined.ErrorOutline,
-              contentDescription = null,
-              tint = Color(0xFFD32F2F),
-              modifier = Modifier.size(16.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-              text = displayErrorMessage,
-              style = MaterialTheme.typography.bodySmall.copy(
-                fontSize = 11.sp,
-                color = Color(0xFFC62828),
-                fontWeight = FontWeight.Medium
+            Row(
+              modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              Icon(
+                imageVector = Icons.Outlined.ErrorOutline,
+                contentDescription = null,
+                tint = Color(0xFFC62828),
+                modifier = Modifier.size(15.dp)
               )
-            )
-          }
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        // Role summary banner
-        Surface(
-          shape = RoundedCornerShape(12.dp),
-          color = if (isOwnerDetected || selectedRole == "OWNER") AntiqueGoldLight.copy(alpha = 0.5f) else if (selectedRole == "READER") Color(0x0F000000) else AntiqueGoldLight.copy(alpha = 0.35f),
-          border = BorderStroke(1.dp, if (isOwnerDetected || selectedRole == "OWNER") AntiqueGold.copy(alpha = 0.5f) else if (selectedRole == "READER") SubtleBorder else AntiqueGold.copy(alpha = 0.35f)),
-          modifier = Modifier.fillMaxWidth()
-        ) {
-          Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-          ) {
-            Icon(
-              imageVector = if (isOwnerDetected || selectedRole == "OWNER") {
-                Icons.Outlined.Security
-              } else if (selectedRole == "TRANSLATOR") {
-                Icons.Outlined.Edit
-              } else {
-                Icons.Outlined.MenuBook
-              },
-              contentDescription = null,
-              tint = AntiqueGold,
-              modifier = Modifier.size(16.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-              text = if (isOwnerDetected || selectedRole == "OWNER") {
-                "Sole Owner Mode: Full administrative control, translator permission management, manuscript upload and editing unlocked."
-              } else if (selectedRole == "TRANSLATOR") {
-                "Translator Mode: Requires permission from Clarify to edit novel content, synopsis, and chapters."
-              } else {
-                "Reader Mode: Edit buttons & toggle switches are hidden to preserve clean book immersion."
-              },
-              style = MaterialTheme.typography.bodySmall.copy(
-                fontSize = 10.5.sp,
-                lineHeight = 14.sp,
-                color = CharcoalText
+              Spacer(modifier = Modifier.width(6.dp))
+              Text(
+                text = displayErrorMessage,
+                style = MaterialTheme.typography.bodySmall.copy(
+                  fontSize = 11.5.sp,
+                  lineHeight = 15.sp
+                ),
+                color = Color(0xFFC62828)
               )
-            )
+            }
           }
         }
 
         Spacer(modifier = Modifier.height(18.dp))
 
-        // SIGN IN WITH GOOGLE BUTTON
+        // Sign In with Google
         Surface(
           onClick = { validateAndSubmit("GOOGLE") },
-          shape = RoundedCornerShape(14.dp),
+          shape = RoundedCornerShape(12.dp),
           color = Color.White,
           border = BorderStroke(1.dp, Color(0xFFDADCE0)),
-          shadowElevation = 2.dp,
+          shadowElevation = 1.dp,
           modifier = Modifier
             .fillMaxWidth()
             .testTag("sign_in_google_button")
@@ -663,14 +492,13 @@ fun AuthModal(
           Row(
             modifier = Modifier
               .fillMaxWidth()
-              .padding(horizontal = 16.dp, vertical = 13.dp),
+              .padding(horizontal = 16.dp, vertical = 11.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
           ) {
-            // Google 'G' icon
             Box(
               modifier = Modifier
-                .size(20.dp)
+                .size(18.dp)
                 .clip(CircleShape)
                 .background(Color(0xFF4285F4)),
               contentAlignment = Alignment.Center
@@ -679,29 +507,29 @@ fun AuthModal(
                 text = "G",
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
-                fontSize = 13.sp
+                fontSize = 11.sp
               )
             }
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(10.dp))
             Text(
-              text = "Sign in with Google Account",
+              text = "Sign in with Google",
               style = MaterialTheme.typography.labelLarge.copy(
                 fontWeight = FontWeight.SemiBold,
-                letterSpacing = 0.3.sp
+                fontSize = 13.sp
               ),
               color = Color(0xFF3C4043)
             )
           }
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
-        // SIGN IN WITH APPLE BUTTON
+        // Sign In with Apple
         Surface(
           onClick = { validateAndSubmit("APPLE") },
-          shape = RoundedCornerShape(14.dp),
+          shape = RoundedCornerShape(12.dp),
           color = Color(0xFF1E1815),
-          shadowElevation = 2.dp,
+          shadowElevation = 1.dp,
           modifier = Modifier
             .fillMaxWidth()
             .testTag("sign_in_apple_button")
@@ -709,31 +537,30 @@ fun AuthModal(
           Row(
             modifier = Modifier
               .fillMaxWidth()
-              .padding(horizontal = 16.dp, vertical = 13.dp),
+              .padding(horizontal = 16.dp, vertical = 11.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
           ) {
             Text(
               text = "",
               color = Color.White,
-              fontSize = 18.sp,
-              modifier = Modifier.padding(bottom = 2.dp)
+              fontSize = 15.sp,
+              modifier = Modifier.padding(bottom = 1.dp)
             )
-            Spacer(modifier = Modifier.width(10.dp))
+            Spacer(modifier = Modifier.width(8.dp))
             Text(
               text = "Sign in with Apple",
               style = MaterialTheme.typography.labelLarge.copy(
                 fontWeight = FontWeight.SemiBold,
-                letterSpacing = 0.4.sp
+                fontSize = 13.sp
               ),
               color = Color.White
             )
           }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
-        // Privacy note
         Row(
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.Center
@@ -742,94 +569,19 @@ fun AuthModal(
             imageVector = Icons.Outlined.Lock,
             contentDescription = null,
             tint = CharcoalTertiary,
-            modifier = Modifier.size(11.dp)
+            modifier = Modifier.size(10.dp)
           )
           Spacer(modifier = Modifier.width(4.dp))
           Text(
-            text = "Authenticated with Enclave Token • Private & Encrypted",
+            text = "Translators granted permission by Clarify automatically unlock editing access.",
             style = MaterialTheme.typography.labelSmall.copy(
               fontSize = 8.5.sp,
-              letterSpacing = 0.8.sp
+              lineHeight = 11.sp
             ),
-            color = CharcoalTertiary
+            color = CharcoalTertiary,
+            textAlign = TextAlign.Center
           )
         }
-      }
-    }
-  }
-}
-
-@Composable
-private fun RoleSelectionCard(
-  title: String,
-  subtitle: String,
-  isSelected: Boolean,
-  icon: androidx.compose.ui.graphics.vector.ImageVector,
-  onClick: () -> Unit,
-  modifier: Modifier = Modifier,
-) {
-  Surface(
-    onClick = onClick,
-    shape = RoundedCornerShape(14.dp),
-    color = if (isSelected) AntiqueGoldLight.copy(alpha = 0.85f) else Color.White,
-    border = BorderStroke(
-      width = if (isSelected) 1.5.dp else 1.dp,
-      color = if (isSelected) AntiqueGold else SubtleBorder
-    ),
-    modifier = modifier.height(86.dp)
-  ) {
-    Column(
-      modifier = Modifier
-        .padding(horizontal = 8.dp, vertical = 8.dp),
-      verticalArrangement = Arrangement.SpaceBetween
-    ) {
-      Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-      ) {
-        Icon(
-          imageVector = icon,
-          contentDescription = null,
-          tint = if (isSelected) AntiqueGold else CharcoalSecondary,
-          modifier = Modifier.size(16.dp)
-        )
-        if (isSelected) {
-          Box(
-            modifier = Modifier
-              .size(14.dp)
-              .clip(CircleShape)
-              .background(AntiqueGold),
-            contentAlignment = Alignment.Center
-          ) {
-            Icon(
-              imageVector = Icons.Outlined.Check,
-              contentDescription = null,
-              tint = SoftCreamPaper,
-              modifier = Modifier.size(10.dp)
-            )
-          }
-        }
-      }
-
-      Column {
-        Text(
-          text = title,
-          style = MaterialTheme.typography.labelSmall.copy(
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-            fontSize = 11.sp
-          ),
-          color = CharcoalText
-        )
-        Text(
-          text = subtitle,
-          style = MaterialTheme.typography.bodySmall.copy(
-            fontSize = 8.5.sp,
-            lineHeight = 11.sp
-          ),
-          color = if (isSelected) CharcoalText else CharcoalTertiary,
-          maxLines = 2
-        )
       }
     }
   }

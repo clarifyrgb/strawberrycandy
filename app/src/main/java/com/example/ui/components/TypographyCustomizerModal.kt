@@ -239,104 +239,54 @@ fun TypographyCustomizerModal(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
           ) {
-            // Option 1: Flip / Turn Pages
+            // Continuous Scroll Mode
             Surface(
               shape = RoundedCornerShape(14.dp),
-              color = if (pageTurnMode == "flip") Color(0x1AD4AF37) else Color(0x0A000000),
-              border = BorderStroke(
-                width = if (pageTurnMode == "flip") 1.5.dp else 1.dp,
-                color = if (pageTurnMode == "flip") AntiqueGold else SubtleBorder
-              ),
+              color = Color(0x1AD4AF37),
+              border = BorderStroke(1.5.dp, AntiqueGold),
               modifier = Modifier
-                .weight(1f)
-                .clickable { onSelectPageTurnMode("flip") }
-                .testTag("page_mode_flip")
-            ) {
-              Column(modifier = Modifier.padding(12.dp)) {
-                Row(
-                  verticalAlignment = Alignment.CenterVertically,
-                  horizontalArrangement = Arrangement.SpaceBetween,
-                  modifier = Modifier.fillMaxWidth()
-                ) {
-                  Icon(
-                    imageVector = Icons.Outlined.AutoStories,
-                    contentDescription = null,
-                    tint = if (pageTurnMode == "flip") AntiqueGold else CharcoalSecondary,
-                    modifier = Modifier.size(20.dp)
-                  )
-                  if (pageTurnMode == "flip") {
-                    Icon(
-                      imageVector = Icons.Outlined.Check,
-                      contentDescription = null,
-                      tint = AntiqueGold,
-                      modifier = Modifier.size(16.dp)
-                    )
-                  }
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                  text = "Flip Page Turn",
-                  style = MaterialTheme.typography.titleSmall.copy(
-                    fontSize = 12.5.sp,
-                    fontWeight = FontWeight.SemiBold
-                  ),
-                  color = CharcoalText
-                )
-                Text(
-                  text = "3D curl flip • Tap & swipe",
-                  style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
-                  color = CharcoalSecondary
-                )
-              }
-            }
-
-            // Option 2: Continuous Scroll
-            Surface(
-              shape = RoundedCornerShape(14.dp),
-              color = if (pageTurnMode == "scroll") Color(0x1AD4AF37) else Color(0x0A000000),
-              border = BorderStroke(
-                width = if (pageTurnMode == "scroll") 1.5.dp else 1.dp,
-                color = if (pageTurnMode == "scroll") AntiqueGold else SubtleBorder
-              ),
-              modifier = Modifier
-                .weight(1f)
-                .clickable { onSelectPageTurnMode("scroll") }
+                .fillMaxWidth()
                 .testTag("page_mode_scroll")
             ) {
-              Column(modifier = Modifier.padding(12.dp)) {
-                Row(
-                  verticalAlignment = Alignment.CenterVertically,
-                  horizontalArrangement = Arrangement.SpaceBetween,
-                  modifier = Modifier.fillMaxWidth()
+              Row(
+                modifier = Modifier.padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Box(
+                  modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(AntiqueGold),
+                  contentAlignment = Alignment.Center
                 ) {
                   Icon(
                     imageVector = Icons.Outlined.SwapVert,
                     contentDescription = null,
-                    tint = if (pageTurnMode == "scroll") AntiqueGold else CharcoalSecondary,
+                    tint = SoftCreamPaper,
                     modifier = Modifier.size(20.dp)
                   )
-                  if (pageTurnMode == "scroll") {
-                    Icon(
-                      imageVector = Icons.Outlined.Check,
-                      contentDescription = null,
-                      tint = AntiqueGold,
-                      modifier = Modifier.size(16.dp)
-                    )
-                  }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                  text = "Continuous Scroll",
-                  style = MaterialTheme.typography.titleSmall.copy(
-                    fontSize = 12.5.sp,
-                    fontWeight = FontWeight.SemiBold
-                  ),
-                  color = CharcoalText
-                )
-                Text(
-                  text = "Fluid vertical scroll flow",
-                  style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
-                  color = CharcoalSecondary
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                  Text(
+                    text = "Smooth Vertical Scroll Mode",
+                    style = MaterialTheme.typography.titleSmall.copy(
+                      fontSize = 13.sp,
+                      fontWeight = FontWeight.SemiBold
+                    ),
+                    color = CharcoalText
+                  )
+                  Text(
+                    text = "Fluid continuous reading with instant chapter navigation",
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
+                    color = CharcoalSecondary
+                  )
+                }
+                Icon(
+                  imageVector = Icons.Outlined.Check,
+                  contentDescription = null,
+                  tint = AntiqueGold,
+                  modifier = Modifier.size(18.dp)
                 )
               }
             }
