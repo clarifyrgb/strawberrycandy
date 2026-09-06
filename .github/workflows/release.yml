@@ -3,6 +3,10 @@ name: Android Release Build
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -18,29 +22,36 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Configure Secrets
+      - name: Configure Headless Environment & Secrets
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           touch local.properties
-          echo "sdk.dir=$ANDROID_HOME" >> local.properties
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
           echo "GEMINI_API_KEY=${GEMINI_API_KEY}" >> local.properties
           echo "GEMINI_API_KEY=${GEMINI_API_KEY}" > .env
+          
+          # Safely append headless mode to existing jvmargs instead of creating a duplicate key
+          sed -i 's/org.gradle.jvmargs=/org.gradle.jvmargs=-Djava.awt.headless=true /g' gradle.properties
+          
+          # Remove broken AI Studio debugConfig referenced in README step 5
+          if [ -f app/build.gradle.kts ]; then
+            sed -i '/signingConfigs.getByName("debugConfig")/d' app/build.gradle.kts || true
+            sed -i '/debugConfig/d' app/build.gradle.kts || true
+          fi
 
       - name: Install Gradle Manually
         run: |
-          wget https://gradle.org
+          wget https://services.gradle.org/distributions/gradle-9.3.1-bin.zip
           unzip -q gradle-9.3.1-bin.zip
           echo "$PWD/gradle-9.3.1/bin" >> $GITHUB_PATH
 
-      # This creates a dummy visual interface so KSP/IntelliJ does not crash
-      - name: Build Release APK with Virtual Framebuffer
-        run: |
-          sudo apt-get update && sudo apt-get install -y xvfb
-          xvfb-run --auto-servernum gradle assembleRelease --no-daemon
+      # assembleDebug automatically self-signs the APK so Android lets you open it
+      - name: Build Debug APK
+        run: gradle assembleDebug --no-daemon
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-release
-          path: app/build/outputs/**/*.apk
+          name: Strawberrycandy-app
+          path: app/build/outputs/apk/debug/*.apk
