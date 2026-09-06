@@ -5,24 +5,24 @@ on:
     branches: [ main ]
 
 jobs:
-  build:
+_ build:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
 
       - name: Install Gradle Manually
         run: |
-          wget https://services.gradle.org/distributions/gradle-8.7-bin.zip
-          unzip -q gradle-8.7-bin.zip
-          echo "$PWD/gradle-8.7/bin" >> $GITHUB_PATH
+          wget https://services.gradle.org/distributions/gradle-9.3.1-bin.zip
+          unzip -q gradle-9.3.1-bin.zip
+          echo "$PWD/gradle-9.3.1/bin" >> $GITHUB_PATH
 
       - name: Build Release APK
         run: gradle assembleRelease
