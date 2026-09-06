@@ -1011,7 +1011,10 @@ fun OwnerUploadDialog(
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        val authorToCredit = if (selectedSlot == 0) "Strawberrycandy" else customPenName
+        val emailRegex = Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}")
+        val cleanCustomPenName = customPenName.replace(emailRegex, "").trim().ifBlank { "Translator $selectedSlot" }
+        val authorToCredit = if (selectedSlot == 0) "Strawberrycandy" else cleanCustomPenName
+        val cleanOriginalAuthor = originalAuthor.replace(emailRegex, "").trim().ifEmpty { authorToCredit }
 
         // Publish Button
         Button(
@@ -1034,7 +1037,7 @@ fun OwnerUploadDialog(
               authorToCredit,
               selectedSlot,
               coverImageUri,
-              originalAuthor.trim().ifEmpty { authorToCredit }
+              cleanOriginalAuthor
             )
           },
           shape = RoundedCornerShape(16.dp),

@@ -20,19 +20,36 @@ import kotlinx.coroutines.launch
 
 enum class ShelfFilter {
   ALL,
-  MY_LIBRARY,
+  READING,
+  FINISHED,
+  TO_BE_READ,
   FAVORITES
+}
+
+enum class NovelSortOption(val label: String) {
+  RECENTLY_READ("Recently Read"),
+  TITLE("Title (A–Z)"),
+  PROGRESS("Progress %"),
+  NEWEST("Newest Additions")
 }
 
 data class StrawberrycandyUiState(
   val activeUser: ReaderProfileEntity? = null,
   val novels: List<NovelWithState> = emptyList(),
+  val allNovels: List<NovelWithState> = emptyList(),
   val authorSlots: List<AuthorSlotEntity> = emptyList(),
   val activeFilter: ShelfFilter = ShelfFilter.ALL,
+  val activeSort: NovelSortOption = NovelSortOption.RECENTLY_READ,
   val selectedAuthorFilter: Int? = null, // null = all, 0 = Owner Strawberrycandy, 1..4 = Author Room 1..4
   val isAuthDialogOpen: Boolean = false,
   val isUploadDialogOpen: Boolean = false,
+  val isProfileDialogOpen: Boolean = false,
   val message: String? = null,
+  val totalFavoriteNovelsCount: Int = 0,
+  val totalNovelsCount: Int = 0,
+  val readingCount: Int = 0,
+  val finishedCount: Int = 0,
+  val toBeReadCount: Int = 0,
 )
 
 class StrawberrycandyViewModel(application: Application) : AndroidViewModel(application) {
@@ -40,9 +57,11 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
   private val repository = StrawberrycandyRepository(database.strawberrycandyDao())
 
   private val _activeFilter = MutableStateFlow(ShelfFilter.ALL)
+  private val _activeSort = MutableStateFlow(NovelSortOption.RECENTLY_READ)
   private val _selectedAuthorFilter = MutableStateFlow<Int?>(null)
   private val _isAuthDialogOpen = MutableStateFlow(false)
   private val _isUploadDialogOpen = MutableStateFlow(false)
+  private val _isProfileDialogOpen = MutableStateFlow(false)
   private val _snackbarMessage = MutableStateFlow<String?>(null)
 
   val activeUser: StateFlow<ReaderProfileEntity?> = repository.activeUser
@@ -54,16 +73,17 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
   val authorSlots: StateFlow<List<AuthorSlotEntity>> = repository.authorSlots
     .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-  private val _filterState = combine(_activeFilter, _selectedAuthorFilter) { filter, authorSlot ->
-    Pair(filter, authorSlot)
+  private val _filterState = combine(_activeFilter, _activeSort, _selectedAuthorFilter) { filter, sort, authorSlot ->
+    Triple(filter, sort, authorSlot)
   }
 
   private val _dialogState = combine(
     _isAuthDialogOpen,
     _isUploadDialogOpen,
+    _isProfileDialogOpen,
     _snackbarMessage
-  ) { isAuth, isUpload, msg ->
-    Triple(isAuth, isUpload, msg)
+  ) { isAuth, isUpload, isProfile, msg ->
+    listOf(isAuth, isUpload, isProfile, msg)
   }
 
   val uiState: StateFlow<StrawberrycandyUiState> = combine(
@@ -72,12 +92,25 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     repository.authorSlots,
     _filterState,
     _dialogState
-  ) { user, novels, slots, (filter, authorSlotFilter), (isAuthOpen, isUploadOpen, msg) ->
+  ) { user, novels, slots, (filter, sort, authorSlotFilter), dialogList ->
+    val isAuthOpen = dialogList[0] as Boolean
+    val isUploadOpen = dialogList[1] as Boolean
+    val isProfileOpen = dialogList[2] as Boolean
+    val msg = dialogList[3] as String?
+
+    val readingCount = novels.count { it.isReading }
+    val finishedCount = novels.count { it.isFinished }
+    val toBeReadCount = novels.count { it.isToBeRead }
+    val totalFavorites = novels.count { it.isFavorite }
+    val totalCount = novels.size
+
     val filteredNovels = novels
       .filter { novel ->
         when (filter) {
           ShelfFilter.ALL -> true
-          ShelfFilter.MY_LIBRARY -> novel.inReadingList
+          ShelfFilter.READING -> novel.isReading
+          ShelfFilter.FINISHED -> novel.isFinished
+          ShelfFilter.TO_BE_READ -> novel.isToBeRead
           ShelfFilter.FAVORITES -> novel.isFavorite
         }
       }
@@ -85,15 +118,34 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
         if (authorSlotFilter == null) true else novel.authorSlot == authorSlotFilter
       }
 
+    val sortedNovels = when (sort) {
+      NovelSortOption.RECENTLY_READ -> filteredNovels.sortedWith(
+        compareByDescending<NovelWithState> { it.lastReadTimestamp }
+          .thenByDescending { it.currentPage > 1 }
+          .thenByDescending { it.createdAt }
+      )
+      NovelSortOption.TITLE -> filteredNovels.sortedBy { it.title.lowercase() }
+      NovelSortOption.PROGRESS -> filteredNovels.sortedByDescending { it.progressFraction }
+      NovelSortOption.NEWEST -> filteredNovels.sortedByDescending { it.createdAt }
+    }
+
     StrawberrycandyUiState(
       activeUser = user,
-      novels = filteredNovels,
+      novels = sortedNovels,
+      allNovels = novels,
       authorSlots = slots,
       activeFilter = filter,
+      activeSort = sort,
       selectedAuthorFilter = authorSlotFilter,
       isAuthDialogOpen = isAuthOpen,
       isUploadDialogOpen = isUploadOpen,
-      message = msg
+      isProfileDialogOpen = isProfileOpen,
+      message = msg,
+      totalFavoriteNovelsCount = totalFavorites,
+      totalNovelsCount = totalCount,
+      readingCount = readingCount,
+      finishedCount = finishedCount,
+      toBeReadCount = toBeReadCount,
     )
   }.stateIn(
     viewModelScope,
@@ -103,6 +155,18 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
 
   fun setFilter(filter: ShelfFilter) {
     _activeFilter.value = filter
+  }
+
+  fun setSort(sort: NovelSortOption) {
+    _activeSort.value = sort
+  }
+
+  fun openProfileDialog() {
+    _isProfileDialogOpen.value = true
+  }
+
+  fun closeProfileDialog() {
+    _isProfileDialogOpen.value = false
   }
 
   fun setAuthorFilter(slot: Int?) {
@@ -125,39 +189,66 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     _isUploadDialogOpen.value = false
   }
 
-  fun isTranslatorOrOwner(user: ReaderProfileEntity? = activeUser.value): Boolean {
+  companion object {
+    val OWNER_EMAILS = StrawberrycandyRepository.OWNER_EMAILS
+
+    fun isOwnerEmail(email: String?): Boolean {
+      return StrawberrycandyRepository.isOwnerEmail(email)
+    }
+  }
+
+  fun isOwner(user: ReaderProfileEntity? = activeUser.value): Boolean {
     if (user == null) return false
-    return user.role == "OWNER" || user.role == "TRANSLATOR"
+    return isOwnerEmail(user.email) || (user.role == "OWNER" && isOwnerEmail(user.email))
+  }
+
+  fun isPermittedTranslator(
+    user: ReaderProfileEntity? = activeUser.value,
+    slots: List<AuthorSlotEntity> = authorSlots.value
+  ): Boolean {
+    if (user == null) return false
+    if (user.role != "TRANSLATOR") return false
+    val slot = if (user.authorSlot != null) {
+      slots.find { it.slotNumber == user.authorSlot }
+    } else {
+      slots.find {
+        it.penName.equals(user.displayName, ignoreCase = true) ||
+        it.authorName.equals(user.displayName, ignoreCase = true)
+      }
+    }
+    return slot?.isPermissionGranted == true
+  }
+
+  fun canEditNovel(
+    user: ReaderProfileEntity? = activeUser.value,
+    slots: List<AuthorSlotEntity> = authorSlots.value
+  ): Boolean {
+    if (user == null) return false
+    if (isOwner(user)) return true
+    return isPermittedTranslator(user, slots)
+  }
+
+  fun isTranslatorOrOwner(user: ReaderProfileEntity? = activeUser.value): Boolean {
+    return canEditNovel(user, authorSlots.value)
   }
 
   fun canUploadNovel(user: ReaderProfileEntity? = activeUser.value, slots: List<AuthorSlotEntity> = authorSlots.value): Boolean {
     if (user == null) return false
-    if (user.role == "OWNER") return true
-    if (user.role == "TRANSLATOR") {
-      // Find matching slot or check if user's slot is permitted
-      val slot = if (user.authorSlot != null) {
-        slots.find { it.slotNumber == user.authorSlot }
-      } else {
-        slots.find {
-          it.penName.equals(user.displayName, ignoreCase = true) ||
-          it.authorName.equals(user.displayName, ignoreCase = true)
-        } ?: slots.filter { it.slotNumber > 0 }.firstOrNull { it.isPermissionGranted }
-      }
-      return slot?.isPermissionGranted ?: false
-    }
-    return false
+    if (isOwner(user)) return true
+    return isPermittedTranslator(user, slots)
   }
 
   fun signInWithGoogle(
     email: String,
     displayName: String = "",
-    role: String = "TRANSLATOR",
+    role: String = "READER",
     authorSlot: Int? = null,
   ) {
     viewModelScope.launch {
       repository.signIn(provider = "GOOGLE", email = email, displayName = displayName, role = role, authorSlot = authorSlot)
       _isAuthDialogOpen.value = false
-      val roleLabel = if (role == "OWNER") "Archive Owner" else if (role == "TRANSLATOR") "Translator" else "Reader"
+      val isOwnerUser = isOwnerEmail(email)
+      val roleLabel = if (isOwnerUser) "Sole Archive Owner" else if (role == "TRANSLATOR") "Translator" else "Reader"
       _snackbarMessage.value = "Signed in as $roleLabel"
     }
   }
@@ -165,13 +256,14 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
   fun signInWithApple(
     email: String,
     displayName: String = "",
-    role: String = "TRANSLATOR",
+    role: String = "READER",
     authorSlot: Int? = null,
   ) {
     viewModelScope.launch {
       repository.signIn(provider = "APPLE", email = email, displayName = displayName, role = role, authorSlot = authorSlot)
       _isAuthDialogOpen.value = false
-      val roleLabel = if (role == "OWNER") "Archive Owner" else if (role == "TRANSLATOR") "Translator" else "Reader"
+      val isOwnerUser = isOwnerEmail(email)
+      val roleLabel = if (isOwnerUser) "Sole Archive Owner" else if (role == "TRANSLATOR") "Translator" else "Reader"
       _snackbarMessage.value = "Signed in as $roleLabel"
     }
   }
@@ -211,7 +303,115 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
   fun saveReadingProgress(novelId: String, page: Int) {
     val user = activeUser.value ?: return
     viewModelScope.launch {
-      repository.saveReadingProgress(user.userId, novelId, page)
+      val earnedPoint = repository.saveReadingProgress(user.userId, novelId, page)
+      if (earnedPoint) {
+        _snackbarMessage.value = "Novel Completed! +1 Pen Name Point earned! ⭐"
+      }
+    }
+  }
+
+  fun markNovelAsFinished(novelId: String) {
+    val user = activeUser.value
+    if (user == null) {
+      _isAuthDialogOpen.value = true
+      _snackbarMessage.value = "Please sign in to record finished novels and earn points"
+      return
+    }
+    viewModelScope.launch {
+      val earnedPoint = repository.markNovelAsFinished(user.userId, novelId)
+      if (earnedPoint) {
+        _snackbarMessage.value = "Novel Finished! +1 Pen Name Point earned! ⭐"
+      } else {
+        _snackbarMessage.value = "Novel marked as Finished ✓"
+      }
+    }
+  }
+
+  fun markNovelAsToBeRead(novelId: String) {
+    val user = activeUser.value
+    if (user == null) {
+      _isAuthDialogOpen.value = true
+      _snackbarMessage.value = "Please sign in to add to your To-Be-Read list"
+      return
+    }
+    viewModelScope.launch {
+      repository.markNovelAsToBeRead(user.userId, novelId)
+      _snackbarMessage.value = "Added to To-Be-Read list 🔖"
+    }
+  }
+
+  fun markNovelAsReading(novelId: String) {
+    val user = activeUser.value
+    if (user == null) {
+      _isAuthDialogOpen.value = true
+      _snackbarMessage.value = "Please sign in to track your reading shelf"
+      return
+    }
+    viewModelScope.launch {
+      repository.markNovelAsReading(user.userId, novelId)
+      _snackbarMessage.value = "Moved to Reading shelf 📖"
+    }
+  }
+
+  fun changePenNameWithPoint(newPenName: String) {
+    val user = activeUser.value
+    if (user == null) {
+      _isAuthDialogOpen.value = true
+      return
+    }
+    if (user.penNamePoints < 1 && !isOwner(user)) {
+      _snackbarMessage.value = "🔒 Changing your pen name requires 1 point. Finish a novel to earn 1 point!"
+      return
+    }
+    viewModelScope.launch {
+      val success = repository.changePenNameWithPoint(user.userId, newPenName)
+      if (success) {
+        _snackbarMessage.value = "Pen name changed successfully! 1 point used. ⭐"
+        _isProfileDialogOpen.value = false
+      } else {
+        _snackbarMessage.value = "Unable to change pen name. 1 novel completion point required."
+      }
+    }
+  }
+
+  fun updateAuthorSlotWithPoint(slotNumber: Int, authorName: String, penName: String, bio: String) {
+    val user = activeUser.value ?: return
+    val isSoleOwner = isOwner(user)
+
+    if (isSoleOwner) {
+      viewModelScope.launch {
+        repository.updateAuthorSlot(slotNumber, authorName, penName, bio)
+        _snackbarMessage.value = "Curator profile updated"
+      }
+      return
+    }
+
+    val currentSlot = user.authorSlot
+    if (currentSlot == slotNumber) {
+      val existingSlot = uiState.value.authorSlots.find { it.slotNumber == slotNumber }
+      val isChangingPenName = existingSlot != null && existingSlot.penName != penName.trim()
+
+      if (isChangingPenName) {
+        if (user.penNamePoints < 1) {
+          _snackbarMessage.value = "🔒 Changing your pen name requires 1 point earned from finishing a novel!"
+          return
+        }
+        viewModelScope.launch {
+          val success = repository.changePenNameWithPoint(user.userId, penName)
+          if (success) {
+            repository.updateAuthorSlot(slotNumber, penName, penName, bio)
+            _snackbarMessage.value = "Pen name updated! 1 point deducted. ⭐"
+          } else {
+            _snackbarMessage.value = "Insufficient points to change pen name."
+          }
+        }
+      } else {
+        // Only bio or photo updated
+        viewModelScope.launch {
+          repository.updateAuthorSlot(slotNumber, penName, penName, bio)
+          _snackbarMessage.value = "Profile bio updated"
+        }
+      }
     }
   }
 

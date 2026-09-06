@@ -30,6 +30,27 @@ interface StrawberrycandyDao {
   @Query("UPDATE novels SET readsCount = readsCount + 1 WHERE id = :novelId")
   suspend fun incrementReadsCount(novelId: String)
 
+  @Query("UPDATE novels SET favoritesCount = (SELECT COUNT(*) FROM user_reading_state WHERE user_reading_state.novelId = novels.id AND user_reading_state.isFavorite = 1) WHERE id = :novelId")
+  suspend fun syncRealFavoritesForNovel(novelId: String)
+
+  @Query("UPDATE novels SET favoritesCount = (SELECT COUNT(*) FROM user_reading_state WHERE user_reading_state.novelId = novels.id AND user_reading_state.isFavorite = 1)")
+  suspend fun syncAllRealFavorites()
+
+  @Query("UPDATE novels SET readsCount = 0 WHERE readsCount >= 500")
+  suspend fun resetArtificialReads()
+
+  @Query("DELETE FROM user_reading_state WHERE compositeId = 'guest_reader_nov_1' AND currentPage = 48")
+  suspend fun removeFakeSeededReadingState()
+
+  @Query("UPDATE author_slots SET bio = 'Contributing Translator at Strawberrycandy Archive' WHERE bio LIKE '%@%'")
+  suspend fun sanitizeSlotBios()
+
+  @Query("UPDATE author_slots SET penName = 'Translator ' || slotNumber WHERE penName LIKE '%@%'")
+  suspend fun sanitizeSlotPenNames()
+
+  @Query("UPDATE chapter_comments SET readerName = substr(readerName, 1, instr(readerName, '@') - 1) WHERE readerName LIKE '%@%'")
+  suspend fun sanitizeCommentNames()
+
   @Query("UPDATE novels SET favoritesCount = CASE WHEN :increment = 1 THEN favoritesCount + 1 ELSE CASE WHEN favoritesCount > 0 THEN favoritesCount - 1 ELSE 0 END END WHERE id = :novelId")
   suspend fun updateFavoritesCount(novelId: String, increment: Int)
 
@@ -40,11 +61,23 @@ interface StrawberrycandyDao {
   @Query("SELECT * FROM reader_profiles ORDER BY lastLoginTimestamp DESC LIMIT 1")
   fun getActiveReaderProfile(): Flow<ReaderProfileEntity?>
 
+  @Query("SELECT * FROM reader_profiles WHERE userId = :userId LIMIT 1")
+  suspend fun getReaderProfile(userId: String): ReaderProfileEntity?
+
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun insertReaderProfile(profile: ReaderProfileEntity)
 
   @Query("DELETE FROM reader_profiles")
   suspend fun clearReaderProfiles()
+
+  @Query("UPDATE reader_profiles SET penNamePoints = penNamePoints + :delta WHERE userId = :userId")
+  suspend fun addPointsToReader(userId: String, delta: Int)
+
+  @Query("UPDATE reader_profiles SET displayName = :newDisplayName, penNamePoints = penNamePoints - 1 WHERE userId = :userId AND penNamePoints >= 1")
+  suspend fun deductPointAndSetDisplayName(userId: String, newDisplayName: String): Int
+
+  @Query("UPDATE author_slots SET penName = :penName WHERE slotNumber = :slotNumber")
+  suspend fun updateSlotPenName(slotNumber: Int, penName: String)
 
   // Reading States (Favorites, Reading Novels, Resume Position)
   @Query("SELECT * FROM user_reading_state WHERE userId = :userId")

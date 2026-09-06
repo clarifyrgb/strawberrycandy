@@ -79,6 +79,10 @@ fun StoryPhotoItem(
         "img_book_1" -> R.drawable.img_book_1
         "img_book_2" -> R.drawable.img_book_2
         "img_book_3" -> R.drawable.img_book_3
+        "img_novel_crimson_bloom" -> R.drawable.img_novel_crimson_bloom
+        "img_novel_celestial" -> R.drawable.img_novel_celestial
+        "img_novel_whispering_pines" -> R.drawable.img_novel_whispering_pines
+        "img_novel_moonlight" -> R.drawable.img_novel_moonlight
         else -> context.resources.getIdentifier(resName, "drawable", context.packageName)
       }
     }

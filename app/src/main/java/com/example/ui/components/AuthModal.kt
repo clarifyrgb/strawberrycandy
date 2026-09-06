@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.example.data.StrawberrycandyRepository
 import com.example.ui.theme.AntiqueGold
 import com.example.ui.theme.AntiqueGoldLight
 import com.example.ui.theme.CharcoalSecondary
@@ -77,40 +78,77 @@ fun AuthModal(
 ) {
   var emailInput by remember { mutableStateOf(initialEmail) }
   var nameInput by remember { mutableStateOf("") }
-  var selectedRole by remember { mutableStateOf("TRANSLATOR") } // "TRANSLATOR", "READER", "OWNER"
+  var selectedRole by remember {
+    mutableStateOf(if (StrawberrycandyRepository.isOwnerEmail(initialEmail)) "OWNER" else "READER")
+  }
   var errorMessage by remember { mutableStateOf<String?>(null) }
 
-  fun validateAndSubmit(provider: String) {
-    val trimmedEmail = emailInput.trim()
-    if (trimmedEmail.isBlank()) {
-      errorMessage = "Please enter your Gmail / email address before signing in."
-      return
-    }
-    if (!trimmedEmail.contains("@") || !trimmedEmail.contains(".")) {
-      errorMessage = "Please enter a valid email address (e.g. clarifymanga@gmail.com)."
-      return
-    }
+  val isOwnerDetected = StrawberrycandyRepository.isOwnerEmail(emailInput)
 
-    errorMessage = null
-    val finalName = if (nameInput.isNotBlank()) {
-      nameInput.trim()
+  fun validateAndSubmit(provider: String) {
+    var trimmedEmail = emailInput.trim()
+    if (provider == "GOOGLE") {
+      if (trimmedEmail.isBlank()) {
+        errorMessage = "Please enter your Gmail address (e.g. username@gmail.com)."
+        return
+      }
+      if (!trimmedEmail.contains("@")) {
+        trimmedEmail = "$trimmedEmail@gmail.com"
+        emailInput = trimmedEmail
+      }
+      if (!trimmedEmail.contains(".")) {
+        errorMessage = "Please enter a valid Gmail address (e.g. username@gmail.com)."
+        return
+      }
     } else {
-      val prefix = trimmedEmail.substringBefore("@").replace(".", " ")
-      prefix.split(" ").joinToString(" ") { word ->
-        word.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+      if (trimmedEmail.isBlank()) {
+        errorMessage = "Please enter your email address before signing in."
+        return
+      }
+      if (!trimmedEmail.contains("@") || !trimmedEmail.contains(".")) {
+        errorMessage = "Please enter a valid email address (e.g. reader@example.com)."
+        return
       }
     }
 
-    val assignedSlot: Int? = when (selectedRole) {
+    errorMessage = null
+    val isOwner = StrawberrycandyRepository.isOwnerEmail(trimmedEmail)
+    val effectiveRole = if (isOwner) {
+      "OWNER"
+    } else if (selectedRole == "TRANSLATOR") {
+      "TRANSLATOR"
+    } else {
+      "READER"
+    }
+
+    val emailRegex = Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}")
+    val sanitizedNameInput = nameInput.replace(emailRegex, "").trim()
+
+    val finalName = if (sanitizedNameInput.isNotBlank()) {
+      sanitizedNameInput
+    } else {
+      if (isOwner) {
+        "Clarify"
+      } else if (effectiveRole == "TRANSLATOR") {
+        "Translator"
+      } else {
+        val prefix = trimmedEmail.substringBefore("@").replace(".", " ")
+        prefix.split(" ").joinToString(" ") { word ->
+          word.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+        }
+      }
+    }
+
+    val assignedSlot: Int? = when (effectiveRole) {
       "OWNER" -> 0
       "TRANSLATOR" -> 1
       else -> null
     }
 
     if (provider == "GOOGLE") {
-      onSignInWithGoogle(trimmedEmail, finalName, selectedRole, assignedSlot)
+      onSignInWithGoogle(trimmedEmail, finalName, effectiveRole, assignedSlot)
     } else {
-      onSignInWithApple(trimmedEmail, finalName, selectedRole, assignedSlot)
+      onSignInWithApple(trimmedEmail, finalName, effectiveRole, assignedSlot)
     }
   }
 
@@ -189,7 +227,11 @@ fun AuthModal(
         Spacer(modifier = Modifier.height(6.dp))
 
         Text(
-          text = "Enter your Gmail to authenticate. Translators can edit novels and publish works; Readers enjoy a clean read-only catalog.",
+          text = if (isOwnerDetected) {
+            "Sole Archive Owner Authentication. You have exclusive administrative control and manuscript editing rights."
+          } else {
+            "Sign in with your Gmail. Standard users enjoy clean read-only immersion. Translators require permission from Clarify to edit manuscripts."
+          },
           style = MaterialTheme.typography.bodySmall.copy(
             lineHeight = 18.sp
           ),
@@ -200,51 +242,93 @@ fun AuthModal(
         Spacer(modifier = Modifier.height(18.dp))
 
         // Role Selector Section
-        Column(modifier = Modifier.fillMaxWidth()) {
-          Text(
-            text = "SELECT YOUR ACCOUNT ROLE",
-            style = MaterialTheme.typography.labelSmall.copy(
-              fontSize = 9.sp,
-              fontWeight = FontWeight.Bold,
-              letterSpacing = 1.2.sp
-            ),
-            color = AntiqueGold
-          )
-          Spacer(modifier = Modifier.height(8.dp))
-
-          Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        if (isOwnerDetected) {
+          // Prominent Sole Owner Banner
+          Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = AntiqueGoldLight.copy(alpha = 0.6f),
+            border = BorderStroke(1.2.dp, AntiqueGold),
+            modifier = Modifier.fillMaxWidth().testTag("auth_owner_verified_banner")
           ) {
-            // Translator Role
-            RoleSelectionCard(
-              title = "Translator",
-              subtitle = "Can edit & manage novels",
-              isSelected = selectedRole == "TRANSLATOR",
-              icon = Icons.Outlined.Edit,
-              onClick = { selectedRole = "TRANSLATOR" },
-              modifier = Modifier.weight(1f)
+            Row(
+              modifier = Modifier.padding(14.dp),
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              Box(
+                modifier = Modifier
+                  .size(36.dp)
+                  .clip(CircleShape)
+                  .background(AntiqueGold),
+                contentAlignment = Alignment.Center
+              ) {
+                Icon(
+                  imageVector = Icons.Outlined.WorkspacePremium,
+                  contentDescription = null,
+                  tint = SoftCreamPaper,
+                  modifier = Modifier.size(20.dp)
+                )
+              }
+              Spacer(modifier = Modifier.width(12.dp))
+              Column(modifier = Modifier.weight(1f)) {
+                Text(
+                  text = "SOLE ARCHIVE OWNER VERIFIED",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 9.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.2.sp
+                  ),
+                  color = AntiqueGold
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                  text = "Welcome back, Clarify. Full editing, uploading, and translator permission controls are unlocked.",
+                  style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = 11.5.sp,
+                    lineHeight = 16.sp
+                  ),
+                  color = CharcoalText
+                )
+              }
+            }
+          }
+        } else {
+          // Standard User Role Options: Reader (Default) or Translator
+          Column(modifier = Modifier.fillMaxWidth()) {
+            Text(
+              text = "SELECT YOUR ACCOUNT ROLE",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.2.sp
+              ),
+              color = AntiqueGold
             )
+            Spacer(modifier = Modifier.height(8.dp))
 
-            // Reader Role
-            RoleSelectionCard(
-              title = "Reader",
-              subtitle = "Read-only • Edits hidden",
-              isSelected = selectedRole == "READER",
-              icon = Icons.Outlined.MenuBook,
-              onClick = { selectedRole = "READER" },
-              modifier = Modifier.weight(1f)
-            )
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+              // Reader Role (Default)
+              RoleSelectionCard(
+                title = "Reader Mode",
+                subtitle = "Pure reading immersion • Edits hidden",
+                isSelected = selectedRole == "READER",
+                icon = Icons.Outlined.MenuBook,
+                onClick = { selectedRole = "READER" },
+                modifier = Modifier.weight(1f)
+              )
 
-            // Owner Role
-            RoleSelectionCard(
-              title = "Owner",
-              subtitle = "Archive Founder",
-              isSelected = selectedRole == "OWNER",
-              icon = Icons.Outlined.WorkspacePremium,
-              onClick = { selectedRole = "OWNER" },
-              modifier = Modifier.weight(1f)
-            )
+              // Translator Role
+              RoleSelectionCard(
+                title = "Translator",
+                subtitle = "Requires owner permission to edit",
+                isSelected = selectedRole == "TRANSLATOR",
+                icon = Icons.Outlined.Edit,
+                onClick = { selectedRole = "TRANSLATOR" },
+                modifier = Modifier.weight(1f)
+              )
+            }
           }
         }
 
@@ -252,38 +336,15 @@ fun AuthModal(
 
         // Email Text Field (Google / Email)
         Column(modifier = Modifier.fillMaxWidth()) {
-          Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-          ) {
-            Text(
-              text = "GMAIL / EMAIL ADDRESS *",
-              style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.1.sp
-              ),
-              color = CharcoalText
-            )
-
-            // Quick suggestion chip
-            Text(
-              text = "clarifymanga@gmail.com",
-              style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Medium,
-                color = AntiqueGold
-              ),
-              modifier = Modifier
-                .clickable {
-                  emailInput = "clarifymanga@gmail.com"
-                  if (nameInput.isBlank()) nameInput = "Clarify"
-                  errorMessage = null
-                }
-                .padding(2.dp)
-            )
-          }
+          Text(
+            text = "GMAIL / EMAIL ADDRESS *",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 9.sp,
+              fontWeight = FontWeight.Bold,
+              letterSpacing = 1.1.sp
+            ),
+            color = CharcoalText
+          )
 
           Spacer(modifier = Modifier.height(6.dp))
 
@@ -293,12 +354,12 @@ fun AuthModal(
               emailInput = it
               errorMessage = null
             },
-            placeholder = { Text("e.g. clarifymanga@gmail.com", color = CharcoalTertiary) },
+            placeholder = { Text("reader@gmail.com", color = CharcoalTertiary) },
             leadingIcon = {
               Icon(
                 imageVector = Icons.Outlined.Mail,
                 contentDescription = null,
-                tint = AntiqueGold,
+                tint = if (isOwnerDetected) AntiqueGold else CharcoalSecondary,
                 modifier = Modifier.size(18.dp)
               )
             },
@@ -317,27 +378,76 @@ fun AuthModal(
               .fillMaxWidth()
               .testTag("auth_email_input")
           )
+
+          if (emailInput.isNotBlank() && !emailInput.contains("@")) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.Start
+            ) {
+              Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = Color(0xFF4285F4).copy(alpha = 0.12f),
+                border = BorderStroke(1.dp, Color(0xFF4285F4).copy(alpha = 0.3f)),
+                onClick = {
+                  emailInput = "$emailInput@gmail.com"
+                  errorMessage = null
+                }
+              ) {
+                Row(
+                  modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                  verticalAlignment = Alignment.CenterVertically
+                ) {
+                  Text(
+                    text = "+ @gmail.com",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontSize = 10.sp,
+                      fontWeight = FontWeight.SemiBold,
+                      color = Color(0xFF1A73E8)
+                    )
+                  )
+                }
+              }
+            }
+          }
         }
 
         Spacer(modifier = Modifier.height(12.dp))
 
         // Name / Pen Name Text Field
         Column(modifier = Modifier.fillMaxWidth()) {
-          Text(
-            text = "NAME OR PEN NAME",
-            style = MaterialTheme.typography.labelSmall.copy(
-              fontSize = 9.sp,
-              fontWeight = FontWeight.Bold,
-              letterSpacing = 1.1.sp
-            ),
-            color = CharcoalText
-          )
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Text(
+              text = if (selectedRole == "TRANSLATOR") "TRANSLATOR PEN NAME (PUBLIC)" else "NAME OR PEN NAME",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.1.sp
+              ),
+              color = CharcoalText
+            )
+            if (selectedRole == "TRANSLATOR") {
+              Text(
+                text = "GMAIL HIDDEN",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 8.sp,
+                  fontWeight = FontWeight.Bold,
+                  letterSpacing = 0.8.sp,
+                  color = Color(0xFF2E7D32)
+                )
+              )
+            }
+          }
           Spacer(modifier = Modifier.height(6.dp))
 
           OutlinedTextField(
             value = nameInput,
             onValueChange = { nameInput = it },
-            placeholder = { Text("Your pen name or reader display name", color = CharcoalTertiary) },
+            placeholder = { Text(if (selectedRole == "TRANSLATOR") "Pen name (e.g. Aria Thorne)" else "Your pen name or reader display name", color = CharcoalTertiary) },
             leadingIcon = {
               Icon(
                 imageVector = Icons.Outlined.Person,
@@ -360,6 +470,17 @@ fun AuthModal(
               .fillMaxWidth()
               .testTag("auth_name_input")
           )
+
+          if (selectedRole == "TRANSLATOR") {
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+              text = "Privacy: Translators' Gmail accounts are hidden from readers. Only your pen name is visible.",
+              style = MaterialTheme.typography.bodySmall.copy(
+                fontSize = 10.5.sp,
+                color = CharcoalSecondary
+              )
+            )
+          }
         }
 
         // Error message banner
@@ -397,8 +518,8 @@ fun AuthModal(
         // Role summary banner
         Surface(
           shape = RoundedCornerShape(12.dp),
-          color = if (selectedRole == "READER") Color(0x0F000000) else AntiqueGoldLight.copy(alpha = 0.45f),
-          border = BorderStroke(1.dp, if (selectedRole == "READER") SubtleBorder else AntiqueGold.copy(alpha = 0.35f)),
+          color = if (isOwnerDetected || selectedRole == "OWNER") AntiqueGoldLight.copy(alpha = 0.5f) else if (selectedRole == "READER") Color(0x0F000000) else AntiqueGoldLight.copy(alpha = 0.35f),
+          border = BorderStroke(1.dp, if (isOwnerDetected || selectedRole == "OWNER") AntiqueGold.copy(alpha = 0.5f) else if (selectedRole == "READER") SubtleBorder else AntiqueGold.copy(alpha = 0.35f)),
           modifier = Modifier.fillMaxWidth()
         ) {
           Row(
@@ -406,10 +527,12 @@ fun AuthModal(
             verticalAlignment = Alignment.CenterVertically
           ) {
             Icon(
-              imageVector = when (selectedRole) {
-                "OWNER" -> Icons.Outlined.Security
-                "TRANSLATOR" -> Icons.Outlined.Check
-                else -> Icons.Outlined.MenuBook
+              imageVector = if (isOwnerDetected || selectedRole == "OWNER") {
+                Icons.Outlined.Security
+              } else if (selectedRole == "TRANSLATOR") {
+                Icons.Outlined.Edit
+              } else {
+                Icons.Outlined.MenuBook
               },
               contentDescription = null,
               tint = AntiqueGold,
@@ -417,10 +540,12 @@ fun AuthModal(
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-              text = when (selectedRole) {
-                "TRANSLATOR" -> "Translators can edit novel content, synopsis, title & covers via 3-second hold or edit button."
-                "OWNER" -> "Archive Owner has full rights to upload, edit all manuscripts, and manage translator permissions."
-                else -> "Reader Mode: Edit buttons & toggle switches are hidden to preserve clean book immersion."
+              text = if (isOwnerDetected || selectedRole == "OWNER") {
+                "Sole Owner Mode: Full administrative control, translator permission management, manuscript upload and editing unlocked."
+              } else if (selectedRole == "TRANSLATOR") {
+                "Translator Mode: Requires permission from Clarify to edit novel content, synopsis, and chapters."
+              } else {
+                "Reader Mode: Edit buttons & toggle switches are hidden to preserve clean book immersion."
               },
               style = MaterialTheme.typography.bodySmall.copy(
                 fontSize = 10.5.sp,
@@ -468,10 +593,10 @@ fun AuthModal(
             }
             Spacer(modifier = Modifier.width(12.dp))
             Text(
-              text = "Sign in with Google",
+              text = "Authenticate with Google (gmail.com)",
               style = MaterialTheme.typography.labelLarge.copy(
                 fontWeight = FontWeight.SemiBold,
-                letterSpacing = 0.4.sp
+                letterSpacing = 0.3.sp
               ),
               color = Color(0xFF3C4043)
             )

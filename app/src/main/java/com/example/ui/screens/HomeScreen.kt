@@ -38,10 +38,16 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
+import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.BookmarkAdd
 import androidx.compose.material.icons.outlined.BookmarkAdded
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.History
@@ -51,6 +57,7 @@ import androidx.compose.material.icons.outlined.MeetingRoom
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.Sort
 import androidx.compose.material.icons.outlined.Upload
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.WorkspacePremium
@@ -60,10 +67,13 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -93,6 +103,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -106,6 +117,7 @@ import com.example.ui.components.AuthModal
 import com.example.ui.components.AuthorRoomsModal
 import com.example.ui.components.EditNovelModal
 import com.example.ui.components.OwnerUploadDialog
+import com.example.ui.components.ReaderProfileModal
 import com.example.ui.components.TranslatorProfileModal
 import com.example.ui.theme.AntiqueGold
 import com.example.ui.theme.AntiqueGoldLight
@@ -115,6 +127,7 @@ import com.example.ui.theme.CharcoalText
 import com.example.ui.theme.CreamBackground
 import com.example.ui.theme.SoftCreamPaper
 import com.example.ui.theme.SubtleBorder
+import com.example.viewmodel.NovelSortOption
 import com.example.viewmodel.ShelfFilter
 import com.example.viewmodel.StrawberrycandyViewModel
 import com.example.util.formatStatCount
@@ -139,32 +152,10 @@ fun HomeScreen(
   var selectedTranslatorForDetail by remember { mutableStateOf<AuthorSlotEntity?>(null) }
   var slotToGrantPermission by remember { mutableStateOf<AuthorSlotEntity?>(null) }
   var novelToEdit by remember { mutableStateOf<NovelWithState?>(null) }
-
-  val context = LocalContext.current
-  var coverPickerTargetNovelId by remember { mutableStateOf<String?>(null) }
-  val singleNovelCoverPickerLauncher = rememberLauncherForActivityResult(
-    contract = ActivityResultContracts.PickVisualMedia()
-  ) { uri: Uri? ->
-    val targetId = coverPickerTargetNovelId
-    if (uri != null && targetId != null) {
-      try {
-        val coversDir = File(context.filesDir, "covers").apply { mkdirs() }
-        val destFile = File(coversDir, "cover_${System.currentTimeMillis()}.jpg")
-        context.contentResolver.openInputStream(uri)?.use { input ->
-          FileOutputStream(destFile).use { output ->
-            input.copyTo(output)
-          }
-        }
-        viewModel.updateNovelCover(targetId, destFile.absolutePath)
-      } catch (e: Exception) {
-        viewModel.updateNovelCover(targetId, uri.toString())
-      }
-    }
-    coverPickerTargetNovelId = null
-  }
+  var isCoverGalleryMode by remember { mutableStateOf(false) }
+  var isSortMenuOpen by remember { mutableStateOf(false) }
 
   val safeIndex = if (novels.isNotEmpty()) selectedIndex.coerceIn(0, novels.size - 1) else 0
-  val selectedNovel = novels.getOrNull(safeIndex)
 
   // Find a novel currently in progress to feature in "Continue Reading"
   val continueReadingNovel = novels.firstOrNull { it.inReadingList && it.currentPage > 1 }
@@ -191,7 +182,8 @@ fun HomeScreen(
     allTranslatorSlots.filter { !it.isPermissionGranted }
   }
 
-  val isTranslatorOrOwner = viewModel.isTranslatorOrOwner(activeUser)
+  val isSoleOwner = viewModel.isOwner(activeUser)
+  val isTranslatorOrOwner = viewModel.canEditNovel(activeUser, uiState.authorSlots)
   val canUploadNovel = viewModel.canUploadNovel(activeUser, uiState.authorSlots)
 
   Box(
@@ -212,9 +204,11 @@ fun HomeScreen(
       // 1. Top Utility Header: Reader Sign-in, Author Rooms & Upload actions
       TopUtilityBar(
         activeUser = activeUser,
+        isSoleOwner = isSoleOwner,
         canUpload = canUploadNovel,
         onOpenAuth = { viewModel.openAuthDialog() },
         onSignOut = { viewModel.signOut() },
+        onOpenProfile = { viewModel.openProfileDialog() },
         onOpenAuthorRooms = { isAuthorRoomsModalOpen = true },
         onOpenUpload = {
           selectedUploadSlot = activeUser?.authorSlot ?: 0
@@ -223,112 +217,127 @@ fun HomeScreen(
         activeTranslatorsCount = activeTranslators.size
       )
 
-      // 2. Main Brand Header: Strawberrycandy
-      Column(
-        modifier = Modifier
-          .fillMaxWidth()
-          .padding(top = 12.dp, bottom = 16.dp, start = 24.dp, end = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-      ) {
-        Text(
-          text = "STRAWBERRYCANDY",
-          style = MaterialTheme.typography.displayMedium.copy(
-            letterSpacing = 3.sp,
-            fontWeight = FontWeight.Light,
-            fontFamily = FontFamily.Serif
-          ),
-          color = CharcoalText,
-          textAlign = TextAlign.Center,
-          modifier = Modifier.testTag("app_brand_title")
-        )
-      }
-
-      // 3. Reader Filter Chips: All Novels, My Library, Favorites
+      // 2. Reader & Translator Category Filter Chips (All, Reading, Finished, To-Be-Read, Favorites, Sort, View-Mode)
       Row(
         modifier = Modifier
           .fillMaxWidth()
-          .padding(horizontal = 24.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.Center,
+          .horizontalScroll(rememberScrollState())
+          .padding(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically
       ) {
         ShelfFilterChip(
-          label = "Curated Shelf",
+          label = "All",
+          icon = null,
           selected = uiState.activeFilter == ShelfFilter.ALL,
           onClick = { viewModel.setFilter(ShelfFilter.ALL) }
         )
-        Spacer(modifier = Modifier.width(8.dp))
         ShelfFilterChip(
-          label = "My Reading (${novels.count { it.inReadingList }})",
-          selected = uiState.activeFilter == ShelfFilter.MY_LIBRARY,
-          onClick = {
-            viewModel.setFilter(ShelfFilter.MY_LIBRARY)
-          }
+          label = "Reading (${uiState.readingCount})",
+          icon = Icons.Filled.MenuBook,
+          selected = uiState.activeFilter == ShelfFilter.READING,
+          onClick = { viewModel.setFilter(ShelfFilter.READING) }
         )
-        Spacer(modifier = Modifier.width(8.dp))
         ShelfFilterChip(
-          label = "Favorites (${novels.count { it.isFavorite }})",
+          label = "Finished (${uiState.finishedCount})",
+          icon = Icons.Filled.CheckCircle,
+          selected = uiState.activeFilter == ShelfFilter.FINISHED,
+          onClick = { viewModel.setFilter(ShelfFilter.FINISHED) }
+        )
+        ShelfFilterChip(
+          label = "To Read (${uiState.toBeReadCount})",
+          icon = Icons.Filled.Bookmark,
+          selected = uiState.activeFilter == ShelfFilter.TO_BE_READ,
+          onClick = { viewModel.setFilter(ShelfFilter.TO_BE_READ) }
+        )
+        ShelfFilterChip(
+          label = "Favorites (${uiState.totalFavoriteNovelsCount})",
+          icon = Icons.Filled.Favorite,
           selected = uiState.activeFilter == ShelfFilter.FAVORITES,
-          onClick = {
-            viewModel.setFilter(ShelfFilter.FAVORITES)
-          }
+          onClick = { viewModel.setFilter(ShelfFilter.FAVORITES) },
+          modifier = Modifier.testTag("user_favorited_count_indicator")
         )
-      }
 
-      // 3.5. Dynamic Active Curator Status Header
-      Row(
-        modifier = Modifier
-          .fillMaxWidth()
-          .padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-      ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-          Text(
-            text = "CURATORS (${activeTranslators.size + 1} ACTIVE)",
-            style = MaterialTheme.typography.labelSmall.copy(
-              fontSize = 9.5.sp,
-              fontWeight = FontWeight.Bold,
-              letterSpacing = 1.2.sp
-            ),
-            color = CharcoalTertiary
-          )
-          Spacer(modifier = Modifier.width(6.dp))
+        // Sort Dropdown Button
+        Box {
           Surface(
-            shape = RoundedCornerShape(10.dp),
-            color = Color(0xFF2E7D32).copy(alpha = 0.12f),
-            border = BorderStroke(0.8.dp, Color(0xFF2E7D32).copy(alpha = 0.35f))
+            onClick = { isSortMenuOpen = true },
+            shape = RoundedCornerShape(14.dp),
+            color = SoftCreamPaper,
+            border = BorderStroke(1.dp, SubtleBorder),
+            modifier = Modifier.height(30.dp)
           ) {
             Row(
               verticalAlignment = Alignment.CenterVertically,
-              modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+              modifier = Modifier.padding(horizontal = 8.dp)
             ) {
-              Box(
-                modifier = Modifier
-                  .size(5.dp)
-                  .background(Color(0xFF2E7D32), CircleShape)
+              Icon(
+                imageVector = Icons.Outlined.Sort,
+                contentDescription = "Sort novels",
+                tint = AntiqueGold,
+                modifier = Modifier.size(13.dp)
               )
-              Spacer(modifier = Modifier.width(4.dp))
+              Spacer(modifier = Modifier.width(3.dp))
               Text(
-                text = "${activeTranslators.size} Active Translators",
-                style = MaterialTheme.typography.labelSmall.copy(
-                  fontSize = 8.5.sp,
-                  fontWeight = FontWeight.Bold,
-                  color = Color(0xFF2E7D32)
-                )
+                text = uiState.activeSort.label,
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                color = CharcoalText
+              )
+            }
+          }
+
+          DropdownMenu(
+            expanded = isSortMenuOpen,
+            onDismissRequest = { isSortMenuOpen = false }
+          ) {
+            NovelSortOption.entries.forEach { option ->
+              DropdownMenuItem(
+                text = {
+                  Text(
+                    text = option.label,
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                      fontWeight = if (uiState.activeSort == option) FontWeight.Bold else FontWeight.Normal
+                    ),
+                    color = if (uiState.activeSort == option) AntiqueGold else CharcoalText
+                  )
+                },
+                onClick = {
+                  viewModel.setSort(option)
+                  isSortMenuOpen = false
+                }
               )
             }
           }
         }
 
-        if (futureGrantableTranslators.isNotEmpty()) {
-          Text(
-            text = "${futureGrantableTranslators.size} grantable",
-            style = MaterialTheme.typography.labelSmall.copy(
-              fontSize = 9.sp,
-              color = AntiqueGold,
-              fontWeight = FontWeight.Medium
+        // View Mode Switcher (Shelf vs Full-Cover Flow)
+        Surface(
+          onClick = { isCoverGalleryMode = !isCoverGalleryMode },
+          shape = RoundedCornerShape(14.dp),
+          color = if (isCoverGalleryMode) CharcoalText else SoftCreamPaper,
+          border = BorderStroke(1.dp, if (isCoverGalleryMode) CharcoalText else SubtleBorder),
+          modifier = Modifier.height(30.dp)
+        ) {
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 8.dp)
+          ) {
+            Icon(
+              imageVector = if (isCoverGalleryMode) Icons.Outlined.PhotoLibrary else Icons.AutoMirrored.Outlined.MenuBook,
+              contentDescription = "Toggle view mode",
+              tint = if (isCoverGalleryMode) SoftCreamPaper else CharcoalSecondary,
+              modifier = Modifier.size(13.dp)
             )
-          )
+            Spacer(modifier = Modifier.width(3.dp))
+            Text(
+              text = if (isCoverGalleryMode) "Covers" else "Shelf",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 10.5.sp,
+                fontWeight = FontWeight.SemiBold
+              ),
+              color = if (isCoverGalleryMode) SoftCreamPaper else CharcoalSecondary
+            )
+          }
         }
       }
 
@@ -428,6 +437,9 @@ fun HomeScreen(
 
         // Active Curators (Permitted Translators)
         activeTranslators.forEach { slot ->
+          val safePenName = slot.penName.replace(Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"), "").trim().ifBlank {
+            "Translator ${slot.slotNumber}"
+          }
           FilterChip(
             selected = false,
             onClick = { selectedTranslatorForDetail = slot },
@@ -441,7 +453,7 @@ fun HomeScreen(
             label = {
               Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                  slot.penName,
+                  safePenName,
                   style = MaterialTheme.typography.labelSmall.copy(
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Medium
@@ -471,8 +483,8 @@ fun HomeScreen(
           )
         }
 
-        // Translators who can be granted permission in the future
-        if (futureGrantableTranslators.isNotEmpty()) {
+        // Translators who can be granted permission in the future (Only visible to Archive Sole Owner)
+        if (isSoleOwner && futureGrantableTranslators.isNotEmpty()) {
           Box(
             modifier = Modifier
               .padding(horizontal = 4.dp)
@@ -555,7 +567,7 @@ fun HomeScreen(
               .horizontalScroll(rememberScrollState())
               .padding(horizontal = 24.dp, vertical = 12.dp)
               .testTag("bookshelf_horizontal_row"),
-            horizontalArrangement = Arrangement.Center,
+            horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.Bottom
           ) {
             novels.forEachIndexed { index, novel ->
@@ -579,31 +591,62 @@ fun HomeScreen(
                 onEditNovel = {
                   selectedIndex = index
                   novelToEdit = novel
+                },
+                onMarkReading = {
+                  viewModel.markNovelAsReading(novel.id)
+                },
+                onMarkFinished = {
+                  viewModel.markNovelAsFinished(novel.id)
+                },
+                onMarkToBeRead = {
+                  viewModel.markNovelAsToBeRead(novel.id)
                 }
               )
-
-              if (index < novels.size - 1) {
-                Spacer(modifier = Modifier.width(16.dp))
-              }
             }
           }
 
-          // Minimalist architectural shelf line beneath the row
+          // Refined architectural shelf plinth beneath the row
           Box(
             modifier = Modifier
               .fillMaxWidth()
               .padding(horizontal = 24.dp)
-              .height(2.dp)
+              .height(5.dp)
+              .clip(RoundedCornerShape(2.5.dp))
               .background(
                 brush = Brush.horizontalGradient(
                   listOf(
                     Color.Transparent,
-                    AntiqueGold.copy(alpha = 0.35f),
-                    AntiqueGold.copy(alpha = 0.35f),
+                    AntiqueGold.copy(alpha = 0.45f),
+                    AntiqueGold.copy(alpha = 0.45f),
                     Color.Transparent
                   )
                 )
               )
+          )
+
+          // 5.1. Selected Novel Spotlight Feature
+          val focusedNovel = novels.getOrNull(safeIndex) ?: novels.first()
+          SelectedNovelSpotlight(
+            novel = focusedNovel,
+            onReadNovel = { onSelectNovel(focusedNovel) },
+            onToggleFavorite = { viewModel.toggleFavorite(focusedNovel.id) },
+            modifier = Modifier
+              .fillMaxWidth()
+              .padding(horizontal = 24.dp, vertical = 12.dp)
+          )
+
+          // 5.2. Curated Cover Gallery Showcase
+          CuratedCoverShowcase(
+            novels = novels,
+            selectedNovelId = focusedNovel.id,
+            onSelectNovel = { novel ->
+              val idx = novels.indexOfFirst { it.id == novel.id }
+              if (idx >= 0) selectedIndex = idx
+              onSelectNovel(novel)
+            },
+            modifier = Modifier
+              .fillMaxWidth()
+              .padding(horizontal = 24.dp, vertical = 10.dp)
           )
         }
       } else {
@@ -636,303 +679,119 @@ fun HomeScreen(
         }
       }
 
-      Spacer(modifier = Modifier.height(16.dp))
+      Spacer(modifier = Modifier.height(20.dp))
 
-      // 6. Selected Novel Details Card
-      if (selectedNovel != null) {
+      // Subtle Archive Colophon / Shelf Summary Plate so the bottom has balanced presence
+      Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = SoftCreamPaper.copy(alpha = 0.75f),
+        border = BorderStroke(1.dp, SubtleBorder.copy(alpha = 0.65f)),
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(horizontal = 24.dp)
+      ) {
         Column(
-          modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 24.dp),
+          modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
           horizontalAlignment = Alignment.CenterHorizontally
         ) {
-          Card(
-            shape = RoundedCornerShape(18.dp),
-            colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
-            border = BorderStroke(1.dp, SubtleBorder),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-            modifier = Modifier
-              .fillMaxWidth()
-              .testTag("focused_book_card")
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
           ) {
-            Column(
-              modifier = Modifier.padding(20.dp),
-              horizontalAlignment = Alignment.CenterHorizontally
+            Icon(
+              imageVector = Icons.AutoMirrored.Outlined.MenuBook,
+              contentDescription = null,
+              tint = AntiqueGold,
+              modifier = Modifier.size(15.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+              text = "COLLECTIVE ARCHIVE",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.5.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.4.sp
+              ),
+              color = CharcoalText
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+              text = "•",
+              style = MaterialTheme.typography.labelSmall,
+              color = CharcoalTertiary
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              modifier = Modifier.testTag("user_favorited_count_indicator")
             ) {
+              Icon(
+                imageVector = Icons.Filled.Favorite,
+                contentDescription = "Favorited novels",
+                tint = if (uiState.totalFavoriteNovelsCount > 0) Color(0xFFE53935) else AntiqueGold,
+                modifier = Modifier.size(11.dp)
+              )
+              Spacer(modifier = Modifier.width(4.dp))
+              Text(
+                text = "${uiState.totalFavoriteNovelsCount} Favorited",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 9.5.sp,
+                  fontWeight = FontWeight.SemiBold,
+                  letterSpacing = 0.6.sp
+                ),
+                color = AntiqueGold
+              )
+            }
+            if (activeUser != null) {
+              Spacer(modifier = Modifier.width(8.dp))
+              Text(
+                text = "•",
+                style = MaterialTheme.typography.labelSmall,
+                color = CharcoalTertiary
+              )
+              Spacer(modifier = Modifier.width(8.dp))
               Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.testTag("user_points_indicator")
               ) {
-                val authorCredit = if (selectedNovel.authorSlot > 0) {
-                  "BY ${selectedNovel.author.uppercase()} (ROOM ${selectedNovel.authorSlot}) • ${selectedNovel.editionNumber}"
-                } else {
-                  "BY STRAWBERRYCANDY • ${selectedNovel.editionNumber}"
-                }
+                Icon(
+                  imageVector = Icons.Filled.Star,
+                  contentDescription = "Points",
+                  tint = AntiqueGold,
+                  modifier = Modifier.size(11.dp)
+                )
+                Spacer(modifier = Modifier.width(3.dp))
                 Text(
-                  text = authorCredit,
+                  text = "${activeUser.penNamePoints} pt${if (activeUser.penNamePoints != 1) "s" else ""}",
                   style = MaterialTheme.typography.labelSmall.copy(
-                    letterSpacing = 1.4.sp,
-                    fontWeight = FontWeight.SemiBold
+                    fontSize = 9.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 0.6.sp
                   ),
                   color = AntiqueGold
                 )
-
-                IconButton(
-                  onClick = { viewModel.toggleFavorite(selectedNovel.id) },
-                  modifier = Modifier.size(28.dp)
-                ) {
-                  Icon(
-                    imageVector = if (selectedNovel.isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                    contentDescription = "Favorite",
-                    tint = if (selectedNovel.isFavorite) Color(0xFFC74350) else CharcoalTertiary,
-                    modifier = Modifier.size(18.dp)
-                  )
-                }
-              }
-
-              Spacer(modifier = Modifier.height(6.dp))
-
-              Text(
-                text = selectedNovel.title,
-                style = MaterialTheme.typography.headlineMedium.copy(
-                  fontFamily = FontFamily.Serif,
-                  fontWeight = FontWeight.Normal
-                ),
-                color = CharcoalText,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.testTag("active_book_title")
-              )
-
-              Spacer(modifier = Modifier.height(4.dp))
-
-              Text(
-                text = selectedNovel.subtitle,
-                style = MaterialTheme.typography.bodyMedium.copy(
-                  fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-                ),
-                color = CharcoalSecondary,
-                textAlign = TextAlign.Center
-              )
-
-              Spacer(modifier = Modifier.height(10.dp))
-
-              // Reads and Favorites Metrics Row
-              Row(
-                modifier = Modifier
-                  .clip(RoundedCornerShape(16.dp))
-                  .background(SoftCreamPaper)
-                  .border(1.dp, SubtleBorder, RoundedCornerShape(16.dp))
-                  .padding(horizontal = 14.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp)
-              ) {
-                // Reads Count
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                  Icon(
-                    imageVector = Icons.Outlined.Visibility,
-                    contentDescription = null,
-                    tint = AntiqueGold,
-                    modifier = Modifier.size(13.dp)
-                  )
-                  Spacer(modifier = Modifier.width(5.dp))
-                  Text(
-                    text = "${formatStatCount(selectedNovel.readsCount)} Readers",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                      fontWeight = FontWeight.SemiBold,
-                      fontSize = 11.sp
-                    ),
-                    color = CharcoalText
-                  )
-                }
-
-                Box(
-                  modifier = Modifier
-                    .width(1.dp)
-                    .height(11.dp)
-                    .background(SubtleBorder)
-                )
-
-                // Favorites Count
-                Row(
-                  verticalAlignment = Alignment.CenterVertically,
-                  modifier = Modifier.clickable { viewModel.toggleFavorite(selectedNovel.id) }
-                ) {
-                  Icon(
-                    imageVector = if (selectedNovel.isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                    contentDescription = "Favorite",
-                    tint = if (selectedNovel.isFavorite) Color(0xFFEF5350) else AntiqueGold,
-                    modifier = Modifier.size(13.dp)
-                  )
-                  Spacer(modifier = Modifier.width(5.dp))
-                  Text(
-                    text = "${formatStatCount(selectedNovel.favoritesCount)} Favorited",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                      fontWeight = FontWeight.SemiBold,
-                      fontSize = 11.sp
-                    ),
-                    color = CharcoalText
-                  )
-                }
-
-                if (selectedNovel.storyPhotos.isNotEmpty()) {
-                  Box(
-                    modifier = Modifier
-                      .width(1.dp)
-                      .height(11.dp)
-                      .background(SubtleBorder)
-                  )
-
-                  Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                      imageVector = Icons.Outlined.PhotoLibrary,
-                      contentDescription = null,
-                      tint = AntiqueGold,
-                      modifier = Modifier.size(13.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                      text = "${selectedNovel.storyPhotos.size} Photos",
-                      style = MaterialTheme.typography.labelSmall.copy(
-                        fontWeight = FontWeight.Medium,
-                        fontSize = 11.sp
-                      ),
-                      color = CharcoalSecondary
-                    )
-                  }
-                }
-              }
-
-              Spacer(modifier = Modifier.height(12.dp))
-
-              Text(
-                text = "“${selectedNovel.excerpt}”",
-                style = MaterialTheme.typography.bodyMedium.copy(
-                  fontFamily = FontFamily.Serif,
-                  lineHeight = 22.sp
-                ),
-                color = CharcoalText.copy(alpha = 0.85f),
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 8.dp)
-              )
-
-              Spacer(modifier = Modifier.height(18.dp))
-
-              // Read / Continue button and Translator Cover Upload
-              Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-              ) {
-                Surface(
-                  onClick = {
-                    viewModel.recordNovelRead(selectedNovel.id)
-                    onSelectNovel(selectedNovel)
-                  },
-                  shape = RoundedCornerShape(24.dp),
-                  color = CharcoalText,
-                  modifier = Modifier.testTag("open_book_button")
-                ) {
-                  Row(
-                    modifier = Modifier.padding(horizontal = 22.dp, vertical = 11.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                  ) {
-                    Icon(
-                      imageVector = Icons.AutoMirrored.Outlined.MenuBook,
-                      contentDescription = null,
-                      tint = SoftCreamPaper,
-                      modifier = Modifier.size(15.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                      text = if (selectedNovel.currentPage > 1) "Continue (${selectedNovel.currentPage})" else "Read Novel",
-                      style = MaterialTheme.typography.labelLarge.copy(
-                        letterSpacing = 0.8.sp
-                      ),
-                      color = SoftCreamPaper
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Icon(
-                      imageVector = Icons.AutoMirrored.Outlined.ArrowForward,
-                      contentDescription = null,
-                      tint = AntiqueGold,
-                      modifier = Modifier.size(13.dp)
-                    )
-                  }
-                }
-
-                if (isTranslatorOrOwner) {
-                  Spacer(modifier = Modifier.width(10.dp))
-
-                  // Upload / Change Cover Button for Room Translators & Owner
-                  OutlinedButton(
-                    onClick = {
-                      coverPickerTargetNovelId = selectedNovel.id
-                      singleNovelCoverPickerLauncher.launch(
-                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                      )
-                    },
-                    shape = RoundedCornerShape(24.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = CharcoalText),
-                    border = BorderStroke(1.dp, SubtleBorder),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 9.dp),
-                    modifier = Modifier.testTag("upload_cover_button_shelf")
-                  ) {
-                    Icon(
-                      imageVector = Icons.Outlined.AddPhotoAlternate,
-                      contentDescription = null,
-                      tint = AntiqueGold,
-                      modifier = Modifier.size(15.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                      text = if (selectedNovel.coverImageUri != null) "Change Cover" else "Upload Cover",
-                      style = MaterialTheme.typography.labelMedium.copy(
-                        fontWeight = FontWeight.Medium,
-                        letterSpacing = 0.4.sp
-                      ),
-                      color = CharcoalText
-                    )
-                  }
-
-                  Spacer(modifier = Modifier.width(8.dp))
-
-                  // Edit Novel Button for Translators & Owner (Also triggers from 3-second hold)
-                  OutlinedButton(
-                    onClick = { novelToEdit = selectedNovel },
-                    shape = RoundedCornerShape(24.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = CharcoalText),
-                    border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.6f)),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 9.dp),
-                    modifier = Modifier.testTag("edit_novel_button_shelf")
-                  ) {
-                    Icon(
-                      imageVector = Icons.Outlined.Edit,
-                      contentDescription = null,
-                      tint = AntiqueGold,
-                      modifier = Modifier.size(15.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                      text = "Edit Novel",
-                      style = MaterialTheme.typography.labelMedium.copy(
-                        fontWeight = FontWeight.SemiBold,
-                        letterSpacing = 0.4.sp
-                      ),
-                      color = CharcoalText
-                    )
-                  }
-                }
               }
             }
           }
+
+          Spacer(modifier = Modifier.height(6.dp))
+
+          Text(
+            text = "Handcrafted translations formatted for quiet, distraction-free reading.",
+            style = MaterialTheme.typography.bodySmall.copy(
+              fontFamily = FontFamily.Serif,
+              fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+              fontSize = 11.5.sp
+            ),
+            color = CharcoalSecondary,
+            textAlign = TextAlign.Center
+          )
         }
       }
 
-      Spacer(modifier = Modifier.height(24.dp))
+      Spacer(modifier = Modifier.height(18.dp))
 
-      // 7. Provenance security footer
+      // Provenance security footer
       Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
@@ -942,7 +801,7 @@ fun HomeScreen(
           imageVector = Icons.Outlined.Lock,
           contentDescription = null,
           tint = CharcoalTertiary,
-          modifier = Modifier.size(12.dp)
+          modifier = Modifier.size(11.dp)
         )
         Spacer(modifier = Modifier.width(6.dp))
         Text(
@@ -969,6 +828,23 @@ fun HomeScreen(
       )
     }
 
+    // Reader Profile Modal (Shows points, stats, and pen name change mechanism)
+    if (uiState.isProfileDialogOpen && activeUser != null) {
+      ReaderProfileModal(
+        activeUser = activeUser,
+        readingCount = uiState.readingCount,
+        finishedCount = uiState.finishedCount,
+        toBeReadCount = uiState.toBeReadCount,
+        isSoleOwner = isSoleOwner,
+        onDismiss = { viewModel.closeProfileDialog() },
+        onChangePenName = { newName ->
+          viewModel.changePenNameWithPoint(newName)
+        },
+        onSwitchAccount = { viewModel.openAuthDialog() },
+        onSignOut = { viewModel.signOut() }
+      )
+    }
+
     // Author Rooms / Translator Collective Archive Modal (5 Curators)
     if (isAuthorRoomsModalOpen) {
       AuthorRoomsModal(
@@ -976,18 +852,24 @@ fun HomeScreen(
         novels = allNovelsList,
         currentUser = activeUser,
         onDismiss = { isAuthorRoomsModalOpen = false },
-        onOpenUploadForSlot = { slot ->
+        onOpenUploadForSlot = if (canUploadNovel) { slot ->
           selectedUploadSlot = slot
           viewModel.openUploadDialog()
-        },
+        } else { _ -> },
         onUpdateSlot = { slot, name, penName, bio ->
-          viewModel.updateAuthorSlot(slot, name, penName, bio)
+          if (isSoleOwner || (activeUser?.role == "TRANSLATOR" && activeUser.authorSlot == slot)) {
+            viewModel.updateAuthorSlotWithPoint(slot, name, penName, bio)
+          }
         },
         onUpdateSlotCover = { slot, imagePath ->
-          viewModel.updateAuthorSlotCover(slot, imagePath)
+          if (isSoleOwner || (activeUser?.role == "TRANSLATOR" && activeUser.authorSlot == slot)) {
+            viewModel.updateAuthorSlotCover(slot, imagePath)
+          }
         },
         onToggleSlotPermission = { slot, isGranted ->
-          viewModel.setSlotPermission(slot, isGranted)
+          if (isSoleOwner) {
+            viewModel.setSlotPermission(slot, isGranted)
+          }
         },
         onViewTranslatorArchive = { slot ->
           selectedTranslatorForDetail = slot
@@ -1002,6 +884,7 @@ fun HomeScreen(
       TranslatorProfileModal(
         slot = activeSlot,
         novels = allNovelsList,
+        isOwner = isSoleOwner,
         isOwnerOrTranslator = isTranslatorOrOwner,
         onDismiss = { selectedTranslatorForDetail = null },
         onSelectNovel = { novel ->
@@ -1009,21 +892,23 @@ fun HomeScreen(
           onSelectNovel(novel)
         },
         onUpdateCoverImage = { slotNum, imagePath ->
-          viewModel.updateAuthorSlotCover(slotNum, imagePath)
-          selectedTranslatorForDetail = activeSlot.copy(coverImageUri = imagePath)
+          if (isSoleOwner || (activeUser?.role == "TRANSLATOR" && activeUser.authorSlot == slotNum)) {
+            viewModel.updateAuthorSlotCover(slotNum, imagePath)
+            selectedTranslatorForDetail = activeSlot.copy(coverImageUri = imagePath)
+          }
         },
-        onOpenUploadForSlot = { slotNum ->
+        onOpenUploadForSlot = if (canUploadNovel) { slotNum ->
           selectedUploadSlot = slotNum
           viewModel.openUploadDialog()
-        },
-        onToggleSlotPermission = { slotNum, isGranted ->
+        } else null,
+        onToggleSlotPermission = if (isSoleOwner) { slotNum, isGranted ->
           viewModel.setSlotPermission(slotNum, isGranted)
-        }
+        } else null
       )
     }
 
-    // Quick Permission Grant Dialog for Future Translator Slots
-    if (slotToGrantPermission != null) {
+    // Quick Permission Grant Dialog for Future Translator Slots (Only for Archive Owner)
+    if (isSoleOwner && slotToGrantPermission != null) {
       val slot = slotToGrantPermission!!
       AlertDialog(
         onDismissRequest = { slotToGrantPermission = null },
@@ -1167,9 +1052,11 @@ fun HomeScreen(
 @Composable
 private fun TopUtilityBar(
   activeUser: ReaderProfileEntity?,
+  isSoleOwner: Boolean = false,
   canUpload: Boolean = false,
   onOpenAuth: () -> Unit,
   onSignOut: () -> Unit,
+  onOpenProfile: () -> Unit = {},
   onOpenAuthorRooms: () -> Unit,
   onOpenUpload: () -> Unit,
   activeTranslatorsCount: Int = 4,
@@ -1177,119 +1064,63 @@ private fun TopUtilityBar(
   Row(
     modifier = Modifier
       .fillMaxWidth()
-      .padding(horizontal = 20.dp, vertical = 10.dp),
+      .padding(horizontal = 16.dp, vertical = 8.dp),
     horizontalArrangement = Arrangement.SpaceBetween,
     verticalAlignment = Alignment.CenterVertically
   ) {
-    // Reader Profile / Sign-in Pill
-    if (activeUser != null) {
-      Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = SoftCreamPaper,
-        border = BorderStroke(1.dp, SubtleBorder),
-        modifier = Modifier.testTag("reader_profile_pill")
-      ) {
-        Row(
-          verticalAlignment = Alignment.CenterVertically,
-          modifier = Modifier.padding(start = 6.dp, end = 10.dp, top = 4.dp, bottom = 4.dp)
-        ) {
-          // Provider badge circle
-          Box(
-            modifier = Modifier
-              .size(22.dp)
-              .clip(CircleShape)
-              .background(if (activeUser.provider == "GOOGLE") Color(0xFF4285F4) else Color(0xFF1E1D1B)),
-            contentAlignment = Alignment.Center
-          ) {
-            Text(
-              text = if (activeUser.provider == "GOOGLE") "G" else "",
-              color = Color.White,
-              fontSize = 11.sp,
-              fontWeight = FontWeight.Bold
-            )
-          }
-
-          Spacer(modifier = Modifier.width(6.dp))
-
-          Text(
-            text = activeUser.displayName.take(14),
-            style = MaterialTheme.typography.labelSmall.copy(
-              fontWeight = FontWeight.Medium
-            ),
-            color = CharcoalText
-          )
-
-          Spacer(modifier = Modifier.width(6.dp))
-
-          IconButton(
-            onClick = onSignOut,
-            modifier = Modifier.size(20.dp)
-          ) {
-            Icon(
-              imageVector = Icons.Outlined.Logout,
-              contentDescription = "Sign Out",
-              tint = CharcoalSecondary,
-              modifier = Modifier.size(13.dp)
-            )
-          }
-        }
-      }
-    } else {
-      Surface(
-        onClick = onOpenAuth,
-        shape = RoundedCornerShape(20.dp),
-        color = SoftCreamPaper,
-        border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.5f)),
-        modifier = Modifier.testTag("sign_in_prompt_button")
-      ) {
-        Row(
-          verticalAlignment = Alignment.CenterVertically,
-          modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-        ) {
-          Icon(
-            imageVector = Icons.Outlined.Person,
-            contentDescription = null,
-            tint = AntiqueGold,
-            modifier = Modifier.size(14.dp)
-          )
-          Spacer(modifier = Modifier.width(6.dp))
-          Text(
-            text = "Sign In",
-            style = MaterialTheme.typography.labelSmall.copy(
-              fontWeight = FontWeight.SemiBold,
-              letterSpacing = 0.4.sp
-            ),
-            color = CharcoalText
-          )
-        }
-      }
+    // Left: Brand Title STRAWBERRYCANDY
+    Column {
+      Text(
+        text = "STRAWBERRYCANDY",
+        style = MaterialTheme.typography.titleMedium.copy(
+          letterSpacing = 2.sp,
+          fontWeight = FontWeight.Medium,
+          fontFamily = FontFamily.Serif,
+          fontSize = 15.sp
+        ),
+        color = CharcoalText,
+        modifier = Modifier.testTag("app_brand_title")
+      )
+      Text(
+        text = "NOVEL ARCHIVE",
+        style = MaterialTheme.typography.labelSmall.copy(
+          letterSpacing = 1.sp,
+          fontSize = 7.5.sp,
+          fontWeight = FontWeight.Bold
+        ),
+        color = AntiqueGold
+      )
     }
 
-    // Right action buttons: 4 Author Rooms & Upload
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    // Right: Actions (Translators, Upload, Profile/Sign-in)
+    Row(
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+      // Translators / Curators button
       Surface(
         onClick = onOpenAuthorRooms,
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(16.dp),
         color = SoftCreamPaper,
         border = BorderStroke(1.dp, SubtleBorder),
         modifier = Modifier.testTag("author_rooms_button")
       ) {
         Row(
           verticalAlignment = Alignment.CenterVertically,
-          modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+          modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
         ) {
           Icon(
             imageVector = Icons.Outlined.WorkspacePremium,
             contentDescription = null,
             tint = AntiqueGold,
-            modifier = Modifier.size(14.dp)
+            modifier = Modifier.size(13.dp)
           )
-          Spacer(modifier = Modifier.width(5.dp))
+          Spacer(modifier = Modifier.width(4.dp))
           Text(
-            text = "$activeTranslatorsCount Translators",
+            text = "$activeTranslatorsCount Curators",
             style = MaterialTheme.typography.labelSmall.copy(
               fontWeight = FontWeight.SemiBold,
-              letterSpacing = 0.4.sp
+              fontSize = 9.5.sp
             ),
             color = CharcoalText
           )
@@ -1297,33 +1128,122 @@ private fun TopUtilityBar(
       }
 
       if (canUpload) {
-        Spacer(modifier = Modifier.width(8.dp))
-
         Surface(
           onClick = onOpenUpload,
-          shape = RoundedCornerShape(20.dp),
+          shape = RoundedCornerShape(16.dp),
           color = AntiqueGoldLight.copy(alpha = 0.7f),
           border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.5f)),
           modifier = Modifier.testTag("owner_upload_button")
         ) {
           Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
           ) {
             Icon(
               imageVector = Icons.Outlined.Upload,
               contentDescription = null,
               tint = AntiqueGold,
-              modifier = Modifier.size(14.dp)
+              modifier = Modifier.size(13.dp)
             )
-            Spacer(modifier = Modifier.width(5.dp))
+            Spacer(modifier = Modifier.width(3.dp))
             Text(
               text = "Upload",
               style = MaterialTheme.typography.labelSmall.copy(
                 fontWeight = FontWeight.Bold,
-                letterSpacing = 0.6.sp
+                fontSize = 9.5.sp
               ),
               color = AntiqueGold
+            )
+          }
+        }
+      }
+
+      // Profile / Sign-in
+      if (activeUser != null) {
+        Surface(
+          onClick = onOpenProfile,
+          shape = RoundedCornerShape(16.dp),
+          color = SoftCreamPaper,
+          border = BorderStroke(1.dp, if (isSoleOwner) AntiqueGold.copy(alpha = 0.6f) else SubtleBorder),
+          modifier = Modifier.testTag("reader_profile_pill")
+        ) {
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
+          ) {
+            Box(
+              modifier = Modifier
+                .size(18.dp)
+                .clip(CircleShape)
+                .background(if (activeUser.provider == "GOOGLE") Color(0xFF4285F4) else Color(0xFF1E1D1B)),
+              contentAlignment = Alignment.Center
+            ) {
+              Text(
+                text = if (activeUser.provider == "GOOGLE") "G" else "",
+                color = Color.White,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold
+              )
+            }
+            Spacer(modifier = Modifier.width(4.dp))
+            val safeDisplayName = activeUser.displayName
+              .replace(Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"), "")
+              .substringBefore("@")
+              .trim()
+              .ifBlank { if (activeUser.role == "TRANSLATOR") "Translator" else "Reader" }
+            Text(
+              text = safeDisplayName.take(10),
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Medium
+              ),
+              color = CharcoalText
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Surface(
+              shape = RoundedCornerShape(6.dp),
+              color = AntiqueGold.copy(alpha = 0.15f),
+              border = BorderStroke(0.5.dp, AntiqueGold.copy(alpha = 0.5f)),
+              modifier = Modifier.testTag("user_points_indicator")
+            ) {
+              Text(
+                text = "${activeUser.penNamePoints}pt",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 8.sp,
+                  fontWeight = FontWeight.Bold
+                ),
+                color = AntiqueGold,
+                modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
+              )
+            }
+          }
+        }
+      } else {
+        Surface(
+          onClick = onOpenAuth,
+          shape = RoundedCornerShape(16.dp),
+          color = SoftCreamPaper,
+          border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.5f)),
+          modifier = Modifier.testTag("sign_in_prompt_button")
+        ) {
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+          ) {
+            Icon(
+              imageVector = Icons.Outlined.Person,
+              contentDescription = null,
+              tint = AntiqueGold,
+              modifier = Modifier.size(13.dp)
+            )
+            Spacer(modifier = Modifier.width(3.dp))
+            Text(
+              text = "Sign In",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 10.sp
+              ),
+              color = CharcoalText
             )
           }
         }
@@ -1340,18 +1260,30 @@ private fun ShelfFilterChip(
   label: String,
   selected: Boolean,
   onClick: () -> Unit,
+  icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+  modifier: Modifier = Modifier,
 ) {
   Surface(
     onClick = onClick,
     shape = RoundedCornerShape(16.dp),
     color = if (selected) CharcoalText else SoftCreamPaper,
     border = BorderStroke(1.dp, if (selected) CharcoalText else SubtleBorder),
-    modifier = Modifier.height(32.dp)
+    modifier = modifier.height(32.dp)
   ) {
-    Box(
-      modifier = Modifier.padding(horizontal = 12.dp),
-      contentAlignment = Alignment.Center
+    Row(
+      modifier = Modifier.padding(horizontal = 10.dp),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.Center
     ) {
+      if (icon != null) {
+        Icon(
+          imageVector = icon,
+          contentDescription = null,
+          tint = if (selected) SoftCreamPaper else CharcoalSecondary,
+          modifier = Modifier.size(13.dp)
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+      }
       Text(
         text = label,
         style = MaterialTheme.typography.labelSmall.copy(
@@ -1545,10 +1477,14 @@ private fun HorizontalNovelCard(
   onFocusClick: () -> Unit,
   onToggleFavorite: () -> Unit,
   onEditNovel: () -> Unit,
+  onMarkReading: () -> Unit = {},
+  onMarkFinished: () -> Unit = {},
+  onMarkToBeRead: () -> Unit = {},
 ) {
   val haptic = LocalHapticFeedback.current
   val coroutineScope = rememberCoroutineScope()
   var holdProgress by remember { mutableFloatStateOf(0f) }
+  var isStatusMenuOpen by remember { mutableStateOf(false) }
 
   val scale by animateFloatAsState(targetValue = if (isFocused) 1.04f else 0.96f, label = "card_scale")
   val elevation by animateFloatAsState(targetValue = if (isFocused) 14f else 6f, label = "card_elevation")
@@ -1560,7 +1496,7 @@ private fun HorizontalNovelCard(
   Column(
     horizontalAlignment = Alignment.CenterHorizontally,
     modifier = Modifier
-      .width(136.dp)
+      .width(118.dp)
       .graphicsLayer {
         scaleX = scale
         scaleY = scale
@@ -1651,9 +1587,17 @@ private fun HorizontalNovelCard(
             verticalArrangement = Arrangement.SpaceBetween,
             horizontalAlignment = Alignment.CenterHorizontally
           ) {
-            val authorLabel = if (novel.originalAuthor.isNotBlank()) novel.originalAuthor else novel.author
+            val emailRegex = Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}")
+            val cleanOriginalAuthor = novel.originalAuthor.replace(emailRegex, "").trim()
+            val cleanAuthor = novel.author.replace(emailRegex, "").trim()
+            val authorLabel = when {
+              cleanOriginalAuthor.isNotBlank() -> cleanOriginalAuthor
+              cleanAuthor.isNotBlank() -> cleanAuthor
+              novel.authorSlot > 0 -> "Translator ${novel.authorSlot}"
+              else -> "Strawberrycandy"
+            }
             val headerText = if (novel.authorSlot > 0) {
-              "ROOM ${novel.authorSlot} • ${authorLabel.uppercase()}"
+              "TRANSLATOR • ${authorLabel.uppercase()}"
             } else {
               authorLabel.uppercase()
             }
@@ -1706,6 +1650,32 @@ private fun HorizontalNovelCard(
               )
             )
         )
+
+        // Reading Status Badge (Top-Left of card)
+        val statusBadge = when {
+          novel.isFinished -> "✓ Finished" to Color(0xDD1B5E20)
+          novel.isReading -> "📖 Reading" to Color(0xDD795548)
+          novel.isToBeRead -> "🔖 To Read" to Color(0xDD37474F)
+          else -> null
+        }
+        if (statusBadge != null) {
+          Surface(
+            shape = RoundedCornerShape(bottomEnd = 6.dp),
+            color = statusBadge.second,
+            modifier = Modifier.align(Alignment.TopStart)
+          ) {
+            Text(
+              text = statusBadge.first,
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 7.5.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.4.sp
+              ),
+              color = Color.White,
+              modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+            )
+          }
+        }
 
         // Favorite icon button (Top Right of card)
         Box(
@@ -1782,31 +1752,34 @@ private fun HorizontalNovelCard(
       }
     }
 
-    Spacer(modifier = Modifier.height(8.dp))
+    Spacer(modifier = Modifier.height(4.dp))
 
     Text(
       text = novel.title,
       style = MaterialTheme.typography.labelMedium.copy(
         fontFamily = FontFamily.Serif,
         fontWeight = if (isFocused) FontWeight.SemiBold else FontWeight.Normal,
-        fontSize = 12.sp,
-        lineHeight = 16.sp
+        fontSize = 11.sp,
+        lineHeight = 14.sp
       ),
       color = if (isFocused) CharcoalText else CharcoalSecondary,
       textAlign = TextAlign.Center,
-      maxLines = 2,
+      maxLines = 1,
       overflow = TextOverflow.Ellipsis
     )
 
-    Spacer(modifier = Modifier.height(2.dp))
+    Spacer(modifier = Modifier.height(1.dp))
 
     val authorSubtitle = buildString {
-      if (novel.originalAuthor.isNotBlank()) {
+      val emailRegex = Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}")
+      val cleanOriginalAuthor = novel.originalAuthor.replace(emailRegex, "").trim()
+      val cleanAuthor = novel.author.replace(emailRegex, "").trim()
+      if (cleanOriginalAuthor.isNotBlank()) {
         append("By ")
-        append(novel.originalAuthor)
+        append(cleanOriginalAuthor)
       } else if (novel.authorSlot > 0) {
-        append("Room ")
-        append(novel.authorSlot)
+        val penName = cleanAuthor.ifBlank { "Translator ${novel.authorSlot}" }
+        append(penName)
       } else {
         append("Strawberrycandy")
       }
@@ -1861,6 +1834,601 @@ private fun HorizontalNovelCard(
           text = formatStatCount(novel.favoritesCount),
           style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
           color = CharcoalTertiary
+        )
+      }
+    }
+
+    // Quick status selector pill
+    Box(
+      modifier = Modifier.padding(top = 4.dp),
+      contentAlignment = Alignment.Center
+    ) {
+      Surface(
+        onClick = { isStatusMenuOpen = true },
+        shape = RoundedCornerShape(10.dp),
+        color = when {
+          novel.isFinished -> Color(0xFF2E7D32).copy(alpha = 0.12f)
+          novel.isReading -> AntiqueGold.copy(alpha = 0.12f)
+          novel.isToBeRead -> CharcoalSecondary.copy(alpha = 0.1f)
+          else -> Color.Transparent
+        },
+        border = BorderStroke(
+          0.8.dp,
+          when {
+            novel.isFinished -> Color(0xFF2E7D32).copy(alpha = 0.4f)
+            novel.isReading -> AntiqueGold.copy(alpha = 0.45f)
+            novel.isToBeRead -> CharcoalSecondary.copy(alpha = 0.35f)
+            else -> SubtleBorder
+          }
+        ),
+        modifier = Modifier.testTag("novel_status_selector_${novel.id}")
+      ) {
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
+        ) {
+          val (icon, labelText) = when {
+            novel.isFinished -> Icons.Filled.CheckCircle to "Finished"
+            novel.isReading -> Icons.Filled.MenuBook to "Reading"
+            novel.isToBeRead -> Icons.Filled.Bookmark to "To Read"
+            else -> Icons.Outlined.BookmarkAdd to "Set Status"
+          }
+          Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = if (novel.isFinished) Color(0xFF2E7D32) else AntiqueGold,
+            modifier = Modifier.size(10.dp)
+          )
+          Spacer(modifier = Modifier.width(3.dp))
+          Text(
+            text = labelText,
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 8.5.sp,
+              fontWeight = FontWeight.Medium
+            ),
+            color = if (novel.isFinished) Color(0xFF2E7D32) else CharcoalText
+          )
+        }
+      }
+
+      DropdownMenu(
+        expanded = isStatusMenuOpen,
+        onDismissRequest = { isStatusMenuOpen = false }
+      ) {
+        DropdownMenuItem(
+          text = { Text("Currently Reading", fontSize = 11.sp) },
+          leadingIcon = {
+            Icon(Icons.Filled.MenuBook, contentDescription = null, tint = AntiqueGold, modifier = Modifier.size(14.dp))
+          },
+          onClick = {
+            isStatusMenuOpen = false
+            onMarkReading()
+          }
+        )
+        DropdownMenuItem(
+          text = { Text("Finished (+1 Point)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+          leadingIcon = {
+            Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(14.dp))
+          },
+          onClick = {
+            isStatusMenuOpen = false
+            onMarkFinished()
+          }
+        )
+        DropdownMenuItem(
+          text = { Text("To Be Read (TBR)", fontSize = 11.sp) },
+          leadingIcon = {
+            Icon(Icons.Filled.Bookmark, contentDescription = null, tint = CharcoalSecondary, modifier = Modifier.size(14.dp))
+          },
+          onClick = {
+            isStatusMenuOpen = false
+            onMarkToBeRead()
+          }
+        )
+      }
+    }
+  }
+}
+
+@Composable
+private fun SelectedNovelSpotlight(
+  novel: NovelWithState,
+  onReadNovel: () -> Unit,
+  onToggleFavorite: () -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  Card(
+    shape = RoundedCornerShape(18.dp),
+    colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
+    border = BorderStroke(1.dp, SubtleBorder),
+    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+    modifier = modifier.testTag("selected_novel_spotlight")
+  ) {
+    Column(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(12.dp)
+    ) {
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top
+      ) {
+        // Book Cover Art with elegant border and shadow
+        Card(
+          shape = RoundedCornerShape(topStart = 3.dp, bottomStart = 3.dp, topEnd = 8.dp, bottomEnd = 8.dp),
+          colors = CardDefaults.cardColors(containerColor = Color(novel.coverColorHex)),
+          elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+          border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.4f)),
+          modifier = Modifier
+            .width(80.dp)
+            .height(115.dp)
+            .shadow(4.dp, RoundedCornerShape(topStart = 3.dp, bottomStart = 3.dp, topEnd = 8.dp, bottomEnd = 8.dp))
+        ) {
+          Box(modifier = Modifier.fillMaxSize()) {
+            if (novel.coverImageUri != null) {
+              AsyncImage(
+                model = File(novel.coverImageUri!!).takeIf { it.exists() } ?: novel.coverImageUri,
+                contentDescription = novel.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+              )
+            } else if (novel.coverDrawableRes != 0) {
+              Image(
+                painter = painterResource(id = novel.coverDrawableRes),
+                contentDescription = novel.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+              )
+            } else {
+              Box(
+                modifier = Modifier
+                  .fillMaxSize()
+                  .background(Color(novel.coverColorHex)),
+                contentAlignment = Alignment.Center
+              ) {
+                Text(
+                  text = novel.title.take(18),
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Serif
+                  ),
+                  color = AntiqueGold,
+                  textAlign = TextAlign.Center,
+                  modifier = Modifier.padding(6.dp)
+                )
+              }
+            }
+
+            // Spine shadow overlay
+            Box(
+              modifier = Modifier
+                .fillMaxSize()
+                .background(
+                  brush = Brush.horizontalGradient(
+                    0.0f to Color(0x35000000),
+                    0.03f to Color(0x10000000),
+                    0.06f to Color(0x20FFFFFF),
+                    0.10f to Color(0x00000000)
+                  )
+                )
+            )
+          }
+        }
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        // Novel Meta details
+        Column(
+          modifier = Modifier
+            .weight(1f)
+            .height(115.dp),
+          verticalArrangement = Arrangement.SpaceBetween
+        ) {
+          Column {
+            // Edition and genre tag
+            val genreTag = when (novel.id) {
+              "nov_crimson" -> "Fantasy Romance"
+              "nov_celestial" -> "Astral Sci-Fi"
+              "nov_whispering_pines" -> "Nordic Mystery"
+              "nov_moonlight" -> "Historical Romance"
+              "nov_schema" -> "Design Monograph"
+              else -> "Curated Novel"
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = AntiqueGold.copy(alpha = 0.12f),
+                border = BorderStroke(0.6.dp, AntiqueGold.copy(alpha = 0.35f))
+              ) {
+                Text(
+                  text = genreTag.uppercase(),
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 7.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.6.sp
+                  ),
+                  color = AntiqueGold,
+                  modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                )
+              }
+              Spacer(modifier = Modifier.width(6.dp))
+              Text(
+                text = "${novel.totalPages} pages",
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
+                color = CharcoalTertiary
+              )
+            }
+
+            Spacer(modifier = Modifier.height(3.dp))
+
+            Text(
+              text = novel.title,
+              style = MaterialTheme.typography.titleMedium.copy(
+                fontFamily = FontFamily.Serif,
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp,
+                lineHeight = 17.sp
+              ),
+              color = CharcoalText,
+              maxLines = 1,
+              overflow = TextOverflow.Ellipsis
+            )
+
+            val authorDisplay = if (novel.originalAuthor.isNotBlank()) {
+              "${novel.originalAuthor} • ${novel.author}"
+            } else {
+              novel.author
+            }
+            Text(
+              text = "By $authorDisplay",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 8.5.sp,
+                color = AntiqueGold
+              ),
+              maxLines = 1,
+              overflow = TextOverflow.Ellipsis
+            )
+          }
+
+          // Progress indicator if reader started it
+          if (novel.inReadingList && novel.progressFraction > 0f) {
+            Column(modifier = Modifier.testTag("continue_reading_banner")) {
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+              ) {
+                Text(
+                  text = "Reading Progress",
+                  style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
+                  color = CharcoalTertiary
+                )
+                Text(
+                  text = "${(novel.progressFraction * 100).toInt()}%",
+                  style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp, fontWeight = FontWeight.Bold),
+                  color = AntiqueGold
+                )
+              }
+              Spacer(modifier = Modifier.height(2.dp))
+              LinearProgressIndicator(
+                progress = { novel.progressFraction },
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .height(3.dp)
+                  .clip(RoundedCornerShape(1.5.dp)),
+                color = AntiqueGold,
+                trackColor = SubtleBorder
+              )
+            }
+          }
+        }
+      }
+
+      Spacer(modifier = Modifier.height(6.dp))
+
+      // Excerpt Quote
+      Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = CreamBackground.copy(alpha = 0.6f),
+        border = BorderStroke(0.6.dp, SubtleBorder.copy(alpha = 0.5f)),
+        modifier = Modifier.fillMaxWidth()
+      ) {
+        Text(
+          text = "“${novel.excerpt}”",
+          style = MaterialTheme.typography.bodySmall.copy(
+            fontFamily = FontFamily.Serif,
+            fontStyle = FontStyle.Italic,
+            fontSize = 11.sp,
+            lineHeight = 14.sp
+          ),
+          color = CharcoalSecondary,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+          modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+        )
+      }
+
+      Spacer(modifier = Modifier.height(6.dp))
+
+      // Action Buttons
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Button(
+          onClick = onReadNovel,
+          shape = RoundedCornerShape(12.dp),
+          colors = ButtonDefaults.buttonColors(containerColor = CharcoalText),
+          modifier = Modifier
+            .weight(1f)
+            .height(36.dp)
+            .testTag("spotlight_read_button")
+        ) {
+          Icon(
+            imageVector = Icons.AutoMirrored.Outlined.MenuBook,
+            contentDescription = null,
+            tint = AntiqueGold,
+            modifier = Modifier.size(14.dp)
+          )
+          Spacer(modifier = Modifier.width(6.dp))
+          Text(
+            text = if (novel.inReadingList && novel.progressFraction > 0f) "Continue (Pg. ${novel.currentPage})" else "Read Volume",
+            style = MaterialTheme.typography.labelMedium.copy(
+              fontWeight = FontWeight.SemiBold,
+              fontSize = 11.sp,
+              letterSpacing = 0.4.sp
+            ),
+            color = SoftCreamPaper
+          )
+        }
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        // Favorite Button
+        Surface(
+          onClick = onToggleFavorite,
+          shape = RoundedCornerShape(12.dp),
+          color = if (novel.isFavorite) AntiqueGold.copy(alpha = 0.15f) else SoftCreamPaper,
+          border = BorderStroke(1.dp, if (novel.isFavorite) AntiqueGold else SubtleBorder),
+          modifier = Modifier
+            .height(36.dp)
+            .testTag("spotlight_favorite_button")
+        ) {
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 10.dp)
+          ) {
+            Icon(
+              imageVector = if (novel.isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+              contentDescription = "Favorite",
+              tint = if (novel.isFavorite) AntiqueGold else CharcoalSecondary,
+              modifier = Modifier.size(15.dp)
+            )
+            if (novel.favoritesCount > 0) {
+              Spacer(modifier = Modifier.width(4.dp))
+              Text(
+                text = "${novel.favoritesCount}",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 10.sp,
+                  fontWeight = FontWeight.Bold
+                ),
+                color = if (novel.isFavorite) AntiqueGold else CharcoalSecondary
+              )
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun CuratedCoverShowcase(
+  novels: List<NovelWithState>,
+  selectedNovelId: String,
+  onSelectNovel: (NovelWithState) -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  Column(
+    modifier = modifier,
+    verticalArrangement = Arrangement.Center,
+    horizontalAlignment = Alignment.CenterHorizontally
+  ) {
+    Row(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(bottom = 6.dp),
+      horizontalArrangement = Arrangement.SpaceBetween,
+      verticalAlignment = Alignment.CenterVertically
+    ) {
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+          imageVector = Icons.AutoMirrored.Outlined.MenuBook,
+          contentDescription = null,
+          tint = AntiqueGold,
+          modifier = Modifier.size(14.dp)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+          text = "CURATED COVER FLOW",
+          style = MaterialTheme.typography.labelSmall.copy(
+            fontSize = 9.5.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.2.sp
+          ),
+          color = CharcoalText
+        )
+      }
+      Text(
+        text = "${novels.size} Volumes • Swipe to Browse",
+        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+        color = AntiqueGold
+      )
+    }
+
+    // Horizontal scrolling row of cover cards - ZERO VERTICAL SCROLLING
+    Row(
+      modifier = Modifier
+        .fillMaxWidth()
+        .horizontalScroll(rememberScrollState())
+        .padding(vertical = 4.dp),
+      horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+      verticalAlignment = Alignment.CenterVertically
+    ) {
+      novels.forEach { novel ->
+        CuratedCoverGridCard(
+          novel = novel,
+          isSelected = novel.id == selectedNovelId,
+          onClick = { onSelectNovel(novel) },
+          modifier = Modifier.width(172.dp)
+        )
+      }
+    }
+  }
+}
+
+@Composable
+private fun CuratedCoverGridCard(
+  novel: NovelWithState,
+  isSelected: Boolean,
+  onClick: () -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  Card(
+    onClick = onClick,
+    shape = RoundedCornerShape(14.dp),
+    colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
+    border = BorderStroke(
+      width = if (isSelected) 1.5.dp else 0.8.dp,
+      color = if (isSelected) AntiqueGold else SubtleBorder
+    ),
+    elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 4.dp else 2.dp),
+    modifier = modifier.testTag("gallery_card_${novel.id}")
+  ) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+      // Cover Image Box (aspectRatio ~0.75f)
+      Box(
+        modifier = Modifier
+          .fillMaxWidth()
+          .aspectRatio(0.75f)
+          .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
+          .background(Color(novel.coverColorHex))
+      ) {
+        if (novel.coverImageUri != null) {
+          AsyncImage(
+            model = File(novel.coverImageUri!!).takeIf { it.exists() } ?: novel.coverImageUri,
+            contentDescription = novel.title,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+          )
+        } else if (novel.coverDrawableRes != 0) {
+          Image(
+            painter = painterResource(id = novel.coverDrawableRes),
+            contentDescription = novel.title,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+          )
+        } else {
+          Box(
+            modifier = Modifier
+              .fillMaxSize()
+              .background(Color(novel.coverColorHex)),
+            contentAlignment = Alignment.Center
+          ) {
+            Text(
+              text = novel.title,
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Serif
+              ),
+              color = AntiqueGold,
+              textAlign = TextAlign.Center,
+              modifier = Modifier.padding(10.dp)
+            )
+          }
+        }
+
+        // Reading status tag overlay (Top Left)
+        val statusLabel = when {
+          novel.isFinished -> "✓ Finished"
+          novel.isReading -> "📖 Reading"
+          novel.isToBeRead -> "🔖 To Read"
+          else -> null
+        }
+        if (statusLabel != null) {
+          Surface(
+            shape = RoundedCornerShape(bottomEnd = 6.dp),
+            color = if (novel.isFinished) Color(0xDD1B5E20) else Color(0xDD2A2825),
+            modifier = Modifier.align(Alignment.TopStart)
+          ) {
+            Text(
+              text = statusLabel,
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 7.5.sp,
+                fontWeight = FontWeight.Bold
+              ),
+              color = Color.White,
+              modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+            )
+          }
+        }
+
+        // Bottom gradient overlay for title legibility
+        Box(
+          modifier = Modifier
+            .fillMaxWidth()
+            .height(50.dp)
+            .align(Alignment.BottomCenter)
+            .background(
+              brush = Brush.verticalGradient(
+                listOf(Color.Transparent, Color(0xCC000000))
+              )
+            )
+        )
+
+        // Floating action or page count at bottom of cover
+        Text(
+          text = "${novel.totalPages} pgs",
+          style = MaterialTheme.typography.labelSmall.copy(
+            fontSize = 7.5.sp,
+            fontWeight = FontWeight.Medium
+          ),
+          color = Color.White.copy(alpha = 0.9f),
+          modifier = Modifier
+            .align(Alignment.BottomEnd)
+            .padding(6.dp)
+        )
+      }
+
+      // Title & metadata below cover
+      Column(
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(8.dp)
+      ) {
+        Text(
+          text = novel.title,
+          style = MaterialTheme.typography.labelMedium.copy(
+            fontWeight = FontWeight.SemiBold,
+            fontFamily = FontFamily.Serif,
+            fontSize = 12.sp,
+            lineHeight = 15.sp
+          ),
+          color = CharcoalText,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis
+        )
+        Spacer(modifier = Modifier.height(1.dp))
+        Text(
+          text = novel.author,
+          style = MaterialTheme.typography.labelSmall.copy(
+            fontSize = 9.sp
+          ),
+          color = AntiqueGold,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis
         )
       }
     }

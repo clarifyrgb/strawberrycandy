@@ -114,6 +114,7 @@ enum class TranslatorWorksSort {
 fun TranslatorProfileModal(
   slot: AuthorSlotEntity,
   novels: List<NovelWithState>,
+  isOwner: Boolean = false,
   isOwnerOrTranslator: Boolean,
   onDismiss: () -> Unit,
   onSelectNovel: (NovelWithState) -> Unit,
@@ -231,7 +232,7 @@ fun TranslatorProfileModal(
 
           // If authorized translator or owner, show quick actions
           if (isOwnerOrTranslator) {
-            if (!slot.isPermissionGranted && onToggleSlotPermission != null && slot.slotNumber != 0) {
+            if (!slot.isPermissionGranted && isOwner && onToggleSlotPermission != null && slot.slotNumber != 0) {
               Button(
                 onClick = {
                   onToggleSlotPermission(slot.slotNumber, true)
@@ -300,6 +301,7 @@ fun TranslatorProfileModal(
               modifier = Modifier.fillMaxWidth()
             ) {
               Column(modifier = Modifier.padding(18.dp)) {
+                val emailRegex = Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}")
                 Row(
                   modifier = Modifier.fillMaxWidth(),
                   verticalAlignment = Alignment.CenterVertically
@@ -444,8 +446,12 @@ fun TranslatorProfileModal(
 
                     Spacer(modifier = Modifier.height(3.dp))
 
+                    val safePenName = slot.penName.replace(emailRegex, "").trim().ifBlank {
+                      if (slot.slotNumber == 0) "Strawberrycandy" else "Translator ${slot.slotNumber}"
+                    }
+
                     Text(
-                      text = slot.penName,
+                      text = safePenName,
                       style = MaterialTheme.typography.titleLarge.copy(
                         fontFamily = FontFamily.Serif,
                         fontWeight = FontWeight.Bold
@@ -466,8 +472,9 @@ fun TranslatorProfileModal(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
+                val safeBio = slot.bio.replace(emailRegex, "").trim()
                 Text(
-                  text = slot.bio,
+                  text = safeBio,
                   style = MaterialTheme.typography.bodySmall.copy(
                     fontSize = 12.sp,
                     lineHeight = 17.sp
@@ -506,7 +513,7 @@ fun TranslatorProfileModal(
                   }
                 }
 
-                if (!slot.isPermissionGranted && isOwnerOrTranslator && onToggleSlotPermission != null && slot.slotNumber != 0) {
+                if (!slot.isPermissionGranted && isOwner && onToggleSlotPermission != null && slot.slotNumber != 0) {
                   Spacer(modifier = Modifier.height(14.dp))
                   Surface(
                     shape = RoundedCornerShape(12.dp),

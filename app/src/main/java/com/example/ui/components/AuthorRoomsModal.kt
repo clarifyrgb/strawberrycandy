@@ -78,6 +78,7 @@ import com.example.data.local.AuthorSlotEntity
 import com.example.data.local.ReaderProfileEntity
 import com.example.model.NovelWithState
 import com.example.ui.theme.AntiqueGold
+import com.example.viewmodel.StrawberrycandyViewModel
 import com.example.ui.theme.CharcoalSecondary
 import com.example.ui.theme.CharcoalTertiary
 import com.example.ui.theme.CharcoalText
@@ -105,9 +106,9 @@ fun AuthorRoomsModal(
   onViewTranslatorArchive: (AuthorSlotEntity) -> Unit,
 ) {
   val context = LocalContext.current
-  val isOwnerUser = currentUser?.role == "OWNER"
+  val isOwnerUser = currentUser != null && StrawberrycandyViewModel.isOwnerEmail(currentUser.email)
   val isTranslatorUser = currentUser?.role == "TRANSLATOR"
-  val isReaderUser = currentUser == null || currentUser.role == "READER"
+  val isReaderUser = currentUser == null || currentUser.role == "READER" || (!isOwnerUser && !isTranslatorUser)
 
   var activeRoleView by remember(currentUser) {
     mutableStateOf(if (isOwnerUser) UserRoleView.ADMIN_OWNER else UserRoleView.READER)
@@ -297,6 +298,7 @@ fun AuthorRoomsModal(
           isOwnerUser = isOwnerUser,
           isTranslatorUser = isTranslatorUser,
           isReaderUser = isReaderUser,
+          currentUserPoints = currentUser?.penNamePoints ?: 0,
           isEditing = editingSlotNumber == 0,
           editPenName = editPenName,
           editBio = editBio,
@@ -377,6 +379,7 @@ fun AuthorRoomsModal(
             isOwnerUser = isOwnerUser,
             isTranslatorUser = isTranslatorUser,
             isReaderUser = isReaderUser,
+            currentUserPoints = currentUser?.penNamePoints ?: 0,
             isEditing = isEditingThis,
             editPenName = editPenName,
             editBio = editBio,
@@ -459,6 +462,7 @@ private fun TranslatorCardItem(
   isOwnerUser: Boolean = false,
   isTranslatorUser: Boolean = false,
   isReaderUser: Boolean = false,
+  currentUserPoints: Int = 0,
   isEditing: Boolean,
   editPenName: String,
   editBio: String,
@@ -626,8 +630,13 @@ private fun TranslatorCardItem(
             }
           }
 
+          val emailRegex = Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}")
+          val safePenName = slot.penName.replace(emailRegex, "").trim().ifBlank {
+            if (isOwner) "Strawberrycandy" else "Translator ${slot.slotNumber}"
+          }
+
           Text(
-            text = slot.penName,
+            text = safePenName,
             style = MaterialTheme.typography.titleMedium.copy(
               fontWeight = FontWeight.Bold,
               fontFamily = FontFamily.Serif
@@ -691,11 +700,15 @@ private fun TranslatorCardItem(
 
       // Inline Editing Form
       if (isEditing) {
+        val emailRegex = Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}")
+        val isChangingPenName = editPenName.replace(emailRegex, "").trim() != slot.penName.replace(emailRegex, "").trim()
+        val hasPointForRename = currentUserPoints >= 1 || isOwnerUser
+
         Spacer(modifier = Modifier.height(10.dp))
         OutlinedTextField(
           value = editPenName,
           onValueChange = onPenNameChange,
-          label = { Text("Translator Name") },
+          label = { Text("Translator Name / Pen Name") },
           singleLine = true,
           colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = AntiqueGold,
@@ -703,6 +716,30 @@ private fun TranslatorCardItem(
           ),
           modifier = Modifier.fillMaxWidth()
         )
+
+        if (isChangingPenName && !hasPointForRename) {
+          Spacer(modifier = Modifier.height(4.dp))
+          Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = Color(0xFFFDEDEC),
+            border = BorderStroke(1.dp, Color(0xFFF5C6CB)),
+            modifier = Modifier.fillMaxWidth()
+          ) {
+            Text(
+              text = "🔒 Changing your pen name requires 1 point. Finish a novel to earn 1 point! (Balance: $currentUserPoints pts)",
+              style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp, color = Color(0xFFC62828)),
+              modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+            )
+          }
+        } else if (isChangingPenName && hasPointForRename) {
+          Spacer(modifier = Modifier.height(4.dp))
+          Text(
+            text = "⭐ Saving this pen name will consume 1 point (Balance: $currentUserPoints pts)",
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp, color = AntiqueGold),
+            modifier = Modifier.padding(start = 4.dp)
+          )
+        }
+
         Spacer(modifier = Modifier.height(6.dp))
         OutlinedTextField(
           value = editBio,
@@ -730,17 +767,26 @@ private fun TranslatorCardItem(
           Spacer(modifier = Modifier.width(8.dp))
           Button(
             onClick = { onEditSave(editPenName, editBio) },
+            enabled = !isChangingPenName || hasPointForRename,
             shape = RoundedCornerShape(8.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = CharcoalText),
+            colors = ButtonDefaults.buttonColors(
+              containerColor = CharcoalText,
+              disabledContainerColor = CharcoalText.copy(alpha = 0.3f)
+            ),
             modifier = Modifier.height(32.dp)
           ) {
-            Text("Save Profile", fontSize = 11.sp)
+            Text(
+              text = if (isChangingPenName && !isOwnerUser) "Save (Cost: 1 Pt)" else "Save Profile",
+              fontSize = 11.sp
+            )
           }
         }
       } else {
         Spacer(modifier = Modifier.height(6.dp))
+        val emailRegex = Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}")
+        val safeBio = slot.bio.replace(emailRegex, "").trim()
         Text(
-          text = slot.bio,
+          text = safeBio,
           style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 15.sp),
           color = CharcoalSecondary
         )

@@ -177,6 +177,11 @@ data class NovelWithState(
   val currentPage: Int get() = userState?.currentPage ?: 1
   val isFavorite: Boolean get() = userState?.isFavorite ?: false
   val inReadingList: Boolean get() = userState?.inReadingList ?: false
+  val isFinished: Boolean get() = userState?.isFinished == true || (totalPages > 0 && currentPage >= totalPages)
+  val inTbrList: Boolean get() = userState?.inTbrList == true
+  val isReading: Boolean get() = !isFinished && (currentPage > 1 || (inReadingList && !inTbrList))
+  val isToBeRead: Boolean get() = !isFinished && (inTbrList || (inReadingList && currentPage <= 1))
+  val pointsAwarded: Boolean get() = userState?.pointsAwarded == true
   val progressFraction: Float get() = if (totalPages > 0) (currentPage.toFloat() / totalPages.toFloat()).coerceIn(0f, 1f) else 0f
   val lastReadTimestamp: Long get() = userState?.lastReadTimestamp ?: 0L
   val createdAt: Long get() = novel.createdAt

@@ -346,6 +346,12 @@ private fun CommentCardItem(
         verticalAlignment = Alignment.CenterVertically
       ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+          val safeReaderName = comment.readerName
+            .replace(Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"), "")
+            .substringBefore("@")
+            .trim()
+            .ifBlank { "Literary Reader" }
+
           Box(
             modifier = Modifier
               .size(26.dp)
@@ -354,7 +360,7 @@ private fun CommentCardItem(
             contentAlignment = Alignment.Center
           ) {
             Text(
-              text = comment.readerName.take(1).uppercase(),
+              text = safeReaderName.take(1).uppercase(),
               style = MaterialTheme.typography.labelSmall.copy(
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
@@ -367,7 +373,7 @@ private fun CommentCardItem(
 
           Column {
             Text(
-              text = comment.readerName,
+              text = safeReaderName,
               style = MaterialTheme.typography.labelSmall.copy(
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 11.sp

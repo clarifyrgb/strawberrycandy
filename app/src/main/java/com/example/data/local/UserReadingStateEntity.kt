@@ -11,5 +11,8 @@ data class UserReadingStateEntity(
   val currentPage: Int = 1,
   val isFavorite: Boolean = false,
   val inReadingList: Boolean = false,
+  val isFinished: Boolean = false,
+  val inTbrList: Boolean = false,
+  val pointsAwarded: Boolean = false,
   val lastReadTimestamp: Long = System.currentTimeMillis(),
 )

@@ -23,15 +23,37 @@ class StrawberrycandyRepository(
   private val externalScope: CoroutineScope = CoroutineScope(Dispatchers.IO),
 ) {
 
+  companion object {
+    val OWNER_EMAILS = setOf(
+      "clarifymanga@gmail.com",
+      "clarissamendoza241@gmail.com"
+    )
+
+    fun isOwnerEmail(email: String?): Boolean {
+      if (email.isNullOrBlank()) return false
+      val normalized = email.trim().lowercase()
+      return normalized in OWNER_EMAILS ||
+             normalized == "clarifymanga@gmail.com" ||
+             normalized == "clarissamendoza241@gmail.com"
+    }
+  }
+
   init {
     externalScope.launch {
       seedDefaultNovelsIfEmpty()
       seedDefaultAuthorSlotsIfEmpty()
       seedDefaultCommentsIfEmpty()
       ensureSchemaMonographExists()
+      ensureFeaturedNovelsWithCoversExist()
       upgradeDefaultNovelsWithChapters()
       removePhotosUnderThoughtIfPresent()
-      seedDefaultReadingStatesIfEmpty()
+      dao.removeFakeSeededReadingState()
+      dao.resetArtificialReads()
+      dao.syncAllRealFavorites()
+      dao.sanitizeSlotBios()
+      dao.sanitizeSlotPenNames()
+      dao.sanitizeCommentNames()
+      syncOwnerConfiguration()
     }
   }
 
@@ -87,7 +109,7 @@ class StrawberrycandyRepository(
       contentText = content.trim(),
       isOwnerUploaded = true,
       createdAt = System.currentTimeMillis(),
-      readsCount = 1,
+      readsCount = 0,
       favoritesCount = 0,
       storyImagesJson = storyImagesJson,
     )
@@ -102,10 +124,16 @@ class StrawberrycandyRepository(
   suspend fun updateAuthorSlot(slotNumber: Int, authorName: String, penName: String, bio: String) {
     val existing = dao.getAuthorSlot(slotNumber)
     if (existing != null) {
+      val emailRegex = Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}")
+      val cleanPenName = penName.replace(emailRegex, "").trim().ifBlank {
+        existing.penName.replace(emailRegex, "").trim().ifBlank { "Translator $slotNumber" }
+      }
+      val cleanAuthorName = authorName.replace(emailRegex, "").trim().ifBlank { cleanPenName }
+      val cleanBio = bio.replace(emailRegex, "").trim()
       val updated = existing.copy(
-        authorName = authorName.trim(),
-        penName = penName.trim(),
-        bio = bio.trim(),
+        authorName = cleanAuthorName,
+        penName = cleanPenName,
+        bio = cleanBio,
         lastActiveTimestamp = System.currentTimeMillis()
       )
       dao.updateAuthorSlot(updated)
@@ -161,29 +189,44 @@ class StrawberrycandyRepository(
     provider: String, // "GOOGLE" or "APPLE"
     email: String,
     displayName: String,
-    role: String = "TRANSLATOR",
+    role: String = "READER",
     authorSlot: Int? = null,
   ) {
     val cleanEmail = email.trim()
     val userId = "usr_" + provider.lowercase() + "_" + cleanEmail.replace(Regex("[^a-zA-Z0-9]"), "").take(12)
-    val finalName = if (displayName.isNotBlank()) {
-      displayName.trim()
-    } else {
-      val emailPrefix = cleanEmail.substringBefore("@").replace(".", " ").trim()
-      if (emailPrefix.isNotBlank()) {
-        emailPrefix.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
-      } else {
-        if (role == "OWNER") "Strawberrycandy" else if (role == "TRANSLATOR") "Translator" else "Reader"
-      }
-    }
+    val isOwner = isOwnerEmail(cleanEmail)
 
-    val finalRole = if (cleanEmail.contains("strawberrycandy", ignoreCase = true) || role == "OWNER") {
+    val finalRole = if (isOwner) {
       "OWNER"
+    } else if (role == "TRANSLATOR") {
+      "TRANSLATOR"
     } else {
-      role
+      "READER"
     }
 
     val finalSlot = if (finalRole == "OWNER") 0 else authorSlot
+
+    val emailRegex = Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}")
+    val finalName = if (displayName.isNotBlank() && !displayName.contains("@")) {
+      displayName.trim()
+    } else {
+      if (finalRole == "OWNER") {
+        "Clarify"
+      } else if (finalRole == "TRANSLATOR") {
+        val slot = finalSlot?.let { dao.getAuthorSlot(it) }
+        slot?.penName?.replace(emailRegex, "")?.trim()?.ifBlank { "Translator $finalSlot" } ?: "Translator"
+      } else {
+        val emailPrefix = cleanEmail.substringBefore("@").replace(".", " ").trim()
+        if (emailPrefix.isNotBlank()) {
+          emailPrefix.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+        } else {
+          "Reader"
+        }
+      }
+    }
+
+    val existingProfile = dao.getReaderProfile(userId)
+    val existingPoints = existingProfile?.penNamePoints ?: 0
 
     val profile = ReaderProfileEntity(
       userId = userId,
@@ -192,6 +235,7 @@ class StrawberrycandyRepository(
       provider = provider,
       role = finalRole,
       authorSlot = finalSlot,
+      penNamePoints = existingPoints,
       lastLoginTimestamp = System.currentTimeMillis()
     )
     dao.insertReaderProfile(profile)
@@ -210,7 +254,6 @@ class StrawberrycandyRepository(
         lastReadTimestamp = System.currentTimeMillis()
       )
       dao.insertOrUpdateReadingState(updated)
-      dao.updateFavoritesCount(novelId, if (newFav) 1 else 0)
     } else {
       val newState = UserReadingStateEntity(
         compositeId = "${userId}_${novelId}",
@@ -222,8 +265,8 @@ class StrawberrycandyRepository(
         lastReadTimestamp = System.currentTimeMillis()
       )
       dao.insertOrUpdateReadingState(newState)
-      dao.updateFavoritesCount(novelId, 1)
     }
+    dao.syncRealFavoritesForNovel(novelId)
   }
 
   suspend fun toggleReadingList(userId: String, novelId: String) {
@@ -248,11 +291,53 @@ class StrawberrycandyRepository(
     }
   }
 
-  suspend fun saveReadingProgress(userId: String, novelId: String, page: Int) {
+  suspend fun markNovelAsFinished(userId: String, novelId: String): Boolean {
+    val existing = dao.getReadingState(userId, novelId)
+    val novel = dao.getNovelById(novelId)
+    val totalPages = novel?.totalPages ?: 100
+    var pointEarned = false
+
+    if (existing != null) {
+      val shouldAwardPoint = !existing.pointsAwarded
+      val updated = existing.copy(
+        currentPage = totalPages,
+        isFinished = true,
+        inReadingList = true,
+        inTbrList = false,
+        pointsAwarded = true,
+        lastReadTimestamp = System.currentTimeMillis()
+      )
+      dao.insertOrUpdateReadingState(updated)
+      if (shouldAwardPoint) {
+        dao.addPointsToReader(userId, 1)
+        pointEarned = true
+      }
+    } else {
+      val newState = UserReadingStateEntity(
+        compositeId = "${userId}_${novelId}",
+        userId = userId,
+        novelId = novelId,
+        currentPage = totalPages,
+        isFavorite = false,
+        inReadingList = true,
+        isFinished = true,
+        inTbrList = false,
+        pointsAwarded = true,
+        lastReadTimestamp = System.currentTimeMillis()
+      )
+      dao.insertOrUpdateReadingState(newState)
+      dao.addPointsToReader(userId, 1)
+      pointEarned = true
+    }
+    return pointEarned
+  }
+
+  suspend fun markNovelAsToBeRead(userId: String, novelId: String) {
     val existing = dao.getReadingState(userId, novelId)
     if (existing != null) {
       val updated = existing.copy(
-        currentPage = page,
+        inTbrList = true,
+        isFinished = false,
         inReadingList = true,
         lastReadTimestamp = System.currentTimeMillis()
       )
@@ -262,13 +347,109 @@ class StrawberrycandyRepository(
         compositeId = "${userId}_${novelId}",
         userId = userId,
         novelId = novelId,
-        currentPage = page,
+        currentPage = 1,
         isFavorite = false,
         inReadingList = true,
+        isFinished = false,
+        inTbrList = true,
+        pointsAwarded = false,
         lastReadTimestamp = System.currentTimeMillis()
       )
       dao.insertOrUpdateReadingState(newState)
     }
+  }
+
+  suspend fun markNovelAsReading(userId: String, novelId: String) {
+    val existing = dao.getReadingState(userId, novelId)
+    if (existing != null) {
+      val updated = existing.copy(
+        inTbrList = false,
+        isFinished = false,
+        inReadingList = true,
+        lastReadTimestamp = System.currentTimeMillis()
+      )
+      dao.insertOrUpdateReadingState(updated)
+    } else {
+      val newState = UserReadingStateEntity(
+        compositeId = "${userId}_${novelId}",
+        userId = userId,
+        novelId = novelId,
+        currentPage = 1,
+        isFavorite = false,
+        inReadingList = true,
+        isFinished = false,
+        inTbrList = false,
+        pointsAwarded = false,
+        lastReadTimestamp = System.currentTimeMillis()
+      )
+      dao.insertOrUpdateReadingState(newState)
+    }
+  }
+
+  suspend fun saveReadingProgress(userId: String, novelId: String, page: Int): Boolean {
+    val existing = dao.getReadingState(userId, novelId)
+    val novel = dao.getNovelById(novelId)
+    val totalPages = novel?.totalPages ?: 100
+    val isCompleted = page >= totalPages
+    var pointEarned = false
+
+    if (existing != null) {
+      val shouldAwardPoint = isCompleted && !existing.pointsAwarded
+      val updated = existing.copy(
+        currentPage = page,
+        inReadingList = true,
+        inTbrList = false,
+        isFinished = if (isCompleted) true else existing.isFinished,
+        pointsAwarded = if (isCompleted) true else existing.pointsAwarded,
+        lastReadTimestamp = System.currentTimeMillis()
+      )
+      dao.insertOrUpdateReadingState(updated)
+      if (shouldAwardPoint) {
+        dao.addPointsToReader(userId, 1)
+        pointEarned = true
+      }
+    } else {
+      val shouldAwardPoint = isCompleted
+      val newState = UserReadingStateEntity(
+        compositeId = "${userId}_${novelId}",
+        userId = userId,
+        novelId = novelId,
+        currentPage = page,
+        isFavorite = false,
+        inReadingList = true,
+        isFinished = isCompleted,
+        inTbrList = false,
+        pointsAwarded = isCompleted,
+        lastReadTimestamp = System.currentTimeMillis()
+      )
+      dao.insertOrUpdateReadingState(newState)
+      if (shouldAwardPoint) {
+        dao.addPointsToReader(userId, 1)
+        pointEarned = true
+      }
+    }
+    return pointEarned
+  }
+
+  suspend fun changePenNameWithPoint(userId: String, newPenName: String): Boolean {
+    val emailRegex = Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}")
+    val cleanPenName = newPenName.replace(emailRegex, "").trim()
+    if (cleanPenName.isBlank()) return false
+
+    val profile = dao.getReaderProfile(userId) ?: return false
+    if (profile.penNamePoints < 1) {
+      return false
+    }
+
+    val updatedCount = dao.deductPointAndSetDisplayName(userId, cleanPenName)
+    if (updatedCount > 0) {
+      val slotNum = profile.authorSlot
+      if (slotNum != null && slotNum >= 0) {
+        dao.updateSlotPenName(slotNum, cleanPenName)
+      }
+      return true
+    }
+    return false
   }
 
   private suspend fun seedDefaultNovelsIfEmpty() {
@@ -300,8 +481,8 @@ class StrawberrycandyRepository(
           ).joinToString("\n\n"),
           isOwnerUploaded = false,
           createdAt = 1000L,
-          readsCount = 1420,
-          favoritesCount = 348
+          readsCount = 0,
+          favoritesCount = 0
         ),
         NovelEntity(
           id = "nov_2",
@@ -329,8 +510,8 @@ class StrawberrycandyRepository(
           ).joinToString("\n\n"),
           isOwnerUploaded = false,
           createdAt = 2000L,
-          readsCount = 890,
-          favoritesCount = 215
+          readsCount = 0,
+          favoritesCount = 0
         ),
         NovelEntity(
           id = "nov_3",
@@ -357,8 +538,8 @@ class StrawberrycandyRepository(
           ).joinToString("\n\n"),
           isOwnerUploaded = false,
           createdAt = 3000L,
-          readsCount = 612,
-          favoritesCount = 149
+          readsCount = 0,
+          favoritesCount = 0
         )
       )
       dao.insertNovels(defaultNovels)
@@ -394,10 +575,145 @@ class StrawberrycandyRepository(
         ).joinToString("\n\n"),
         isOwnerUploaded = false,
         createdAt = 4000L,
-        readsCount = 3840,
-        favoritesCount = 920
+        readsCount = 0,
+        favoritesCount = 0
       )
       dao.insertNovel(schemaMonograph)
+    }
+  }
+
+  private suspend fun ensureFeaturedNovelsWithCoversExist() {
+    val featuredNovels = listOf(
+      NovelEntity(
+        id = "nov_crimson",
+        title = "The Crimson Bloom",
+        subtitle = "Chronicles of the Spider Lily & Midnight Courtyard",
+        author = "Strawberrycandy",
+        originalAuthor = "Yukiko Murasaki",
+        authorSlot = 0,
+        year = "2026",
+        editionNumber = "ARCHIVE NO. 063 / 100",
+        coverDrawableRes = R.drawable.img_novel_crimson_bloom,
+        coverColorHex = 0xFF381519,
+        chapterTitle = "Chapter I • The Garden of Wandering Spirits",
+        totalPages = 340,
+        excerpt = "Beneath the blood-red petals of the midnight lily, secrets long buried in the imperial gardens whisper to those who dare listen.",
+        contentText = listOf(
+          "[chapter:Chapter I • The Garden of Wandering Spirits]",
+          "Beneath the blood-red petals of the midnight lily, secrets long buried in the imperial gardens whisper to those who dare listen. The stone path, polished by centuries of silent footsteps, glowed under the harvest moon with a pale vermilion luminescence.",
+          "Ren had traveled across the northern mountains seeking the courtyard of the forgotten empress. Legends spoke of a spring that flowed only during the equinox, its waters reflecting not the face of the living, but the unfinished dreams of those who came before.",
+          "[photo:drawable:img_novel_crimson_bloom:Plate I • Crimson Spider Lilies along the Midnight Courtyard]",
+          "[chapter:Chapter II • The Song of the Midnight Flute]",
+          "A low melody drifted through the weeping willow branches—a tune composed on bamboo so aged it resonated with the tone of falling leaves. It was not sorrowful, yet every note stirred an ache in Ren's chest, as if recalling a promise spoken in another life.",
+          "She appeared near the stone lantern, her silk robes dark as obsidian, edged with thread of spun gold. 'You returned,' she whispered, though Ren was certain they had never met. 'The lilies remember every debt.'",
+          "[chapter:Chapter III • The Pact Written in Starlight]",
+          "To step into the inner sanctum was to surrender the armor of the daylight world. Here, where shadows folded into velvet silence, words became binding vows.",
+          "'If you take the bloom,' she warned, holding forth a single crimson stem whose petals trembled with inner fire, 'your heart will never again belong to the mundane world. You will hear the murmurs of the ancient empire in every gust of autumn wind.'"
+        ).joinToString("\n\n"),
+        isOwnerUploaded = false,
+        createdAt = 5000L,
+        readsCount = 0,
+        favoritesCount = 0
+      ),
+      NovelEntity(
+        id = "nov_celestial",
+        title = "The Celestial Observatory",
+        subtitle = "Voyages Beyond the Astral Meridian",
+        author = "Strawberrycandy",
+        originalAuthor = "Arthur Sterling",
+        authorSlot = 0,
+        year = "2026",
+        editionNumber = "ARCHIVE NO. 077 / 100",
+        coverDrawableRes = R.drawable.img_novel_celestial,
+        coverColorHex = 0xFF161936,
+        chapterTitle = "Chapter I • The Stardust Astrolabe",
+        totalPages = 412,
+        excerpt = "When the brass gears of the great telescope aligned with the violet nebula, the universe ceased to be silent.",
+        contentText = listOf(
+          "[chapter:Chapter I • The Stardust Astrolabe]",
+          "When the brass gears of the great telescope aligned with the violet nebula, the universe ceased to be silent. High above the cloudline, atop the crags of Mount Alcor, the Great Astrolabe of the Guild rotated with a steady, hydraulic hum.",
+          "Professor Vane wiped condensation from the ocular lens. For forty-three years he had mapped the wandering stars, recording planetary transits with iron ink on vellum folios. But tonight, a new spectrum was bleeding into the constellation of Cygnus—a pulse of azure light that defied astronomical theory.",
+          "[photo:drawable:img_novel_celestial:Plate I • The Great Astrolabe and the Swirling Sapphire Nebula]",
+          "[chapter:Chapter II • The Meridian Telegraph]",
+          "The mechanical ticker in the observatory corner sprang to life, its needle punching perforated tape with frantic rhythm. Signals from the southern listening posts in Patagonia and the deep desert of Atacama were converging on the exact same frequency.",
+          "'It is not an optical anomaly,' whispered his apprentice Lyra, her fingers trembling as she measured the spectral lines with a bronze caliper. 'The meridian itself is shifting. The stars are sending coordinates.'",
+          "[chapter:Chapter III • Beyond the Threshold of Orion]",
+          "To look deeply into the cosmos is to realize that humanity's triumphs and tragedies are cast upon a very small, fragile stage. Yet within that tiny theater lies the audacious power of the human mind: to measure infinity from a stone tower, guided only by brass, mirrors, and curiosity."
+        ).joinToString("\n\n"),
+        isOwnerUploaded = false,
+        createdAt = 6000L,
+        readsCount = 0,
+        favoritesCount = 0
+      ),
+      NovelEntity(
+        id = "nov_whispering_pines",
+        title = "Whispering Pines",
+        subtitle = "Echoes Across the Mist of the Northern Fjord",
+        author = "Strawberrycandy",
+        originalAuthor = "Astrid Lindqvist",
+        authorSlot = 0,
+        year = "2026",
+        editionNumber = "ARCHIVE NO. 052 / 100",
+        coverDrawableRes = R.drawable.img_novel_whispering_pines,
+        coverColorHex = 0xFF152A24,
+        chapterTitle = "Chapter I • The Solitary Lantern at Fog's Edge",
+        totalPages = 295,
+        excerpt = "In the quiet heart of the evergreen wilderness, the water remembers every traveler who never returned.",
+        contentText = listOf(
+          "[chapter:Chapter I • The Solitary Lantern at Fog's Edge]",
+          "In the quiet heart of the evergreen wilderness, the water remembers every traveler who never returned. At twilight, when the fog curls like smoke off the black surface of Lake Siljan, the spruce trees along the ridge begin their patient dialogue.",
+          "Maren pushed her wooden skiff off the shingle. Her grandfather had kept the timber cabin on the western island for sixty winters, leaving behind only a cedar chest of notebooks and a brass nautical lantern that burned with a stubborn emerald flame.",
+          "[photo:drawable:img_novel_whispering_pines:Plate I • The Solitary Dock and Misty Emerald Pines]",
+          "[chapter:Chapter II • Footprints on Granite]",
+          "The scent of cedar bark and damp lichen was intoxicating. She tied the boat to the mossy post and lit the lantern. Across the water, the aurora began to flicker—a ribbon of ghostly jade and violet undulating between the craggy peaks.",
+          "She opened the first journal. In meticulous cursive, her grandfather had recorded not water levels or timber yields, but songs overheard when no one was singing: 'The forest does not keep secrets; it simply waits for listeners who are quiet enough to hear.'",
+          "[chapter:Chapter III • The Island of Still Waters]",
+          "Here, beyond cell towers and asphalt highways, time ceased its frantic countdown. Each breath filled the lungs with the pure chill of ancient glaciers, anchoring the soul in the enduring permanence of rock and pine."
+        ).joinToString("\n\n"),
+        isOwnerUploaded = false,
+        createdAt = 7000L,
+        readsCount = 0,
+        favoritesCount = 0
+      ),
+      NovelEntity(
+        id = "nov_moonlight",
+        title = "The Moonlight Pavilion",
+        subtitle = "Letters Written Beneath the Lotus Bower",
+        author = "Strawberrycandy",
+        originalAuthor = "Lin Shen-Yue",
+        authorSlot = 0,
+        year = "2026",
+        editionNumber = "ARCHIVE NO. 091 / 100",
+        coverDrawableRes = R.drawable.img_novel_moonlight,
+        coverColorHex = 0xFF2A1C30,
+        chapterTitle = "Chapter I • Floating Lanterns and Unspoken Vows",
+        totalPages = 268,
+        excerpt = "Each lantern set adrift upon the lake bore a single character—a promise carried toward dawn.",
+        contentText = listOf(
+          "[chapter:Chapter I • Floating Lanterns and Unspoken Vows]",
+          "Each lantern set adrift upon the lake bore a single character—a promise carried toward dawn. In the fourteenth year of the Emperor's reign, the pavilion on the western causeway was the only sanctuary where scholars dared speak without masks.",
+          "Mei-Ling arranged the ink stone, grinding pine soot with rainwater gathered from the eaves of the temple. Across the wooden railing, the lotus blossoms were closing for the night, their pink tips folding into serene contemplation.",
+          "[photo:drawable:img_novel_moonlight:Plate I • Ornate Pavilion and Drifting Lanterns on Lotus Water]",
+          "[chapter:Chapter II • The Calligraphy of Longing]",
+          "'True words,' Master Wen had taught her, 'must be brushed with the weight of mountains and the lightness of plum blossoms.' But tonight her brush hesitated over the mulberry paper. How could five characters capture ten years of absence?",
+          "A warm night breeze carried the scent of gardenia and wet stone. From across the dark water, the gentle dip of an oar broke the stillness. Someone was rowing toward the pavilion under cover of the crescent moon.",
+          "[chapter:Chapter III • The Dawn of Quiet Resolve]",
+          "As the first blush of apricot spread along the horizon, the lantern fire flickered out. What remained was the clarity of parchment, the scent of fresh ink, and the realization that some stories are written not to be remembered by history, but to keep the human spirit alive."
+        ).joinToString("\n\n"),
+        isOwnerUploaded = false,
+        createdAt = 8000L,
+        readsCount = 0,
+        favoritesCount = 0
+      )
+    )
+
+    for (novel in featuredNovels) {
+      val existing = dao.getNovelById(novel.id)
+      if (existing == null) {
+        dao.insertNovel(novel)
+      } else if (existing.coverDrawableRes != novel.coverDrawableRes) {
+        dao.insertNovel(existing.copy(coverDrawableRes = novel.coverDrawableRes, coverColorHex = novel.coverColorHex))
+      }
     }
   }
 
@@ -493,41 +809,13 @@ class StrawberrycandyRepository(
     }
   }
 
-  private suspend fun seedDefaultReadingStatesIfEmpty() {
-    val defaultUserId = "guest_reader"
-    if (dao.getReadingState(defaultUserId, "nov_1") == null) {
-      val state1 = UserReadingStateEntity(
-        compositeId = "${defaultUserId}_nov_1",
-        userId = defaultUserId,
-        novelId = "nov_1",
-        currentPage = 48,
-        isFavorite = true,
-        inReadingList = true,
-        lastReadTimestamp = System.currentTimeMillis() - 3600000
-      )
-      dao.insertOrUpdateReadingState(state1)
-    }
-    if (dao.getReadingState(defaultUserId, "nov_2") == null) {
-      val state2 = UserReadingStateEntity(
-        compositeId = "${defaultUserId}_nov_2",
-        userId = defaultUserId,
-        novelId = "nov_2",
-        currentPage = 35,
-        isFavorite = false,
-        inReadingList = true,
-        lastReadTimestamp = System.currentTimeMillis() - 7200000
-      )
-      dao.insertOrUpdateReadingState(state2)
-    }
-  }
-
   private suspend fun seedDefaultAuthorSlotsIfEmpty() {
     val defaultSlots = listOf(
       AuthorSlotEntity(
         slotNumber = 0,
-        authorName = "strawberrycandy",
-        penName = "strawberrycandy",
-        bio = "Founder & Curator at Strawberrycandy Archive. Oversees manuscript acquisitions and literary curation.",
+        authorName = "Clarify",
+        penName = "Strawberrycandy",
+        bio = "Founder & Sole Owner at Strawberrycandy Archive. Oversees manuscript acquisitions, translator permissions, and curation.",
         avatarColorHex = 0xFF8C2D48,
         accessCode = "ARCHIVE-OWNER-0",
         isClaimed = true,
@@ -647,6 +935,20 @@ class StrawberrycandyRepository(
     }
   }
 
+  private suspend fun syncOwnerConfiguration() {
+    val currentSlot0 = dao.getAuthorSlot(0)
+    if (currentSlot0 != null) {
+      dao.updateAuthorSlot(
+        currentSlot0.copy(
+          authorName = "Clarify",
+          penName = "Strawberrycandy",
+          bio = "Founder & Sole Owner at Strawberrycandy Archive. Oversees manuscript acquisitions, translator permissions, and curation.",
+          isPermissionGranted = true
+        )
+      )
+    }
+  }
+
   // Chapter Comments per Chapter
   fun getCommentsForChapter(novelId: String, chapterTitle: String): Flow<List<ChapterCommentEntity>> {
     return dao.getCommentsForChapter(novelId, chapterTitle)
@@ -664,11 +966,17 @@ class StrawberrycandyRepository(
     commentText: String,
     avatarColorHex: Long = 0xFF5C2D3B,
   ) {
+    val cleanReaderName = if (readerName.contains("@")) {
+      val prefix = readerName.substringBefore("@").replace(".", " ").trim()
+      prefix.ifBlank { "Literary Reader" }
+    } else {
+      readerName.trim().ifEmpty { "Literary Reader" }
+    }
     val comment = ChapterCommentEntity(
       id = "cmt_" + UUID.randomUUID().toString().take(8),
       novelId = novelId,
       chapterTitle = chapterTitle,
-      readerName = readerName.trim().ifEmpty { "Literary Reader" },
+      readerName = cleanReaderName,
       readerEmail = readerEmail,
       commentText = commentText.trim(),
       timestamp = System.currentTimeMillis(),
