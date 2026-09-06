@@ -1,11 +1,8 @@
-name: Build Android APK
+name: Android Release Build
 
 on:
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
-  workflow_dispatch:
+    branches: [ main ]
 
 jobs:
   build:
@@ -18,20 +15,20 @@ jobs:
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
-          java-version: '21'
           distribution: 'temurin'
-          cache: gradle
+          java-version: '21'
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+      - name: Install Gradle Manually
+        run: |
+          wget https://services.gradle.org/distributions/gradle-9.3.1-bin.zip
+          unzip -q gradle-9.3.1-bin.zip
+          echo "$PWD/gradle-9.3.1/bin" >> $GITHUB_PATH
 
-      - name: Build Debug APK
-        env:
-          API_KEY: ${{ secrets.API_KEY }}
-        run: ./gradlew assembleDebug
+      - name: Build Release APK
+        run: gradle assembleRelease
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: app/build/outputs/apk/debug/*.apk
+          name: app-release
+          path: app/build/outputs/**/*.apk
