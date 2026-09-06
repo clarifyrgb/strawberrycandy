@@ -946,7 +946,10 @@ fun HomeScreen(
         } else null,
         onToggleSlotPermission = if (isSoleOwner) { slotNum, isGranted ->
           viewModel.setSlotPermission(slotNum, isGranted)
-        } else null
+        } else null,
+        onAddChapterToNovel = { novelId, title, content ->
+          viewModel.addChapterToNovel(novelId, title, content)
+        }
       )
     }
 

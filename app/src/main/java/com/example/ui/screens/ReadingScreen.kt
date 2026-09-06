@@ -229,6 +229,7 @@ fun ReadingScreen(
 
   val activeUser by (viewModel?.activeUser?.collectAsState()
     ?: remember { mutableStateOf(null) })
+  val canAddChapter = activeUser?.role == "OWNER" || activeUser?.authorSlot == 0 || (activeUser?.role == "TRANSLATOR" && activeUser?.authorSlot == novel.authorSlot)
 
   // Font family resolution
   val readerFontFamily = remember(selectedFontType, customFontPath) {
@@ -538,6 +539,32 @@ fun ReadingScreen(
                       color = AntiqueGold
                     )
                   )
+                }
+              }
+
+              // 2b. Quick Add Chapter Button (for Owner or assigned Translator)
+              if (canAddChapter) {
+                Surface(
+                  shape = RoundedCornerShape(12.dp),
+                  color = AntiqueGold.copy(alpha = 0.16f),
+                  border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.75f)),
+                  modifier = Modifier
+                    .clickable { isAddChapterModalOpen = true }
+                    .testTag("quick_add_chapter_button")
+                ) {
+                  Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp)
+                  ) {
+                    Text(
+                      text = "+ Ch.",
+                      style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = CharcoalText
+                      )
+                    )
+                  }
                 }
               }
 
@@ -1558,6 +1585,8 @@ fun ReadingScreen(
                 chapterTitle = novel.chapterTitle,
                 comments = commentsList,
                 activeReaderName = activeUser?.displayName,
+                activeReaderEmail = activeUser?.email,
+                isOwner = activeUser?.role == "OWNER" || activeUser?.authorSlot == 0,
                 onPostComment = { text, penName, parentCommentId, replyToReaderName ->
                   viewModel?.postComment(
                     novelId = novel.id,
@@ -1570,6 +1599,9 @@ fun ReadingScreen(
                 },
                 onLikeComment = { commentId ->
                   viewModel?.likeComment(commentId)
+                },
+                onDeleteComment = { commentId ->
+                  viewModel?.deleteComment(commentId)
                 },
                 modifier = Modifier.widthIn(max = 640.dp)
               )
@@ -1597,103 +1629,9 @@ fun ReadingScreen(
           Column(
             modifier = Modifier
               .fillMaxWidth()
-              .padding(horizontal = 14.dp, vertical = 8.dp)
+              .padding(horizontal = 14.dp, vertical = 6.dp)
           ) {
-            // Row 1: Prev chapter, current chapter pill, next chapter
-            Row(
-              modifier = Modifier.fillMaxWidth(),
-              horizontalArrangement = Arrangement.SpaceBetween,
-              verticalAlignment = Alignment.CenterVertically
-            ) {
-              // Prev Chapter
-              IconButton(
-                onClick = {
-                  if (currentChapterIndex > 0) {
-                    val prevIdx = currentChapterIndex - 1
-                    val prevCh = novel.chapters.getOrNull(prevIdx)
-                    if (prevCh != null) {
-                      jumpToChapter(prevIdx, prevCh.startParagraphIndex)
-                    }
-                  }
-                },
-                enabled = currentChapterIndex > 0,
-                modifier = Modifier.size(32.dp)
-              ) {
-                Icon(
-                  imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                  contentDescription = "Previous Chapter",
-                  tint = if (currentChapterIndex > 0) AntiqueGold else CharcoalTertiary.copy(alpha = 0.4f),
-                  modifier = Modifier.size(16.dp)
-                )
-              }
-
-              // Center Chapter Label Pill (Tap to open full Chapter Modal)
-              Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = Color(0x16D4AF37),
-                border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.6f)),
-                modifier = Modifier
-                  .clickable { isChapterModalOpen = true }
-                  .testTag("current_chapter_pill")
-              ) {
-                Row(
-                  verticalAlignment = Alignment.CenterVertically,
-                  modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
-                ) {
-                  Icon(
-                    imageVector = Icons.Outlined.MenuBook,
-                    contentDescription = null,
-                    tint = AntiqueGold,
-                    modifier = Modifier.size(13.dp)
-                  )
-                  Spacer(modifier = Modifier.width(6.dp))
-                  Text(
-                    text = currentChapter?.title ?: novel.chapterTitle,
-                    style = MaterialTheme.typography.labelSmall.copy(
-                      fontSize = 11.sp,
-                      fontWeight = FontWeight.SemiBold,
-                      color = CharcoalText
-                    ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                  )
-                  Spacer(modifier = Modifier.width(6.dp))
-                  Text(
-                    text = "▼",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                      fontSize = 8.sp,
-                      color = AntiqueGold
-                    )
-                  )
-                }
-              }
-
-              // Next Chapter
-              IconButton(
-                onClick = {
-                  if (currentChapterIndex < novel.chapters.size - 1) {
-                    val nextIdx = currentChapterIndex + 1
-                    val nextCh = novel.chapters.getOrNull(nextIdx)
-                    if (nextCh != null) {
-                      jumpToChapter(nextIdx, nextCh.startParagraphIndex)
-                    }
-                  }
-                },
-                enabled = currentChapterIndex < novel.chapters.size - 1,
-                modifier = Modifier.size(32.dp)
-              ) {
-                Icon(
-                  imageVector = Icons.AutoMirrored.Outlined.ArrowForward,
-                  contentDescription = "Next Chapter",
-                  tint = if (currentChapterIndex < novel.chapters.size - 1) AntiqueGold else CharcoalTertiary.copy(alpha = 0.4f),
-                  modifier = Modifier.size(16.dp)
-                )
-              }
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // Row 2: Reading progress scrubber slider & folio
+            // Reading progress scrubber slider & folio
             Row(
               modifier = Modifier.fillMaxWidth(),
               verticalAlignment = Alignment.CenterVertically
@@ -1744,7 +1682,6 @@ fun ReadingScreen(
     // -------------------------------------------------------------
 
     // 1. Chapter Selection Modal (Table of Contents & Pointer)
-    val canAddChapter = activeUser?.role == "OWNER" || activeUser?.authorSlot == 0 || (activeUser?.role == "TRANSLATOR" && activeUser?.authorSlot == novel.authorSlot)
     if (isChapterModalOpen) {
       ChapterSelectionModal(
         bookTitle = novel.title,

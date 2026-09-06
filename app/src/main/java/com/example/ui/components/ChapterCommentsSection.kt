@@ -22,7 +22,10 @@ import androidx.compose.material.icons.automirrored.outlined.Reply
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -45,7 +48,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -69,8 +75,11 @@ fun ChapterCommentsSection(
   chapterTitle: String,
   comments: List<ChapterCommentEntity>,
   activeReaderName: String?,
+  activeReaderEmail: String? = null,
+  isOwner: Boolean = false,
   onPostComment: (text: String, penName: String?, parentCommentId: String?, replyToReaderName: String?) -> Unit,
   onLikeComment: (commentId: String) -> Unit,
+  onDeleteComment: ((commentId: String) -> Unit)? = null,
   modifier: Modifier = Modifier,
 ) {
   var newCommentText by remember { mutableStateOf("") }
@@ -402,35 +411,113 @@ fun ChapterCommentsSection(
 
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
           rootComments.forEach { rootComment ->
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-              CommentCardItem(
-                comment = rootComment,
-                liveTickerMs = liveTickerMs,
-                onLike = { onLikeComment(rootComment.id) },
-                onReply = { replyingToComment = rootComment }
-              )
+            val replies = (repliesMap[rootComment.id] ?: emptyList()).sortedBy { it.timestamp }
+            CommentThreadItem(
+              rootComment = rootComment,
+              replies = replies,
+              liveTickerMs = liveTickerMs,
+              activeReaderName = activeReaderName,
+              activeReaderEmail = activeReaderEmail,
+              isOwner = isOwner,
+              onLike = { onLikeComment(it) },
+              onReply = { replyingToComment = it },
+              onDelete = onDeleteComment
+            )
+          }
+        }
+      }
+    }
+  }
+}
 
-              // Nested replies
-              val replies = repliesMap[rootComment.id] ?: emptyList()
-              if (replies.isNotEmpty()) {
-                Column(
-                  modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 20.dp),
-                  verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                  replies.forEach { reply ->
-                    CommentCardItem(
-                      comment = reply,
-                      liveTickerMs = liveTickerMs,
-                      isNestedReply = true,
-                      onLike = { onLikeComment(reply.id) },
-                      onReply = { replyingToComment = reply }
-                    )
-                  }
-                }
-              }
-            }
+@Composable
+private fun CommentThreadItem(
+  rootComment: ChapterCommentEntity,
+  replies: List<ChapterCommentEntity>,
+  liveTickerMs: Long,
+  activeReaderName: String?,
+  activeReaderEmail: String?,
+  isOwner: Boolean,
+  onLike: (String) -> Unit,
+  onReply: (ChapterCommentEntity) -> Unit,
+  onDelete: ((String) -> Unit)?,
+) {
+  var areRepliesExpanded by remember { mutableStateOf(true) }
+  val canDeleteRoot = isOwner ||
+    (activeReaderName != null && rootComment.readerName.equals(activeReaderName, ignoreCase = true)) ||
+    (!activeReaderEmail.isNullOrBlank() && rootComment.readerEmail.equals(activeReaderEmail, ignoreCase = true))
+
+  Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    CommentCardItem(
+      comment = rootComment,
+      liveTickerMs = liveTickerMs,
+      replyCount = replies.size,
+      onLike = { onLike(rootComment.id) },
+      onReply = { onReply(rootComment) },
+      onDelete = if (canDeleteRoot && onDelete != null) { { onDelete(rootComment.id) } } else null
+    )
+
+    // Expand/Collapse replies toggle if replies exist
+    if (replies.isNotEmpty()) {
+      Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+          .padding(start = 24.dp)
+          .clip(RoundedCornerShape(8.dp))
+          .clickable { areRepliesExpanded = !areRepliesExpanded }
+          .padding(horizontal = 6.dp, vertical = 3.dp)
+          .testTag("toggle_replies_${rootComment.id}")
+      ) {
+        Icon(
+          imageVector = if (areRepliesExpanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
+          contentDescription = null,
+          tint = AntiqueGold,
+          modifier = Modifier.size(13.dp)
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+          text = if (areRepliesExpanded) "Hide ${replies.size} ${if (replies.size == 1) "reply" else "replies"}"
+                 else "View ${replies.size} ${if (replies.size == 1) "reply" else "replies"}",
+          style = MaterialTheme.typography.labelSmall.copy(
+            fontSize = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = AntiqueGold
+          )
+        )
+      }
+
+      // Threaded nested replies container with vertical thread connector guide line
+      if (areRepliesExpanded) {
+        Column(
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 24.dp)
+            .drawBehind {
+              val strokeWidth = 1.5.dp.toPx()
+              val lineX = -10.dp.toPx()
+              drawLine(
+                color = AntiqueGold.copy(alpha = 0.35f),
+                start = Offset(lineX, 0f),
+                end = Offset(lineX, size.height),
+                strokeWidth = strokeWidth,
+                cap = StrokeCap.Round
+              )
+            },
+          verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+          replies.forEach { reply ->
+            val canDeleteReply = isOwner ||
+              (activeReaderName != null && reply.readerName.equals(activeReaderName, ignoreCase = true)) ||
+              (!activeReaderEmail.isNullOrBlank() && reply.readerEmail.equals(activeReaderEmail, ignoreCase = true))
+
+            CommentCardItem(
+              comment = reply,
+              liveTickerMs = liveTickerMs,
+              isNestedReply = true,
+              onLike = { onLike(reply.id) },
+              onReply = { onReply(reply) },
+              onDelete = if (canDeleteReply && onDelete != null) { { onDelete(reply.id) } } else null
+            )
           }
         }
       }
@@ -457,8 +544,10 @@ private fun CommentCardItem(
   comment: ChapterCommentEntity,
   liveTickerMs: Long,
   isNestedReply: Boolean = false,
+  replyCount: Int = 0,
   onLike: () -> Unit,
   onReply: () -> Unit,
+  onDelete: (() -> Unit)? = null,
 ) {
   val dateFormatted = remember(comment.timestamp, liveTickerMs) {
     formatRealtimeCommentDate(comment.timestamp, liveTickerMs)
@@ -522,23 +611,31 @@ private fun CommentCardItem(
                 ),
                 color = CharcoalText
               )
-              if (comment.replyToReaderName != null) {
-                Spacer(modifier = Modifier.width(4.dp))
-                Icon(
-                  imageVector = Icons.AutoMirrored.Outlined.Reply,
-                  contentDescription = null,
-                  tint = AntiqueGold,
-                  modifier = Modifier.size(11.dp)
-                )
-                Spacer(modifier = Modifier.width(2.dp))
-                Text(
-                  text = "@${comment.replyToReaderName}",
-                  style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = AntiqueGold
+              if (replyCount > 0 && !isNestedReply) {
+                Spacer(modifier = Modifier.width(6.dp))
+                Row(
+                  verticalAlignment = Alignment.CenterVertically,
+                  modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(AntiqueGold.copy(alpha = 0.12f))
+                    .padding(horizontal = 5.dp, vertical = 2.dp)
+                ) {
+                  Icon(
+                    imageVector = Icons.Outlined.ChatBubbleOutline,
+                    contentDescription = null,
+                    tint = AntiqueGold,
+                    modifier = Modifier.size(9.dp)
                   )
-                )
+                  Spacer(modifier = Modifier.width(3.dp))
+                  Text(
+                    text = "$replyCount",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontSize = 8.5.sp,
+                      fontWeight = FontWeight.Bold,
+                      color = AntiqueGold
+                    )
+                  )
+                }
               }
               if (isRealtimeRecent) {
                 Spacer(modifier = Modifier.width(5.dp))
@@ -581,7 +678,7 @@ private fun CommentCardItem(
           }
         }
 
-        // Reply & Like buttons
+        // Reply, Like, and optional Delete buttons
         Row(
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -640,10 +737,53 @@ private fun CommentCardItem(
               )
             }
           }
+
+          // Optional Delete button (author or archive curator)
+          if (onDelete != null) {
+            IconButton(
+              onClick = onDelete,
+              modifier = Modifier.size(24.dp)
+            ) {
+              Icon(
+                imageVector = Icons.Outlined.Delete,
+                contentDescription = "Delete comment",
+                tint = CharcoalTertiary.copy(alpha = 0.7f),
+                modifier = Modifier.size(13.dp)
+              )
+            }
+          }
         }
       }
 
       Spacer(modifier = Modifier.height(8.dp))
+
+      // Reply badge if replying to someone specific
+      if (comment.replyToReaderName != null) {
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          modifier = Modifier
+            .padding(bottom = 6.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(AntiqueGold.copy(alpha = 0.1f))
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+        ) {
+          Icon(
+            imageVector = Icons.AutoMirrored.Outlined.Reply,
+            contentDescription = null,
+            tint = AntiqueGold,
+            modifier = Modifier.size(10.dp)
+          )
+          Spacer(modifier = Modifier.width(3.dp))
+          Text(
+            text = "Replying to @${comment.replyToReaderName}",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 9.sp,
+              fontWeight = FontWeight.Medium,
+              color = AntiqueGold
+            )
+          )
+        }
+      }
 
       Text(
         text = comment.commentText,

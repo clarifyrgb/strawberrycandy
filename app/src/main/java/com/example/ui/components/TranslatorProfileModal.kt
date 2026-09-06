@@ -32,6 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Clear
@@ -140,8 +141,10 @@ fun TranslatorProfileModal(
   onUpdateCoverImage: (slotNumber: Int, imagePath: String) -> Unit,
   onOpenUploadForSlot: ((Int) -> Unit)? = null,
   onToggleSlotPermission: ((slotNumber: Int, isGranted: Boolean) -> Unit)? = null,
+  onAddChapterToNovel: ((novelId: String, title: String, content: String) -> Unit)? = null,
 ) {
   val context = LocalContext.current
+  var novelForAddChapter by remember { mutableStateOf<NovelWithState?>(null) }
   var searchQuery by remember { mutableStateOf("") }
   var selectedSort by remember { mutableStateOf(TranslatorWorksSort.NEWEST) }
   var selectedProfileTab by remember { mutableStateOf(TranslatorProfileTab.WORKS) }
@@ -197,6 +200,17 @@ fun TranslatorProfileModal(
       TranslatorWorksSort.TITLE_AZ -> filtered.sortedBy { n: NovelWithState -> n.title.lowercase() }
       TranslatorWorksSort.PAGES -> filtered.sortedByDescending { n: NovelWithState -> n.totalPages }
     }
+  }
+
+  if (novelForAddChapter != null) {
+    AddChapterDialog(
+      novel = novelForAddChapter!!,
+      onDismiss = { novelForAddChapter = null },
+      onAddChapter = { novelId, title, content ->
+        onAddChapterToNovel?.invoke(novelId, title, content)
+        novelForAddChapter = null
+      }
+    )
   }
 
   Dialog(
@@ -916,12 +930,16 @@ fun TranslatorProfileModal(
             } else {
               // Clean Library Grid / Cards for all works
               items(displayedNovels, key = { it.id }) { novel ->
+                val canAddChapter = isOwnerOrTranslator && (isOwner || novel.authorSlot == slot.slotNumber)
                 TranslatorNovelCard(
                   novel = novel,
                   onRead = {
                     onDismiss()
                     onSelectNovel(novel)
-                  }
+                  },
+                  onAddChapter = if (canAddChapter && onAddChapterToNovel != null) {
+                    { novelForAddChapter = novel }
+                  } else null
                 )
               }
             }
@@ -1220,7 +1238,8 @@ private fun TranslatorSortChip(
 @Composable
 private fun TranslatorNovelCard(
   novel: NovelWithState,
-  onRead: () -> Unit
+  onRead: () -> Unit,
+  onAddChapter: (() -> Unit)? = null,
 ) {
   val dateFormat = remember { SimpleDateFormat("MMM d, yyyy", Locale.getDefault()) }
   val formattedDate = remember(novel.createdAt) {
@@ -1427,30 +1446,67 @@ private fun TranslatorNovelCard(
             )
           )
 
-          Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = CharcoalText,
-            modifier = Modifier.clickable { onRead() }
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
           ) {
-            Row(
-              modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-              verticalAlignment = Alignment.CenterVertically
+            if (onAddChapter != null) {
+              Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = AntiqueGold.copy(alpha = 0.14f),
+                border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.65f)),
+                modifier = Modifier
+                  .clickable { onAddChapter() }
+                  .testTag("add_chapter_translator_card_${novel.id}")
+              ) {
+                Row(
+                  modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                  verticalAlignment = Alignment.CenterVertically
+                ) {
+                  Icon(
+                    imageVector = Icons.Outlined.Add,
+                    contentDescription = null,
+                    tint = AntiqueGold,
+                    modifier = Modifier.size(11.dp)
+                  )
+                  Spacer(modifier = Modifier.width(3.dp))
+                  Text(
+                    text = "+ Chapter",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      color = CharcoalText,
+                      fontSize = 10.sp,
+                      fontWeight = FontWeight.Bold
+                    )
+                  )
+                }
+              }
+            }
+
+            Surface(
+              shape = RoundedCornerShape(12.dp),
+              color = CharcoalText,
+              modifier = Modifier.clickable { onRead() }
             ) {
-              Icon(
-                imageVector = Icons.AutoMirrored.Outlined.MenuBook,
-                contentDescription = null,
-                tint = SoftCreamPaper,
-                modifier = Modifier.size(11.dp)
-              )
-              Spacer(modifier = Modifier.width(4.dp))
-              Text(
-                text = if (novel.currentPage > 1) "Continue" else "Read",
-                style = MaterialTheme.typography.labelSmall.copy(
-                  color = SoftCreamPaper,
-                  fontSize = 10.5.sp,
-                  fontWeight = FontWeight.SemiBold
+              Row(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Icon(
+                  imageVector = Icons.AutoMirrored.Outlined.MenuBook,
+                  contentDescription = null,
+                  tint = SoftCreamPaper,
+                  modifier = Modifier.size(11.dp)
                 )
-              )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                  text = if (novel.currentPage > 1) "Continue" else "Read",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    color = SoftCreamPaper,
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.SemiBold
+                  )
+                )
+              }
             }
           }
         }
