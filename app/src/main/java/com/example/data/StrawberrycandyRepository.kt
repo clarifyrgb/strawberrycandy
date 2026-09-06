@@ -30,6 +30,8 @@ class StrawberrycandyRepository(
       seedDefaultCommentsIfEmpty()
       ensureSchemaMonographExists()
       upgradeDefaultNovelsWithChapters()
+      removePhotosUnderThoughtIfPresent()
+      seedDefaultReadingStatesIfEmpty()
     }
   }
 
@@ -39,11 +41,8 @@ class StrawberrycandyRepository(
 
   val allNovelsWithState: Flow<List<NovelWithState>> =
     activeUser.flatMapLatest { user ->
-      val readingStatesFlow = if (user != null) {
-        dao.getUserReadingStates(user.userId)
-      } else {
-        flowOf(emptyList())
-      }
+      val effectiveUserId = user?.userId ?: "guest_reader"
+      val readingStatesFlow = dao.getUserReadingStates(effectiveUserId)
 
       combine(dao.getAllNovels(), readingStatesFlow) { novels, states ->
         val stateMap = states.associateBy { it.novelId }
@@ -240,11 +239,9 @@ class StrawberrycandyRepository(
           contentText = listOf(
             "[chapter:Chapter I • The Cloistered Arcades of Thoronet]",
             "To construct a room for silence is not merely to subtract sound, but to tune the subtle resonance of what remains. In the cloistered arcades of Thoronet and the vaulted corridors of Sénanque, stone does not absorb speech; it receives it as a transient vibration, smoothing harshness into an echo that returns only as ambient presence.",
-            "[photo:drawable:img_book_1:Plate I • Monastic Stone Arcades & The Acoustics of Thoronet]",
             "When an author steps into such enclosures, the cadence of thought slows to match the thermal mass of granite. We are accustomed in contemporary life to an architecture of velocity—glass surfaces that reflect only haste, partitions that transmit anxiety.",
             "[chapter:Chapter II • Deep Limestone Splays & Morning Light]",
             "Here, conversely, the wall possesses gravity. A single window, cut deep into limestone with a 45-degree splay, gathers the morning light and diffuses it across whitewashed lime plaster with an evenness that renders artificial illumination unnecessary. In this sanctuary, the page becomes the floorplan of an inner chamber.",
-            "[photo:drawable:img_book_2:Plate II • Deep Limestone Splay Diffusing Morning Light]",
             "Consider the margin of the printed page. It is not wasted paper; it is the physical moat that shields the text from the noise of the surrounding world. Just as a Japanese teahouse requires an entry crawl-space (nijiriguchi) to humble the visitor, a worthy book demands an expanse of blank cream paper before the first sentence may begin.",
             "[chapter:Chapter III • The Acoustics of Stillness & Sacred Margins]",
             "We read, ultimately, not to consume data, but to occupy a space designed by an architect of language. The sentences must carry structural integrity: verbs acting as load-bearing columns, subordinate clauses as cantilevered balconies overlooking quiet courtyards of reflection.",
@@ -361,11 +358,9 @@ class StrawberrycandyRepository(
         contentText = listOf(
           "[chapter:Chapter I • The Cloistered Arcades of Thoronet]",
           "To construct a room for silence is not merely to subtract sound, but to tune the subtle resonance of what remains. In the cloistered arcades of Thoronet and the vaulted corridors of Sénanque, stone does not absorb speech; it receives it as a transient vibration, smoothing harshness into an echo that returns only as ambient presence.",
-          "[photo:drawable:img_book_1:Plate I • Monastic Stone Arcades & The Acoustics of Thoronet]",
           "When an author steps into such enclosures, the cadence of thought slows to match the thermal mass of granite. We are accustomed in contemporary life to an architecture of velocity—glass surfaces that reflect only haste, partitions that transmit anxiety.",
           "[chapter:Chapter II • Deep Limestone Splays & Morning Light]",
           "Here, conversely, the wall possesses gravity. A single window, cut deep into limestone with a 45-degree splay, gathers the morning light and diffuses it across whitewashed lime plaster with an evenness that renders artificial illumination unnecessary. In this sanctuary, the page becomes the floorplan of an inner chamber.",
-          "[photo:drawable:img_book_2:Plate II • Deep Limestone Splay Diffusing Morning Light]",
           "Consider the margin of the printed page. It is not wasted paper; it is the physical moat that shields the text from the noise of the surrounding world. Just as a Japanese teahouse requires an entry crawl-space (nijiriguchi) to humble the visitor, a worthy book demands an expanse of blank cream paper before the first sentence may begin.",
           "[chapter:Chapter III • The Acoustics of Stillness & Sacred Margins]",
           "We read, ultimately, not to consume data, but to occupy a space designed by an architect of language. The sentences must carry structural integrity: verbs acting as load-bearing columns, subordinate clauses as cantilevered balconies overlooking quiet courtyards of reflection.",
@@ -432,6 +427,46 @@ class StrawberrycandyRepository(
         ).joinToString("\n\n")
       )
       dao.insertNovel(updatedNovSchema)
+    }
+  }
+
+  private suspend fun removePhotosUnderThoughtIfPresent() {
+    val nov1 = dao.getNovelById("nov_1")
+    if (nov1 != null && (nov1.contentText.contains("Monastic Stone Arcades") || nov1.contentText.contains("Deep Limestone Splay"))) {
+      val cleanedContent = nov1.contentText
+        .replace("[photo:drawable:img_book_1:Plate I • Monastic Stone Arcades & The Acoustics of Thoronet]\n\n", "")
+        .replace("[photo:drawable:img_book_1:Plate I • Monastic Stone Arcades & The Acoustics of Thoronet]", "")
+        .replace("[photo:drawable:img_book_2:Plate II • Deep Limestone Splay Diffusing Morning Light]\n\n", "")
+        .replace("[photo:drawable:img_book_2:Plate II • Deep Limestone Splay Diffusing Morning Light]", "")
+      dao.insertNovel(nov1.copy(contentText = cleanedContent))
+    }
+  }
+
+  private suspend fun seedDefaultReadingStatesIfEmpty() {
+    val defaultUserId = "guest_reader"
+    if (dao.getReadingState(defaultUserId, "nov_1") == null) {
+      val state1 = UserReadingStateEntity(
+        compositeId = "${defaultUserId}_nov_1",
+        userId = defaultUserId,
+        novelId = "nov_1",
+        currentPage = 48,
+        isFavorite = true,
+        inReadingList = true,
+        lastReadTimestamp = System.currentTimeMillis() - 3600000
+      )
+      dao.insertOrUpdateReadingState(state1)
+    }
+    if (dao.getReadingState(defaultUserId, "nov_2") == null) {
+      val state2 = UserReadingStateEntity(
+        compositeId = "${defaultUserId}_nov_2",
+        userId = defaultUserId,
+        novelId = "nov_2",
+        currentPage = 35,
+        isFavorite = false,
+        inReadingList = true,
+        lastReadTimestamp = System.currentTimeMillis() - 7200000
+      )
+      dao.insertOrUpdateReadingState(state2)
     }
   }
 

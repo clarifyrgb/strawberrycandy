@@ -33,6 +33,8 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.FontDownload
 import androidx.compose.material.icons.outlined.FormatAlignJustify
 import androidx.compose.material.icons.outlined.FormatAlignLeft
+import androidx.compose.material.icons.outlined.FormatBold
+import androidx.compose.material.icons.outlined.FormatItalic
 import androidx.compose.material.icons.outlined.FormatLineSpacing
 import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material.icons.outlined.RestartAlt
@@ -61,6 +63,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -85,6 +88,8 @@ fun TypographyCustomizerModal(
   paragraphSpacingScale: Float = 1.0f,
   isJustified: Boolean = false,
   isFirstLineIndent: Boolean = false,
+  isBold: Boolean = false,
+  isItalic: Boolean = false,
   onSelectFontType: (String) -> Unit,
   onCustomFontUploaded: (filePath: String, fontName: String) -> Unit,
   onUpdateFontSizeScale: (Float) -> Unit,
@@ -93,6 +98,9 @@ fun TypographyCustomizerModal(
   onUpdateParagraphSpacingScale: (Float) -> Unit = {},
   onToggleJustified: (Boolean) -> Unit = {},
   onToggleFirstLineIndent: (Boolean) -> Unit = {},
+  onToggleBold: (Boolean) -> Unit = {},
+  onToggleItalic: (Boolean) -> Unit = {},
+  onSelectFontStyle: (isBold: Boolean, isItalic: Boolean) -> Unit = { _, _ -> },
   onResetDefaults: () -> Unit,
   onDismiss: () -> Unit,
 ) {
@@ -479,7 +487,266 @@ fun TypographyCustomizerModal(
 
           Spacer(modifier = Modifier.height(18.dp))
 
-          // 3. SECTION: PARAGRAPH LINING (LINE SPACING)
+          // 3. SECTION: FONT WEIGHT & STYLE (BOLD, ITALIC, REGULAR)
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Text(
+              text = "FONT WEIGHT & STYLE (BOLD, ITALIC, REGULAR)",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.sp,
+                letterSpacing = 1.4.sp,
+                fontWeight = FontWeight.Bold
+              ),
+              color = CharcoalTertiary
+            )
+            val currentStyleName = when {
+              isBold && isItalic -> "Bold Italic"
+              isBold -> "Bold"
+              isItalic -> "Italic"
+              else -> "Regular"
+            }
+            Text(
+              text = currentStyleName,
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = AntiqueGold
+              )
+            )
+          }
+          Spacer(modifier = Modifier.height(8.dp))
+
+          // Primary Style Cards (Regular, Bold, Italic, Bold Italic)
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+          ) {
+            // 1. Regular Font Option
+            val isRegularSelected = !isBold && !isItalic
+            Surface(
+              shape = RoundedCornerShape(12.dp),
+              color = if (isRegularSelected) AntiqueGold else Color(0x0C000000),
+              border = BorderStroke(1.dp, if (isRegularSelected) AntiqueGold else SubtleBorder),
+              modifier = Modifier
+                .weight(1f)
+                .clickable { onSelectFontStyle(false, false) }
+                .testTag("font_style_regular")
+            ) {
+              Column(
+                modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+              ) {
+                Text(
+                  text = "Aa",
+                  style = MaterialTheme.typography.titleMedium.copy(
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Normal,
+                    fontStyle = FontStyle.Normal
+                  ),
+                  color = if (isRegularSelected) SoftCreamPaper else CharcoalText
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                  text = "Regular",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 9.sp,
+                    fontWeight = if (isRegularSelected) FontWeight.Bold else FontWeight.Normal
+                  ),
+                  color = if (isRegularSelected) SoftCreamPaper else CharcoalSecondary
+                )
+              }
+            }
+
+            // 2. Bold Font Option
+            val isBoldSelected = isBold && !isItalic
+            Surface(
+              shape = RoundedCornerShape(12.dp),
+              color = if (isBoldSelected) AntiqueGold else Color(0x0C000000),
+              border = BorderStroke(1.dp, if (isBoldSelected) AntiqueGold else SubtleBorder),
+              modifier = Modifier
+                .weight(1f)
+                .clickable { onSelectFontStyle(true, false) }
+                .testTag("font_style_bold")
+            ) {
+              Column(
+                modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+              ) {
+                Text(
+                  text = "Aa",
+                  style = MaterialTheme.typography.titleMedium.copy(
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontStyle = FontStyle.Normal
+                  ),
+                  color = if (isBoldSelected) SoftCreamPaper else CharcoalText
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                  text = "Bold",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 9.sp,
+                    fontWeight = if (isBoldSelected) FontWeight.Bold else FontWeight.Normal
+                  ),
+                  color = if (isBoldSelected) SoftCreamPaper else CharcoalSecondary
+                )
+              }
+            }
+
+            // 3. Italic Font Option
+            val isItalicSelected = !isBold && isItalic
+            Surface(
+              shape = RoundedCornerShape(12.dp),
+              color = if (isItalicSelected) AntiqueGold else Color(0x0C000000),
+              border = BorderStroke(1.dp, if (isItalicSelected) AntiqueGold else SubtleBorder),
+              modifier = Modifier
+                .weight(1f)
+                .clickable { onSelectFontStyle(false, true) }
+                .testTag("font_style_italic")
+            ) {
+              Column(
+                modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+              ) {
+                Text(
+                  text = "Aa",
+                  style = MaterialTheme.typography.titleMedium.copy(
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Normal,
+                    fontStyle = FontStyle.Italic
+                  ),
+                  color = if (isItalicSelected) SoftCreamPaper else CharcoalText
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                  text = "Italic",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 9.sp,
+                    fontWeight = if (isItalicSelected) FontWeight.Bold else FontWeight.Normal
+                  ),
+                  color = if (isItalicSelected) SoftCreamPaper else CharcoalSecondary
+                )
+              }
+            }
+
+            // 4. Bold Italic Option
+            val isBoldItalicSelected = isBold && isItalic
+            Surface(
+              shape = RoundedCornerShape(12.dp),
+              color = if (isBoldItalicSelected) AntiqueGold else Color(0x0C000000),
+              border = BorderStroke(1.dp, if (isBoldItalicSelected) AntiqueGold else SubtleBorder),
+              modifier = Modifier
+                .weight(1f)
+                .clickable { onSelectFontStyle(true, true) }
+                .testTag("font_style_bold_italic")
+            ) {
+              Column(
+                modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+              ) {
+                Text(
+                  text = "Aa",
+                  style = MaterialTheme.typography.titleMedium.copy(
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontStyle = FontStyle.Italic
+                  ),
+                  color = if (isBoldItalicSelected) SoftCreamPaper else CharcoalText
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                  text = "Bold Italic",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 9.sp,
+                    fontWeight = if (isBoldItalicSelected) FontWeight.Bold else FontWeight.Normal
+                  ),
+                  color = if (isBoldItalicSelected) SoftCreamPaper else CharcoalSecondary
+                )
+              }
+            }
+          }
+
+          Spacer(modifier = Modifier.height(8.dp))
+
+          // Granular Modifier Quick Toggles
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+          ) {
+            // Bold Toggle Pill
+            Surface(
+              shape = RoundedCornerShape(10.dp),
+              color = if (isBold) Color(0x1AD4AF37) else Color(0x0A000000),
+              border = BorderStroke(1.dp, if (isBold) AntiqueGold else SubtleBorder),
+              modifier = Modifier
+                .weight(1f)
+                .clickable { onToggleBold(!isBold) }
+                .testTag("toggle_bold_modifier")
+            ) {
+              Row(
+                modifier = Modifier.padding(vertical = 7.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Icon(
+                  imageVector = Icons.Outlined.FormatBold,
+                  contentDescription = "Toggle bold font",
+                  tint = if (isBold) AntiqueGold else CharcoalSecondary,
+                  modifier = Modifier.size(15.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                  text = if (isBold) "Bold: ON" else "Bold: OFF",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold
+                  ),
+                  color = if (isBold) AntiqueGold else CharcoalText
+                )
+              }
+            }
+
+            // Italic Toggle Pill
+            Surface(
+              shape = RoundedCornerShape(10.dp),
+              color = if (isItalic) Color(0x1AD4AF37) else Color(0x0A000000),
+              border = BorderStroke(1.dp, if (isItalic) AntiqueGold else SubtleBorder),
+              modifier = Modifier
+                .weight(1f)
+                .clickable { onToggleItalic(!isItalic) }
+                .testTag("toggle_italic_modifier")
+            ) {
+              Row(
+                modifier = Modifier.padding(vertical = 7.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Icon(
+                  imageVector = Icons.Outlined.FormatItalic,
+                  contentDescription = "Toggle italic font",
+                  tint = if (isItalic) AntiqueGold else CharcoalSecondary,
+                  modifier = Modifier.size(15.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                  text = if (isItalic) "Italic: ON" else "Italic: OFF",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    fontStyle = FontStyle.Italic
+                  ),
+                  color = if (isItalic) AntiqueGold else CharcoalText
+                )
+              }
+            }
+          }
+
+          Spacer(modifier = Modifier.height(18.dp))
+
+          // 4. SECTION: PARAGRAPH LINING (LINE SPACING)
           Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -658,12 +925,17 @@ fun TypographyCustomizerModal(
           )
           Spacer(modifier = Modifier.height(8.dp))
 
+          val activeFontWeight = if (isBold) FontWeight.Bold else FontWeight.Normal
+          val activeFontStyle = if (isItalic) FontStyle.Italic else FontStyle.Normal
+
           Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             FontOptionRow(
               title = "Classic Serif",
               subtitle = "Editorial book typography • Recommended",
               isSelected = currentFontType == "serif",
               fontFamily = FontFamily.Serif,
+              fontWeight = activeFontWeight,
+              fontStyle = activeFontStyle,
               onClick = { onSelectFontType("serif") }
             )
 
@@ -672,6 +944,8 @@ fun TypographyCustomizerModal(
               subtitle = "Clean geometric readability",
               isSelected = currentFontType == "sans",
               fontFamily = FontFamily.SansSerif,
+              fontWeight = activeFontWeight,
+              fontStyle = activeFontStyle,
               onClick = { onSelectFontType("sans") }
             )
 
@@ -680,6 +954,8 @@ fun TypographyCustomizerModal(
               subtitle = "Manuscript typewriter aesthetic",
               isSelected = currentFontType == "mono",
               fontFamily = FontFamily.Monospace,
+              fontWeight = activeFontWeight,
+              fontStyle = activeFontStyle,
               onClick = { onSelectFontType("mono") }
             )
 
@@ -688,6 +964,8 @@ fun TypographyCustomizerModal(
               subtitle = "Calligraphic manuscript elegance",
               isSelected = currentFontType == "cursive",
               fontFamily = FontFamily.Cursive,
+              fontWeight = activeFontWeight,
+              fontStyle = activeFontStyle,
               onClick = { onSelectFontType("cursive") }
             )
 
@@ -698,6 +976,8 @@ fun TypographyCustomizerModal(
                 isSelected = currentFontType == "custom",
                 badge = "CUSTOM",
                 fontFamily = FontFamily.Serif,
+                fontWeight = activeFontWeight,
+                fontStyle = activeFontStyle,
                 onClick = { onSelectFontType("custom") }
               )
             }
@@ -784,6 +1064,8 @@ fun TypographyCustomizerModal(
                 text = "“To construct a room for silence is not merely to subtract sound, but to tune the subtle resonance of what remains.”",
                 style = MaterialTheme.typography.bodyMedium.copy(
                   fontFamily = previewFontFamily,
+                  fontWeight = if (isBold) FontWeight.Bold else FontWeight.Normal,
+                  fontStyle = if (isItalic) FontStyle.Italic else FontStyle.Normal,
                   fontSize = (15f * fontSizeScale).sp,
                   lineHeight = (26f * fontSizeScale * lineHeightScale).sp,
                   textAlign = if (isJustified) TextAlign.Justify else TextAlign.Start
@@ -791,8 +1073,14 @@ fun TypographyCustomizerModal(
                 color = CharcoalText
               )
               Spacer(modifier = Modifier.height(6.dp))
+              val styleCaption = when {
+                isBold && isItalic -> "Bold Italic"
+                isBold -> "Bold"
+                isItalic -> "Italic"
+                else -> "Regular"
+              }
               Text(
-                text = "Previewing ${(fontSizeScale * 100).toInt()}% text size • ${(lineHeightScale * 100).toInt()}% paragraph lining",
+                text = "Previewing ${(fontSizeScale * 100).toInt()}% • $styleCaption • ${(lineHeightScale * 100).toInt()}% lining",
                 style = MaterialTheme.typography.labelSmall.copy(
                   fontSize = 8.5.sp,
                   color = CharcoalSecondary
@@ -855,6 +1143,8 @@ private fun FontOptionRow(
   subtitle: String,
   isSelected: Boolean,
   fontFamily: FontFamily,
+  fontWeight: FontWeight = FontWeight.Normal,
+  fontStyle: FontStyle = FontStyle.Normal,
   badge: String? = null,
   onClick: () -> Unit,
 ) {
@@ -883,7 +1173,8 @@ private fun FontOptionRow(
             style = MaterialTheme.typography.titleSmall.copy(
               fontFamily = fontFamily,
               fontSize = 13.5.sp,
-              fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium
+              fontWeight = if (isSelected) FontWeight.Bold else fontWeight,
+              fontStyle = fontStyle
             ),
             color = CharcoalText
           )

@@ -245,11 +245,7 @@ fun HomeScreen(
           label = "My Reading (${novels.count { it.inReadingList }})",
           selected = uiState.activeFilter == ShelfFilter.MY_LIBRARY,
           onClick = {
-            if (activeUser == null) {
-              viewModel.openAuthDialog()
-            } else {
-              viewModel.setFilter(ShelfFilter.MY_LIBRARY)
-            }
+            viewModel.setFilter(ShelfFilter.MY_LIBRARY)
           }
         )
         Spacer(modifier = Modifier.width(8.dp))
@@ -257,11 +253,7 @@ fun HomeScreen(
           label = "Favorites (${novels.count { it.isFavorite }})",
           selected = uiState.activeFilter == ShelfFilter.FAVORITES,
           onClick = {
-            if (activeUser == null) {
-              viewModel.openAuthDialog()
-            } else {
-              viewModel.setFilter(ShelfFilter.FAVORITES)
-            }
+            viewModel.setFilter(ShelfFilter.FAVORITES)
           }
         )
       }

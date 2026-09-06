@@ -186,6 +186,14 @@ fun ReadingScreen(
   var isFirstLineIndent by remember {
     mutableStateOf(typographyPrefs.getBoolean("is_first_line_indent", false))
   }
+  var isBold by remember {
+    mutableStateOf(typographyPrefs.getBoolean("is_bold", false))
+  }
+  var isItalic by remember {
+    mutableStateOf(typographyPrefs.getBoolean("is_italic", false))
+  }
+  val readerFontWeight = if (isBold) FontWeight.Bold else FontWeight.Normal
+  val readerFontStyle = if (isItalic) FontStyle.Italic else FontStyle.Normal
 
   // Modal states
   var viewingPhoto by remember { mutableStateOf<StoryContentItem.Photo?>(null) }
@@ -585,10 +593,11 @@ fun ReadingScreen(
               }
 
               // 3. Typography & Paragraph Lining Button
+              val isTypographyCustomized = selectedFontType == "custom" || isBold || isItalic
               Surface(
                 shape = RoundedCornerShape(12.dp),
-                color = if (selectedFontType == "custom") Color(0x18D4AF37) else Color(0x0E000000),
-                border = BorderStroke(1.dp, if (selectedFontType == "custom") AntiqueGold.copy(alpha = 0.6f) else Color.Transparent),
+                color = if (isTypographyCustomized) Color(0x18D4AF37) else Color(0x0E000000),
+                border = BorderStroke(1.dp, if (isTypographyCustomized) AntiqueGold.copy(alpha = 0.6f) else Color.Transparent),
                 modifier = Modifier
                   .clickable { isTypographyModalOpen = true }
                   .testTag("typography_button")
@@ -599,8 +608,8 @@ fun ReadingScreen(
                 ) {
                   Icon(
                     imageVector = Icons.Outlined.FormatSize,
-                    contentDescription = "Reader typography and lining",
-                    tint = if (selectedFontType == "custom") AntiqueGold else CharcoalSecondary,
+                    contentDescription = "Reader typography, bold, italic, and lining",
+                    tint = if (isTypographyCustomized) AntiqueGold else CharcoalSecondary,
                     modifier = Modifier.size(14.dp)
                   )
                   Spacer(modifier = Modifier.width(3.dp))
@@ -608,10 +617,22 @@ fun ReadingScreen(
                     text = "Aa",
                     style = MaterialTheme.typography.labelSmall.copy(
                       fontSize = 10.sp,
-                      fontWeight = FontWeight.SemiBold,
-                      color = if (selectedFontType == "custom") AntiqueGold else CharcoalSecondary
+                      fontWeight = if (isBold) FontWeight.Bold else FontWeight.SemiBold,
+                      fontStyle = readerFontStyle,
+                      color = if (isTypographyCustomized) AntiqueGold else CharcoalSecondary
                     )
                   )
+                  if (isBold || isItalic) {
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                      text = if (isBold && isItalic) "BI" else if (isBold) "B" else "I",
+                      style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = AntiqueGold
+                      )
+                    )
+                  }
                 }
               }
 
@@ -1154,7 +1175,8 @@ fun ReadingScreen(
                                   text = firstChar,
                                   style = MaterialTheme.typography.displayLarge.copy(
                                     fontFamily = readerFontFamily,
-                                    fontWeight = FontWeight.Light,
+                                    fontWeight = if (isBold) FontWeight.Bold else FontWeight.Light,
+                                    fontStyle = readerFontStyle,
                                     fontSize = (52f * fontSizeScale).sp,
                                     lineHeight = (50f * fontSizeScale).sp
                                   ),
@@ -1169,6 +1191,8 @@ fun ReadingScreen(
                                   ),
                                   style = MaterialTheme.typography.bodyLarge.copy(
                                     fontFamily = readerFontFamily,
+                                    fontWeight = readerFontWeight,
+                                    fontStyle = readerFontStyle,
                                     color = CharcoalText,
                                     lineHeight = baseLineHeight.sp,
                                     fontSize = baseFontSize.sp,
@@ -1185,6 +1209,8 @@ fun ReadingScreen(
                                 ),
                                 style = MaterialTheme.typography.bodyLarge.copy(
                                   fontFamily = readerFontFamily,
+                                  fontWeight = readerFontWeight,
+                                  fontStyle = readerFontStyle,
                                   color = CharcoalText,
                                   lineHeight = baseLineHeight.sp,
                                   fontSize = baseFontSize.sp,
@@ -1595,7 +1621,8 @@ fun ReadingScreen(
                                 text = firstChar,
                                 style = MaterialTheme.typography.displayLarge.copy(
                                   fontFamily = readerFontFamily,
-                                  fontWeight = FontWeight.Light,
+                                  fontWeight = if (isBold) FontWeight.Bold else FontWeight.Light,
+                                  fontStyle = readerFontStyle,
                                   fontSize = (62f * fontSizeScale).sp,
                                   lineHeight = (60f * fontSizeScale).sp
                                 ),
@@ -1610,6 +1637,8 @@ fun ReadingScreen(
                                 ),
                                 style = MaterialTheme.typography.bodyLarge.copy(
                                   fontFamily = readerFontFamily,
+                                  fontWeight = readerFontWeight,
+                                  fontStyle = readerFontStyle,
                                   color = CharcoalText,
                                   lineHeight = baseLineHeight.sp,
                                   fontSize = baseFontSize.sp,
@@ -1626,6 +1655,8 @@ fun ReadingScreen(
                               ),
                               style = MaterialTheme.typography.bodyLarge.copy(
                                 fontFamily = readerFontFamily,
+                                fontWeight = readerFontWeight,
+                                fontStyle = readerFontStyle,
                                 color = CharcoalText,
                                 lineHeight = baseLineHeight.sp,
                                 fontSize = baseFontSize.sp,
@@ -1976,6 +2007,8 @@ fun ReadingScreen(
         paragraphSpacingScale = paragraphSpacingScale,
         isJustified = isJustified,
         isFirstLineIndent = isFirstLineIndent,
+        isBold = isBold,
+        isItalic = isItalic,
         onSelectFontType = { type ->
           selectedFontType = type
           typographyPrefs.edit().putString("font_family_type", type).apply()
@@ -2014,6 +2047,22 @@ fun ReadingScreen(
           isFirstLineIndent = indent
           typographyPrefs.edit().putBoolean("is_first_line_indent", indent).apply()
         },
+        onToggleBold = { bold ->
+          isBold = bold
+          typographyPrefs.edit().putBoolean("is_bold", bold).apply()
+        },
+        onToggleItalic = { italic ->
+          isItalic = italic
+          typographyPrefs.edit().putBoolean("is_italic", italic).apply()
+        },
+        onSelectFontStyle = { bold, italic ->
+          isBold = bold
+          isItalic = italic
+          typographyPrefs.edit()
+            .putBoolean("is_bold", bold)
+            .putBoolean("is_italic", italic)
+            .apply()
+        },
         onResetDefaults = {
           selectedFontType = "serif"
           fontSizeScale = 1.0f
@@ -2021,6 +2070,8 @@ fun ReadingScreen(
           paragraphSpacingScale = 1.0f
           isJustified = false
           isFirstLineIndent = false
+          isBold = false
+          isItalic = false
           pageTurnMode = "flip"
           typographyPrefs.edit()
             .putString("font_family_type", "serif")
@@ -2029,6 +2080,8 @@ fun ReadingScreen(
             .putFloat("paragraph_spacing_scale", 1.0f)
             .putBoolean("is_justified", false)
             .putBoolean("is_first_line_indent", false)
+            .putBoolean("is_bold", false)
+            .putBoolean("is_italic", false)
             .putString("reading_turn_mode", "flip")
             .apply()
         },

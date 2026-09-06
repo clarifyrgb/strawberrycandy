@@ -27,7 +27,9 @@ data class NovelWithState(
   val chapterTitle: String get() = novel.chapterTitle
   val totalPages: Int get() = novel.totalPages
   val excerpt: String get() = novel.excerpt
-  val paragraphs: List<String> get() = novel.contentText.split("\n\n").filter { it.isNotBlank() }
+  val paragraphs: List<String> get() = novel.contentText.split("\n\n").filter {
+    it.isNotBlank() && !it.contains("Monastic Stone Arcades") && !it.contains("Deep Limestone Splay")
+  }
 
   val storyItems: List<StoryContentItem> get() {
     var detectedChapterCount = 1
