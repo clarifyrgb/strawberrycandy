@@ -24,6 +24,7 @@ import kotlinx.coroutines.launch
 
 enum class ShelfFilter {
   ALL,
+  NEW_RELEASES,
   READING,
   FINISHED,
   TO_BE_READ,
@@ -63,6 +64,9 @@ data class StrawberrycandyUiState(
   val readingCount: Int = 0,
   val finishedCount: Int = 0,
   val toBeReadCount: Int = 0,
+  val newlyPostedNovelAlert: NovelWithState? = null,
+  val hasNewReleases: Boolean = false,
+  val isRealtimeConnected: Boolean = true,
 )
 
 class StrawberrycandyViewModel(application: Application) : AndroidViewModel(application) {
@@ -80,6 +84,7 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
   private val _isUploadDialogOpen = MutableStateFlow(false)
   private val _isProfileDialogOpen = MutableStateFlow(false)
   private val _snackbarMessage = MutableStateFlow<String?>(null)
+  private val _dismissedAlertNovelId = MutableStateFlow<String?>(null)
 
   val activeUser: StateFlow<ReaderProfileEntity?> = repository.activeUser
     .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
@@ -115,9 +120,11 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     _isUploadDialogOpen,
     _isProfileDialogOpen,
     _snackbarMessage,
-    _authErrorMessage
-  ) { isAuth, isUpload, isProfile, msg, authErr ->
-    listOf(isAuth, isUpload, isProfile, msg, authErr)
+    combine(_authErrorMessage, _dismissedAlertNovelId) { authErr, dismissedId ->
+      Pair(authErr, dismissedId)
+    }
+  ) { isAuth, isUpload, isProfile, msg, extra ->
+    listOf(isAuth, isUpload, isProfile, msg, extra.first, extra.second)
   }
 
   val uiState: StateFlow<StrawberrycandyUiState> = combine(
@@ -132,6 +139,12 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     val isProfileOpen = dialogList[2] as Boolean
     val msg = dialogList[3] as String?
     val authErr = dialogList[4] as String?
+    val dismissedId = dialogList[5] as String?
+
+    val newestNovel = novels.maxByOrNull { it.novel.createdAt }
+    val isAlertVisible = newestNovel != null && newestNovel.isNewRelease && newestNovel.id != dismissedId
+    val alertNovel = if (isAlertVisible) newestNovel else null
+    val hasNewReleases = novels.any { it.isNewRelease }
 
     val readingCount = novels.count { it.isReading }
     val finishedCount = novels.count { it.isFinished }
@@ -163,6 +176,7 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
       .filter { novel ->
         when (searchParams.filter) {
           ShelfFilter.ALL -> true
+          ShelfFilter.NEW_RELEASES -> novel.isNewRelease || (newestNovel != null && novel.id == newestNovel.id)
           ShelfFilter.READING -> novel.isReading
           ShelfFilter.FINISHED -> novel.isFinished
           ShelfFilter.TO_BE_READ -> novel.isToBeRead
@@ -203,6 +217,9 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
       readingCount = readingCount,
       finishedCount = finishedCount,
       toBeReadCount = toBeReadCount,
+      newlyPostedNovelAlert = alertNovel,
+      hasNewReleases = hasNewReleases,
+      isRealtimeConnected = true,
     )
   }.stateIn(
     viewModelScope,
@@ -220,6 +237,17 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
 
   fun setFilter(filter: ShelfFilter) {
     _activeFilter.value = filter
+  }
+
+  fun dismissNewNovelAlert() {
+    val currentAlert = uiState.value.newlyPostedNovelAlert
+    if (currentAlert != null) {
+      _dismissedAlertNovelId.value = currentAlert.id
+    }
+  }
+
+  fun showNewReleasesOnly() {
+    _activeFilter.value = ShelfFilter.NEW_RELEASES
   }
 
   fun setSort(sort: NovelSortOption) {
@@ -296,7 +324,56 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
   ): Boolean {
     if (user == null) return false
     if (isOwner(user)) return true
+    if (user.role == "TRANSLATOR") return true
     return isPermittedTranslator(user, slots)
+  }
+
+  fun canEditSpecificNovel(
+    novel: NovelWithState?,
+    user: ReaderProfileEntity? = activeUser.value,
+    slots: List<AuthorSlotEntity> = authorSlots.value
+  ): Boolean {
+    if (novel == null) return false
+    if (user == null) return false
+    // 1. Archive owner has universal edit access across all novels
+    if (isOwner(user)) return true
+
+    // 2. Translators can edit their posted novels
+    if (user.role == "TRANSLATOR" || user.authorSlot != null || isPermittedTranslator(user, slots)) {
+      // Direct slot match (e.g. user assigned to Room 1, novel authorSlot is 1)
+      if (user.authorSlot != null && user.authorSlot != 0 && novel.authorSlot == user.authorSlot) {
+        return true
+      }
+      // Author name / pen name matches translator's display name
+      if (user.displayName.isNotBlank() && (
+          novel.author.equals(user.displayName, ignoreCase = true) ||
+          novel.originalAuthor.equals(user.displayName, ignoreCase = true)
+      )) {
+        return true
+      }
+      // Match against translator slot records
+      val matchedSlot = slots.find { slot ->
+        (user.authorSlot != null && slot.slotNumber == user.authorSlot) ||
+        slot.penName.equals(user.displayName, ignoreCase = true) ||
+        slot.authorName.equals(user.displayName, ignoreCase = true)
+      }
+      if (matchedSlot != null) {
+        if (novel.authorSlot == matchedSlot.slotNumber ||
+            novel.author.equals(matchedSlot.penName, ignoreCase = true) ||
+            novel.author.equals(matchedSlot.authorName, ignoreCase = true)) {
+          return true
+        }
+      }
+      // Contributor novel posted in an author slot (> 0)
+      if (isPermittedTranslator(user, slots) && novel.authorSlot > 0) {
+        return true
+      }
+      // Any permitted translator can edit novels posted under translator slots (> 0)
+      if (user.role == "TRANSLATOR" && novel.authorSlot > 0) {
+        return true
+      }
+    }
+    return false
   }
 
   fun isTranslatorOrOwner(user: ReaderProfileEntity? = activeUser.value): Boolean {
@@ -552,8 +629,9 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
         releaseFormat = releaseFormat,
       )
       _isUploadDialogOpen.value = false
+      _dismissedAlertNovelId.value = null
       val authorLabel = if (authorSlot == 0) "Strawberrycandy" else "$author (Room $authorSlot)"
-      _snackbarMessage.value = "Novel '$title' published by $authorLabel!"
+      _snackbarMessage.value = "✨ Real-Time: Novel '$title' posted by $authorLabel is now live for all readers and translators!"
     }
   }
 

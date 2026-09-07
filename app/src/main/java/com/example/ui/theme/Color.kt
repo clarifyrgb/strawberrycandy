@@ -11,6 +11,7 @@ val CharcoalSecondary = Color(0xFF6B6964)
 val CharcoalTertiary = Color(0xFF9E9C96)
 val AntiqueGold = Color(0xFF8F7343)
 val AntiqueGoldLight = Color(0xFFF3EDE2)
+val DeepBurgundy = Color(0xFF6B1724)
 val SubtleBorder = Color(0xFFEBE5DA)
 val SubtleWatermark = Color(0xFF252422)
 

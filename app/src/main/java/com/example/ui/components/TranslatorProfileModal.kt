@@ -86,9 +86,19 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
+import kotlinx.coroutines.launch
 import com.example.data.local.AuthorSlotEntity
 import com.example.model.NovelWithState
 import com.example.ui.theme.AntiqueGold
+import com.example.ui.theme.DeepBurgundy
 import com.example.ui.theme.CharcoalSecondary
 import com.example.ui.theme.CharcoalTertiary
 import com.example.ui.theme.CharcoalText
@@ -142,6 +152,7 @@ fun TranslatorProfileModal(
   onOpenUploadForSlot: ((Int) -> Unit)? = null,
   onToggleSlotPermission: ((slotNumber: Int, isGranted: Boolean) -> Unit)? = null,
   onAddChapterToNovel: ((novelId: String, title: String, content: String) -> Unit)? = null,
+  onEditNovel: ((NovelWithState) -> Unit)? = null,
 ) {
   val context = LocalContext.current
   var novelForAddChapter by remember { mutableStateOf<NovelWithState?>(null) }
@@ -930,13 +941,21 @@ fun TranslatorProfileModal(
             } else {
               // Clean Library Grid / Cards for all works
               items(displayedNovels, key = { it.id }) { novel ->
+                val canEditThisNovel = isOwner || (isOwnerOrTranslator && (novel.authorSlot == slot.slotNumber || novel.author.equals(slot.penName, ignoreCase = true) || novel.author.equals(slot.authorName, ignoreCase = true)))
                 val canAddChapter = isOwnerOrTranslator && (isOwner || novel.authorSlot == slot.slotNumber)
                 TranslatorNovelCard(
                   novel = novel,
+                  canEdit = canEditThisNovel,
                   onRead = {
                     onDismiss()
                     onSelectNovel(novel)
                   },
+                  onEdit = if (canEditThisNovel && onEditNovel != null) {
+                    {
+                      onDismiss()
+                      onEditNovel(novel)
+                    }
+                  } else null,
                   onAddChapter = if (canAddChapter && onAddChapterToNovel != null) {
                     { novelForAddChapter = novel }
                   } else null
@@ -1238,16 +1257,20 @@ private fun TranslatorSortChip(
 @Composable
 private fun TranslatorNovelCard(
   novel: NovelWithState,
+  canEdit: Boolean = false,
   onRead: () -> Unit,
+  onEdit: (() -> Unit)? = null,
   onAddChapter: (() -> Unit)? = null,
 ) {
+  val haptic = LocalHapticFeedback.current
+  val coroutineScope = rememberCoroutineScope()
+  var holdProgress by remember { mutableFloatStateOf(0f) }
   val dateFormat = remember { SimpleDateFormat("MMM d, yyyy", Locale.getDefault()) }
   val formattedDate = remember(novel.createdAt) {
     dateFormat.format(Date(novel.createdAt))
   }
 
   Card(
-    onClick = onRead,
     shape = RoundedCornerShape(18.dp),
     colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
     border = BorderStroke(1.dp, SubtleBorder),
@@ -1255,13 +1278,53 @@ private fun TranslatorNovelCard(
     modifier = Modifier
       .fillMaxWidth()
       .testTag("translator_novel_${novel.id}")
+      .pointerInput(novel.id, canEdit) {
+        if (canEdit && onEdit != null) {
+          detectTapGestures(
+            onPress = {
+              val startTime = System.currentTimeMillis()
+              val totalMs = 2000L
+              val interval = 40L
+              val job = coroutineScope.launch {
+                var elapsed = 0L
+                while (elapsed < totalMs) {
+                  kotlinx.coroutines.delay(interval)
+                  elapsed += interval
+                  holdProgress = (elapsed.toFloat() / totalMs).coerceIn(0f, 1f)
+                  if (elapsed >= totalMs) {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onEdit()
+                    holdProgress = 0f
+                    return@launch
+                  }
+                }
+              }
+              try {
+                val released = tryAwaitRelease()
+                if (released) {
+                  val elapsed = System.currentTimeMillis() - startTime
+                  if (elapsed < 500L) {
+                    onRead()
+                  }
+                }
+              } finally {
+                job.cancel()
+                holdProgress = 0f
+              }
+            }
+          )
+        } else {
+          detectTapGestures(onTap = { onRead() })
+        }
+      }
   ) {
-    Row(
-      modifier = Modifier
-        .fillMaxWidth()
-        .padding(14.dp),
-      verticalAlignment = Alignment.Top
-    ) {
+    Box(modifier = Modifier.fillMaxWidth()) {
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(14.dp),
+        verticalAlignment = Alignment.Top
+      ) {
       // Book Cover Thumbnail
       Box(
         modifier = Modifier
@@ -1316,15 +1379,34 @@ private fun TranslatorNovelCard(
           horizontalArrangement = Arrangement.SpaceBetween,
           verticalAlignment = Alignment.CenterVertically
         ) {
-          Text(
-            text = novel.year.ifEmpty { "2026" },
-            style = MaterialTheme.typography.labelSmall.copy(
-              fontSize = 9.sp,
-              color = AntiqueGold,
-              fontWeight = FontWeight.Bold,
-              letterSpacing = 0.8.sp
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+              text = novel.year.ifEmpty { "2026" },
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.sp,
+                color = AntiqueGold,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.8.sp
+              )
             )
-          )
+            if (novel.isNewRelease) {
+              Spacer(modifier = Modifier.width(6.dp))
+              Surface(
+                shape = RoundedCornerShape(4.dp),
+                color = AntiqueGold,
+              ) {
+                Text(
+                  text = "NEW",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 7.5.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = DeepBurgundy
+                  ),
+                  modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                )
+              }
+            }
+          }
 
           Text(
             text = "Uploaded $formattedDate",
@@ -1450,6 +1532,38 @@ private fun TranslatorNovelCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
           ) {
+            if (canEdit && onEdit != null) {
+              Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = AntiqueGold.copy(alpha = 0.14f),
+                border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.65f)),
+                modifier = Modifier
+                  .clickable { onEdit() }
+                  .testTag("edit_novel_translator_card_${novel.id}")
+              ) {
+                Row(
+                  modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                  verticalAlignment = Alignment.CenterVertically
+                ) {
+                  Icon(
+                    imageVector = Icons.Outlined.Edit,
+                    contentDescription = null,
+                    tint = AntiqueGold,
+                    modifier = Modifier.size(11.dp)
+                  )
+                  Spacer(modifier = Modifier.width(3.dp))
+                  Text(
+                    text = "Edit",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      color = CharcoalText,
+                      fontSize = 10.sp,
+                      fontWeight = FontWeight.Bold
+                    )
+                  )
+                }
+              }
+            }
+
             if (onAddChapter != null) {
               Surface(
                 shape = RoundedCornerShape(12.dp),
@@ -1512,5 +1626,38 @@ private fun TranslatorNovelCard(
         }
       }
     }
+
+    // 2-Second Hold progress overlay for editing
+    if (canEdit && holdProgress > 0f) {
+      Box(
+        modifier = Modifier
+          .matchParentSize()
+          .background(Color(0xEE1E1815))
+          .padding(horizontal = 16.dp),
+        contentAlignment = Alignment.CenterStart
+      ) {
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+          CircularProgressIndicator(
+            progress = { holdProgress },
+            modifier = Modifier.size(24.dp),
+            color = AntiqueGold,
+            trackColor = AntiqueGold.copy(alpha = 0.25f),
+            strokeWidth = 2.5.dp
+          )
+          val remainingSec = ((2000L - (holdProgress * 2000L).toLong() + 900L) / 1000L).coerceIn(1L, 2L)
+          Text(
+            text = "Holding to Edit Manuscript (${remainingSec}s)...",
+            style = MaterialTheme.typography.labelMedium.copy(
+              fontWeight = FontWeight.Bold,
+              color = SoftCreamPaper
+            )
+          )
+        }
+      }
+    }
   }
+}
 }

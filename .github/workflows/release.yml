@@ -84,30 +84,26 @@ jobs:
           BUILD_TOOLS_DIR=$(ls -d ${SDK_DIR}/build-tools/* 2>/dev/null | sort -V | tail -n 1)
           echo "Detected build-tools directory: $BUILD_TOOLS_DIR"
 
-          if [ -n "$BUILD_TOOLS_DIR" ] && [ -x "$BUILD_TOOLS_DIR/zipalign" ] && [ -x "$BUILD_TOOLS_DIR/apksigner" ]; then
-            echo "Found zipalign and apksigner in $BUILD_TOOLS_DIR. Applying custom signature..."
-            rm -f app.keystore output/aligned.apk
-            keytool -genkeypair -v \
-              -keystore app.keystore \
-              -alias appalias \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -storepass password123 \
-              -keypass password123 \
-              -dname "CN=Strawberrycandy, OU=App, O=AIStudio, L=City, ST=State, C=US"
-            
+          # Prepare consistent keystore so all releases share the exact same signature,
+          # allowing seamless APK updates without uninstalling the previous version.
+          if [ ! -f "debug.keystore" ] && [ -f "debug.keystore.base64" ]; then
+            base64 -d debug.keystore.base64 > debug.keystore 2>/dev/null || true
+          fi
+
+          if [ -n "$BUILD_TOOLS_DIR" ] && [ -x "$BUILD_TOOLS_DIR/zipalign" ] && [ -x "$BUILD_TOOLS_DIR/apksigner" ] && [ -f "debug.keystore" ]; then
+            echo "Found zipalign, apksigner, and consistent repository keystore. Signing release..."
             "$BUILD_TOOLS_DIR/zipalign" -f -v -p 4 "$RAW_APK" output/aligned.apk
             "$BUILD_TOOLS_DIR/apksigner" sign \
-              --ks app.keystore \
-              --ks-pass pass:password123 \
-              --key-pass pass:password123 \
-              --ks-key-alias appalias \
+              --ks debug.keystore \
+              --ks-pass pass:android \
+              --key-pass pass:android \
+              --ks-key-alias androiddebugkey \
               --out output/Strawberrycandy.apk \
               output/aligned.apk
-            echo "Custom APK signing completed successfully."
+            echo "Consistent APK signature applied successfully."
           else
             echo "Using Gradle-packaged APK with built-in signature directly."
+            cp "$RAW_APK" output/Strawberrycandy.apk
           fi
 
           ls -lh output/Strawberrycandy.apk

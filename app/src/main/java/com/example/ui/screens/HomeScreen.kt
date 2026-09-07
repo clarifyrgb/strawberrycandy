@@ -38,6 +38,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Favorite
@@ -51,6 +52,7 @@ import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Logout
 import androidx.compose.material.icons.outlined.Mail
@@ -114,15 +116,18 @@ import coil.compose.AsyncImage
 import com.example.data.local.AuthorSlotEntity
 import com.example.data.local.ReaderProfileEntity
 import com.example.model.NovelWithState
+import com.example.ui.components.AboutModal
 import com.example.ui.components.AuthModal
 import com.example.ui.components.AuthorRoomsModal
 import com.example.ui.components.EditNovelModal
 import com.example.ui.components.NovelSearchBar
 import com.example.ui.components.OwnerUploadDialog
+import com.example.ui.components.RealtimeNewNovelBanner
 import com.example.ui.components.ReaderProfileModal
 import com.example.ui.components.TranslatorProfileModal
 import com.example.ui.theme.AntiqueGold
 import com.example.ui.theme.AntiqueGoldLight
+import com.example.ui.theme.DeepBurgundy
 import com.example.ui.theme.CharcoalSecondary
 import com.example.ui.theme.CharcoalTertiary
 import com.example.ui.theme.CharcoalText
@@ -151,6 +156,7 @@ fun HomeScreen(
   val activeUser = uiState.activeUser
   var selectedIndex by remember { mutableIntStateOf(0) }
   var isAuthorRoomsModalOpen by remember { mutableStateOf(false) }
+  var isAboutModalOpen by remember { mutableStateOf(false) }
   var selectedUploadSlot by remember { mutableIntStateOf(0) }
   var selectedTranslatorForDetail by remember { mutableStateOf<AuthorSlotEntity?>(null) }
   var slotToGrantPermission by remember { mutableStateOf<AuthorSlotEntity?>(null) }
@@ -212,6 +218,7 @@ fun HomeScreen(
         onOpenAuth = { viewModel.openAuthDialog() },
         onSignOut = { viewModel.signOut() },
         onOpenProfile = { viewModel.openProfileDialog() },
+        onOpenAbout = { isAboutModalOpen = true },
         onOpenAuthorRooms = {
           if (activeUser != null) {
             isAuthorRoomsModalOpen = true
@@ -235,6 +242,24 @@ fun HomeScreen(
           .fillMaxWidth()
           .padding(horizontal = 16.dp, vertical = 6.dp)
       )
+
+      // Real-Time Alert for newly posted novels in APK
+      val alertNovel = uiState.newlyPostedNovelAlert
+      if (alertNovel != null) {
+        RealtimeNewNovelBanner(
+          novel = alertNovel,
+          onReadNow = {
+            onSelectNovel(alertNovel)
+            viewModel.dismissNewNovelAlert()
+          },
+          onDismiss = {
+            viewModel.dismissNewNovelAlert()
+          },
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+        )
+      }
 
       // 3. Clean Archive Header & Sort Bar (Reading, Finished, TBR & Shelf moved to Reader and Translator Profiles for clean aesthetic)
       Row(
@@ -261,6 +286,59 @@ fun HomeScreen(
               color = CharcoalTertiary
             )
           )
+          Spacer(modifier = Modifier.width(8.dp))
+          // Real-time live status chip
+          Surface(
+            shape = RoundedCornerShape(10.dp),
+            color = Color(0xFF2E7D32).copy(alpha = 0.12f),
+            border = BorderStroke(0.6.dp, Color(0xFF2E7D32).copy(alpha = 0.35f)),
+            onClick = {
+              if (uiState.hasNewReleases) {
+                viewModel.showNewReleasesOnly()
+              }
+            }
+          ) {
+            Row(
+              modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp),
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              Box(
+                modifier = Modifier
+                  .size(5.dp)
+                  .clip(CircleShape)
+                  .background(Color(0xFF2E7D32))
+              )
+              Spacer(modifier = Modifier.width(4.dp))
+              Text(
+                text = if (uiState.activeFilter == ShelfFilter.NEW_RELEASES) "NEW RELEASES" else "LIVE ARCHIVE",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 8.sp,
+                  fontWeight = FontWeight.Bold,
+                  letterSpacing = 0.6.sp,
+                  color = Color(0xFF2E7D32)
+                )
+              )
+            }
+          }
+          if (uiState.activeFilter == ShelfFilter.NEW_RELEASES) {
+            Spacer(modifier = Modifier.width(6.dp))
+            Surface(
+              shape = RoundedCornerShape(10.dp),
+              color = SoftCreamPaper,
+              border = BorderStroke(0.6.dp, SubtleBorder),
+              onClick = { viewModel.setFilter(ShelfFilter.ALL) }
+            ) {
+              Text(
+                text = "Show All ✕",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 8.sp,
+                  fontWeight = FontWeight.Bold,
+                  color = CharcoalSecondary
+                ),
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
+              )
+            }
+          }
         }
 
         // Sort Dropdown Button
@@ -548,9 +626,10 @@ fun HomeScreen(
 
       // 4. "Continue Where You Stopped Reading" Card (if active reader has reading progress)
       if (continueReadingNovel != null) {
+        val canEditContinue = viewModel.canEditSpecificNovel(continueReadingNovel, activeUser, uiState.authorSlots)
         ContinueReadingBanner(
           novel = continueReadingNovel,
-          isTranslatorOrOwner = isTranslatorOrOwner,
+          isTranslatorOrOwner = canEditContinue,
           onResumeReading = { onSelectNovel(continueReadingNovel) },
           onEditNovel = { novelToEdit = continueReadingNovel },
           modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
@@ -577,12 +656,13 @@ fun HomeScreen(
           ) {
             novels.forEachIndexed { index, novel ->
               val isFocused = safeIndex == index
+              val canEditThisNovel = viewModel.canEditSpecificNovel(novel, activeUser, uiState.authorSlots)
 
               HorizontalNovelCard(
                 novel = novel,
                 index = index,
                 isFocused = isFocused,
-                isTranslatorOrOwner = isTranslatorOrOwner,
+                isTranslatorOrOwner = canEditThisNovel,
                 onCardClick = {
                   selectedIndex = index
                   onSelectNovel(novel)
@@ -631,9 +711,12 @@ fun HomeScreen(
 
           // 5.1. Selected Novel Spotlight Feature
           val focusedNovel = novels.getOrNull(safeIndex) ?: novels.first()
+          val canEditFocusedNovel = viewModel.canEditSpecificNovel(focusedNovel, activeUser, uiState.authorSlots)
           SelectedNovelSpotlight(
             novel = focusedNovel,
+            canEditNovel = canEditFocusedNovel,
             onReadNovel = { onSelectNovel(focusedNovel) },
+            onEditNovel = { novelToEdit = focusedNovel },
             onToggleFavorite = { viewModel.toggleFavorite(focusedNovel.id) },
             modifier = Modifier
               .fillMaxWidth()
@@ -644,10 +727,16 @@ fun HomeScreen(
           CuratedCoverShowcase(
             novels = novels,
             selectedNovelId = focusedNovel.id,
+            canEditSpecificNovel = { nov -> viewModel.canEditSpecificNovel(nov, activeUser, uiState.authorSlots) },
             onSelectNovel = { novel ->
               val idx = novels.indexOfFirst { it.id == novel.id }
               if (idx >= 0) selectedIndex = idx
               onSelectNovel(novel)
+            },
+            onEditNovel = { novel ->
+              val idx = novels.indexOfFirst { it.id == novel.id }
+              if (idx >= 0) selectedIndex = idx
+              novelToEdit = novel
             },
             modifier = Modifier
               .fillMaxWidth()
@@ -668,14 +757,19 @@ fun HomeScreen(
             modifier = Modifier.padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
           ) {
+            val isGlobalArchiveEmpty = allNovelsList.isEmpty()
             val titleText = when {
               uiState.novelSearchQuery.isNotBlank() -> "No Matching Novels"
               uiState.activeFilter == ShelfFilter.FAVORITES -> "No Favorites Yet"
+              uiState.activeFilter == ShelfFilter.NEW_RELEASES -> "No New Releases"
+              isGlobalArchiveEmpty -> "Archive Ready for Manuscripts"
               else -> "Reading Shelf Empty"
             }
             val subtitleText = when {
               uiState.novelSearchQuery.isNotBlank() -> "We couldn't find any novels matching '${uiState.novelSearchQuery}'. Try searching by author, genre, or title."
               uiState.activeFilter == ShelfFilter.FAVORITES -> "Tap the heart icon on any novel to save your favorites here."
+              uiState.activeFilter == ShelfFilter.NEW_RELEASES -> "Novels posted in the archive will appear here in real-time."
+              isGlobalArchiveEmpty -> "Sample novels have been removed. When Strawberrycandy or permitted translators post a manuscript, it will appear here in real-time for all readers."
               else -> "Start reading or tap any novel from the archive to add it to this shelf."
             }
 
@@ -691,6 +785,29 @@ fun HomeScreen(
               color = CharcoalSecondary,
               textAlign = TextAlign.Center
             )
+
+            if (isGlobalArchiveEmpty) {
+              Spacer(modifier = Modifier.height(14.dp))
+              Button(
+                onClick = {
+                  selectedUploadSlot = activeUser?.authorSlot ?: 0
+                  viewModel.openUploadDialog()
+                },
+                colors = ButtonDefaults.buttonColors(
+                  containerColor = AntiqueGold,
+                  contentColor = Color.White
+                ),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.testTag("empty_state_post_novel_button")
+              ) {
+                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                  "Post New Novel",
+                  style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                )
+              }
+            }
 
             if (uiState.novelSearchQuery.isNotBlank()) {
               Spacer(modifier = Modifier.height(10.dp))
@@ -839,6 +956,38 @@ fun HomeScreen(
           color = CharcoalTertiary
         )
       }
+
+      Spacer(modifier = Modifier.height(10.dp))
+
+      // Footer About & Check Updates Button
+      Surface(
+        onClick = { isAboutModalOpen = true },
+        shape = RoundedCornerShape(12.dp),
+        color = SoftCreamPaper,
+        border = BorderStroke(1.dp, SubtleBorder),
+        modifier = Modifier.testTag("footer_about_app_button")
+      ) {
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+        ) {
+          Icon(
+            imageVector = Icons.Outlined.Info,
+            contentDescription = null,
+            tint = AntiqueGold,
+            modifier = Modifier.size(13.dp)
+          )
+          Spacer(modifier = Modifier.width(6.dp))
+          Text(
+            text = "About Strawberrycandy • v${com.example.BuildConfig.VERSION_NAME} • Check for Updates",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 9.5.sp,
+              fontWeight = FontWeight.Medium,
+              color = CharcoalSecondary
+            )
+          )
+        }
+      }
     }
 
     // Auth Modal Dialog
@@ -878,7 +1027,19 @@ fun HomeScreen(
           onSelectNovel(novel)
         },
         onSwitchAccount = { viewModel.openAuthDialog() },
-        onSignOut = { viewModel.signOut() }
+        onSignOut = { viewModel.signOut() },
+        onOpenAbout = {
+          viewModel.closeProfileDialog()
+          isAboutModalOpen = true
+        }
+      )
+    }
+
+    // About Strawberrycandy & APK Update Modal
+    if (isAboutModalOpen) {
+      AboutModal(
+        novelsCount = allNovelsList.size,
+        onDismiss = { isAboutModalOpen = false }
       )
     }
 
@@ -949,6 +1110,10 @@ fun HomeScreen(
         } else null,
         onAddChapterToNovel = { novelId, title, content ->
           viewModel.addChapterToNovel(novelId, title, content)
+        },
+        onEditNovel = { novel ->
+          selectedTranslatorForDetail = null
+          novelToEdit = novel
         }
       )
     }
@@ -1137,6 +1302,7 @@ private fun TopUtilityBar(
   onOpenAuth: () -> Unit,
   onSignOut: () -> Unit,
   onOpenProfile: () -> Unit = {},
+  onOpenAbout: () -> Unit = {},
   onOpenAuthorRooms: () -> Unit,
   onOpenUpload: () -> Unit,
   activeTranslatorsCount: Int = 4,
@@ -1176,11 +1342,41 @@ private fun TopUtilityBar(
         )
       }
 
-      // Right: User Profile + Sign Out (or Sign In)
+      // Right: About + User Profile + Sign Out (or Sign In)
       Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp)
       ) {
+        // About App & Updates Pill
+        Surface(
+          onClick = onOpenAbout,
+          shape = RoundedCornerShape(16.dp),
+          color = SoftCreamPaper,
+          border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.5f)),
+          modifier = Modifier.testTag("top_utility_about_button")
+        ) {
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+          ) {
+            Icon(
+              imageVector = Icons.Outlined.Info,
+              contentDescription = "About Strawberrycandy",
+              tint = AntiqueGold,
+              modifier = Modifier.size(13.dp)
+            )
+            Spacer(modifier = Modifier.width(3.dp))
+            Text(
+              text = "About",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = FontWeight.Bold,
+                fontSize = 9.5.sp,
+                color = CharcoalText
+              )
+            )
+          }
+        }
+
         if (activeUser != null) {
           // Profile Pill
           Surface(
@@ -1555,7 +1751,7 @@ private fun ContinueReadingBanner(
         }
       }
 
-      // 3-Second Hold progress overlay
+      // 2-Second Hold progress overlay
       if (isTranslatorOrOwner && holdProgress > 0f) {
         Box(
           modifier = Modifier
@@ -1575,9 +1771,9 @@ private fun ContinueReadingBanner(
               trackColor = AntiqueGold.copy(alpha = 0.25f),
               strokeWidth = 2.5.dp
             )
-            val remainingSec = maxOf(1, (3.2f * (1f - holdProgress)).toInt())
+            val remainingSec = ((2000L - (holdProgress * 2000L).toLong() + 900L) / 1000L).coerceIn(1L, 2L)
             Text(
-              text = "Holding to Edit Novel (${remainingSec}s)...",
+              text = "Holding to Edit Manuscript (${remainingSec}s)...",
               style = MaterialTheme.typography.labelMedium.copy(
                 fontWeight = FontWeight.Bold,
                 color = SoftCreamPaper
@@ -1802,6 +1998,23 @@ private fun HorizontalNovelCard(
               modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
             )
           }
+        } else if (novel.isNewRelease) {
+          Surface(
+            shape = RoundedCornerShape(bottomEnd = 6.dp),
+            color = AntiqueGold,
+            modifier = Modifier.align(Alignment.TopStart)
+          ) {
+            Text(
+              text = "✨ NEW",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 7.5.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 0.4.sp
+              ),
+              color = DeepBurgundy,
+              modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+            )
+          }
         }
 
         // Favorite icon button (Top Right of card)
@@ -1841,7 +2054,39 @@ private fun HorizontalNovelCard(
           }
         }
 
-        // 3-Second Hold Feedback Overlay for Translators and Owner
+        // Editable Novel indicator badge for translators / owner
+        if (isTranslatorOrOwner && holdProgress == 0f) {
+          Surface(
+            shape = RoundedCornerShape(topStart = 6.dp),
+            color = AntiqueGold.copy(alpha = 0.92f),
+            modifier = Modifier
+              .align(Alignment.BottomEnd)
+              .padding(bottom = if (novel.currentPage > 1) 3.dp else 0.dp)
+          ) {
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+            ) {
+              Icon(
+                imageVector = Icons.Outlined.Edit,
+                contentDescription = "Hold 2s to edit",
+                tint = CharcoalText,
+                modifier = Modifier.size(8.dp)
+              )
+              Spacer(modifier = Modifier.width(2.dp))
+              Text(
+                text = "Hold 2s",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 7.sp,
+                  fontWeight = FontWeight.Bold
+                ),
+                color = CharcoalText
+              )
+            }
+          }
+        }
+
+        // 2-Second Hold Feedback Overlay for Translators and Owner
         if (isTranslatorOrOwner && holdProgress > 0f) {
           Box(
             modifier = Modifier
@@ -1862,7 +2107,7 @@ private fun HorizontalNovelCard(
                 strokeWidth = 3.5.dp
               )
               Spacer(modifier = Modifier.height(6.dp))
-              val remainingSec = maxOf(1, (2.2f * (1f - holdProgress)).toInt())
+              val remainingSec = ((2000L - (holdProgress * 2000L).toLong() + 900L) / 1000L).coerceIn(1L, 2L)
               Text(
                 text = "Hold ${remainingSec}s\nto Edit",
                 style = MaterialTheme.typography.labelSmall.copy(
@@ -2060,7 +2305,9 @@ private fun HorizontalNovelCard(
 @Composable
 private fun SelectedNovelSpotlight(
   novel: NovelWithState,
+  canEditNovel: Boolean = false,
   onReadNovel: () -> Unit,
+  onEditNovel: (() -> Unit)? = null,
   onToggleFavorite: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
@@ -2204,6 +2451,23 @@ private fun SelectedNovelSpotlight(
                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
                 color = CharcoalTertiary
               )
+              if (novel.isNewRelease) {
+                Spacer(modifier = Modifier.width(5.dp))
+                Surface(
+                  shape = RoundedCornerShape(6.dp),
+                  color = AntiqueGold,
+                ) {
+                  Text(
+                    text = "✨ NEW RELEASE",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontSize = 7.5.sp,
+                      fontWeight = FontWeight.ExtraBold,
+                      color = DeepBurgundy
+                    ),
+                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                  )
+                }
+              }
             }
 
             Spacer(modifier = Modifier.height(3.dp))
@@ -2301,6 +2565,38 @@ private fun SelectedNovelSpotlight(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
       ) {
+        if (canEditNovel && onEditNovel != null) {
+          OutlinedButton(
+            onClick = onEditNovel,
+            shape = RoundedCornerShape(12.dp),
+            border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.6f)),
+            colors = ButtonDefaults.outlinedButtonColors(
+              containerColor = AntiqueGoldLight.copy(alpha = 0.3f),
+              contentColor = CharcoalText
+            ),
+            modifier = Modifier
+              .height(36.dp)
+              .testTag("spotlight_edit_button")
+          ) {
+            Icon(
+              imageVector = Icons.Outlined.Edit,
+              contentDescription = "Edit Novel",
+              tint = AntiqueGold,
+              modifier = Modifier.size(14.dp)
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+              text = "Edit",
+              style = MaterialTheme.typography.labelMedium.copy(
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp
+              )
+            )
+          }
+
+          Spacer(modifier = Modifier.width(8.dp))
+        }
+
         Button(
           onClick = onReadNovel,
           shape = RoundedCornerShape(12.dp),
@@ -2372,7 +2668,9 @@ private fun SelectedNovelSpotlight(
 private fun CuratedCoverShowcase(
   novels: List<NovelWithState>,
   selectedNovelId: String,
+  canEditSpecificNovel: (NovelWithState) -> Boolean = { false },
   onSelectNovel: (NovelWithState) -> Unit,
+  onEditNovel: ((NovelWithState) -> Unit)? = null,
   modifier: Modifier = Modifier,
 ) {
   Column(
@@ -2422,10 +2720,13 @@ private fun CuratedCoverShowcase(
       verticalAlignment = Alignment.CenterVertically
     ) {
       novels.forEach { novel ->
+        val canEdit = canEditSpecificNovel(novel)
         CuratedCoverGridCard(
           novel = novel,
           isSelected = novel.id == selectedNovelId,
+          canEdit = canEdit,
           onClick = { onSelectNovel(novel) },
+          onEdit = if (canEdit && onEditNovel != null) { { onEditNovel(novel) } } else null,
           modifier = Modifier.width(172.dp)
         )
       }
@@ -2437,11 +2738,16 @@ private fun CuratedCoverShowcase(
 private fun CuratedCoverGridCard(
   novel: NovelWithState,
   isSelected: Boolean,
+  canEdit: Boolean = false,
   onClick: () -> Unit,
+  onEdit: (() -> Unit)? = null,
   modifier: Modifier = Modifier,
 ) {
+  val haptic = LocalHapticFeedback.current
+  val coroutineScope = rememberCoroutineScope()
+  var holdProgress by remember { mutableFloatStateOf(0f) }
+
   Card(
-    onClick = onClick,
     shape = RoundedCornerShape(14.dp),
     colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
     border = BorderStroke(
@@ -2449,17 +2755,58 @@ private fun CuratedCoverGridCard(
       color = if (isSelected) AntiqueGold else SubtleBorder
     ),
     elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 4.dp else 2.dp),
-    modifier = modifier.testTag("gallery_card_${novel.id}")
+    modifier = modifier
+      .testTag("gallery_card_${novel.id}")
+      .pointerInput(novel.id, canEdit) {
+        if (canEdit && onEdit != null) {
+          detectTapGestures(
+            onPress = {
+              val startTime = System.currentTimeMillis()
+              val totalMs = 2000L
+              val interval = 40L
+              val job = coroutineScope.launch {
+                var elapsed = 0L
+                while (elapsed < totalMs) {
+                  kotlinx.coroutines.delay(interval)
+                  elapsed += interval
+                  holdProgress = (elapsed.toFloat() / totalMs).coerceIn(0f, 1f)
+                  if (elapsed >= totalMs) {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onEdit()
+                    holdProgress = 0f
+                    return@launch
+                  }
+                }
+              }
+              try {
+                val released = tryAwaitRelease()
+                if (released) {
+                  val elapsed = System.currentTimeMillis() - startTime
+                  if (elapsed < 500L) {
+                    onClick()
+                  }
+                }
+              } finally {
+                job.cancel()
+                holdProgress = 0f
+              }
+            }
+          )
+        } else {
+          detectTapGestures(onTap = { onClick() })
+        }
+      }
   ) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-      // Cover Image Box (aspectRatio ~0.75f)
-      Box(
-        modifier = Modifier
-          .fillMaxWidth()
-          .aspectRatio(0.75f)
-          .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
-          .background(Color(novel.coverColorHex))
-      ) {
+    Box(modifier = Modifier.fillMaxWidth()) {
+      Column(modifier = Modifier.fillMaxWidth()) {
+        // Cover Image Box (aspectRatio ~0.75f)
+        Box(
+          modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(0.75f)
+            .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
+            .background(Color(novel.coverColorHex))
+        ) {
         if (novel.coverImageUri != null) {
           AsyncImage(
             model = File(novel.coverImageUri!!).takeIf { it.exists() } ?: novel.coverImageUri,
@@ -2515,6 +2862,22 @@ private fun CuratedCoverGridCard(
                 fontWeight = FontWeight.Bold
               ),
               color = Color.White,
+              modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+            )
+          }
+        } else if (novel.isNewRelease) {
+          Surface(
+            shape = RoundedCornerShape(bottomEnd = 6.dp),
+            color = AntiqueGold,
+            modifier = Modifier.align(Alignment.TopStart)
+          ) {
+            Text(
+              text = "✨ NEW",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 7.5.sp,
+                fontWeight = FontWeight.ExtraBold
+              ),
+              color = DeepBurgundy,
               modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
             )
           }
@@ -2577,5 +2940,42 @@ private fun CuratedCoverGridCard(
         )
       }
     }
+
+    // 2-Second Hold Feedback Overlay for Translators and Owner
+    if (canEdit && holdProgress > 0f) {
+      Box(
+        modifier = Modifier
+          .matchParentSize()
+          .background(Color(0xEE1E1815))
+          .padding(8.dp),
+        contentAlignment = Alignment.Center
+      ) {
+        Column(
+          horizontalAlignment = Alignment.CenterHorizontally,
+          verticalArrangement = Arrangement.Center
+        ) {
+          CircularProgressIndicator(
+            progress = { holdProgress },
+            modifier = Modifier.size(36.dp),
+            color = AntiqueGold,
+            trackColor = AntiqueGold.copy(alpha = 0.25f),
+            strokeWidth = 3.dp
+          )
+          Spacer(modifier = Modifier.height(6.dp))
+          val remainingSec = ((2000L - (holdProgress * 2000L).toLong() + 900L) / 1000L).coerceIn(1L, 2L)
+          Text(
+            text = "Hold ${remainingSec}s\nto Edit",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 9.5.sp,
+              fontWeight = FontWeight.Bold,
+              textAlign = TextAlign.Center,
+              lineHeight = 12.sp
+            ),
+            color = SoftCreamPaper
+          )
+        }
+      }
+    }
   }
+}
 }

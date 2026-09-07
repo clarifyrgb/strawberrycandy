@@ -29,6 +29,7 @@ import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Logout
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.Button
@@ -109,6 +110,7 @@ fun ReaderProfileModal(
   onSelectNovel: (NovelWithState) -> Unit = {},
   onSwitchAccount: () -> Unit,
   onSignOut: () -> Unit,
+  onOpenAbout: () -> Unit = {},
 ) {
   val emailRegex = remember { Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}") }
   val currentSafeName = remember(activeUser.displayName) {
@@ -904,6 +906,82 @@ fun ReaderProfileModal(
                       color = SoftCreamPaper
                     )
                   )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // About Strawberrycandy & APK Updates Card
+                Card(
+                  shape = RoundedCornerShape(14.dp),
+                  colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
+                  border = BorderStroke(1.dp, SubtleBorder),
+                  modifier = Modifier.fillMaxWidth()
+                ) {
+                  Column(
+                    modifier = Modifier
+                      .fillMaxWidth()
+                      .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                  ) {
+                    Row(
+                      modifier = Modifier.fillMaxWidth(),
+                      horizontalArrangement = Arrangement.SpaceBetween,
+                      verticalAlignment = Alignment.CenterVertically
+                    ) {
+                      Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                          imageVector = Icons.Outlined.Info,
+                          contentDescription = null,
+                          tint = AntiqueGold,
+                          modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                          text = "ABOUT & UPDATES",
+                          style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 8.5.sp,
+                            letterSpacing = 1.2.sp,
+                            fontWeight = FontWeight.Bold
+                          ),
+                          color = AntiqueGold
+                        )
+                      }
+
+                      Text(
+                        text = "v${com.example.BuildConfig.VERSION_NAME}",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                          fontSize = 10.sp,
+                          fontWeight = FontWeight.Bold
+                        ),
+                        color = CharcoalText
+                      )
+                    }
+
+                    Text(
+                      text = "Check current APK release version, view platform capabilities, and query GitHub for app updates.",
+                      style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
+                      color = CharcoalSecondary
+                    )
+
+                    OutlinedButton(
+                      onClick = onOpenAbout,
+                      shape = RoundedCornerShape(10.dp),
+                      border = BorderStroke(1.dp, AntiqueGold),
+                      modifier = Modifier
+                        .fillMaxWidth()
+                        .height(38.dp)
+                        .testTag("profile_open_about_button")
+                    ) {
+                      Text(
+                        text = "About Strawberrycandy & Check Updates",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                          fontSize = 11.sp,
+                          fontWeight = FontWeight.SemiBold
+                        ),
+                        color = AntiqueGold
+                      )
+                    }
+                  }
                 }
               }
             }

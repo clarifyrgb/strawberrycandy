@@ -209,6 +209,11 @@ data class NovelWithState(
     return combined.contains("volume") || combined.contains("vol.") || combined.contains("vol ")
   }
 
+  val isNewRelease: Boolean get() {
+    val diff = System.currentTimeMillis() - novel.createdAt
+    return diff in 0..(7L * 24 * 3600 * 1000L) // Active new release for 7 days
+  }
+
   val readButtonLabel: String get() {
     return if (inReadingList && progressFraction > 0f) {
       "Continue (Pg. $currentPage)"
