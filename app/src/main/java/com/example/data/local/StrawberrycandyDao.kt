@@ -202,6 +202,9 @@ interface StrawberrycandyDao {
   @Query("DELETE FROM chapter_comments WHERE id = :commentId OR parentCommentId = :commentId")
   suspend fun deleteComment(commentId: String)
 
+  @Query("DELETE FROM chapter_comments")
+  suspend fun clearAllComments()
+
   // Favorite Lines & Bookmarks per Novel
   @Query("SELECT * FROM chapter_bookmarks WHERE novelId = :novelId ORDER BY timestamp DESC")
   fun getBookmarksForNovel(novelId: String): Flow<List<BookmarkHighlightEntity>>

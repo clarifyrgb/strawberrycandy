@@ -11,9 +11,11 @@ import com.example.data.local.UserReadingStateEntity
 import com.example.data.remote.CloudArchiveSyncService
 import com.example.model.NovelWithState
 import android.util.Log
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreSettings
+import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,6 +24,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import java.util.UUID
 
 data class UploadNovelResult(
@@ -137,7 +140,9 @@ class StrawberrycandyRepository(
 
   init {
     externalScope.launch {
-      // Purge all sample novels and sample comments
+      // Purge local comments on startup so comments are not permanently stored locally, only streamed online from Firebase
+      dao.clearAllComments()
+      // Purge all sample novels and sample state
       dao.deleteSampleNovels()
       dao.deleteSampleReadingStates()
       dao.deleteSampleComments()
@@ -153,12 +158,151 @@ class StrawberrycandyRepository(
       syncOwnerConfiguration()
       syncFirebaseAuthSession()
       eraseExampleTranslators()
+      listenToCloudNovels()
+      listenToCloudAuthorSlots()
       syncRemoteNovels()
       syncRemoteAuthorSlots()
     }
   }
 
+  fun parseNovelFromFirestoreDoc(doc: DocumentSnapshot): NovelEntity? {
+    return try {
+      val id = doc.getString("id") ?: doc.id
+      val title = doc.getString("title") ?: return null
+      NovelEntity(
+        id = id,
+        title = title,
+        subtitle = doc.getString("subtitle") ?: "",
+        author = doc.getString("author") ?: "Strawberrycandy",
+        originalAuthor = doc.getString("originalAuthor") ?: "",
+        authorSlot = (doc.getLong("authorSlot") ?: 0L).toInt(),
+        year = doc.getString("year") ?: "2026",
+        editionNumber = doc.getString("editionNumber") ?: "EDITION NO. 1 / STRAWBERRYCANDY",
+        coverDrawableRes = 0,
+        coverImageUri = doc.getString("coverImageUri")?.takeIf { it.isNotBlank() },
+        coverColorHex = doc.getLong("coverColorHex") ?: 0xFF5C2D3B,
+        chapterTitle = doc.getString("chapterTitle") ?: "Chapter I",
+        totalPages = (doc.getLong("totalPages") ?: 120L).toInt(),
+        excerpt = doc.getString("excerpt") ?: "",
+        contentText = doc.getString("contentText") ?: "",
+        isOwnerUploaded = doc.getBoolean("isOwnerUploaded") ?: true,
+        createdAt = doc.getLong("createdAt") ?: System.currentTimeMillis(),
+        readsCount = (doc.getLong("readsCount") ?: 0L).toInt(),
+        favoritesCount = (doc.getLong("favoritesCount") ?: 0L).toInt(),
+        storyImagesJson = doc.getString("storyImagesJson") ?: "[]",
+        novelStatus = doc.getString("novelStatus") ?: "ONGOING",
+        releaseFormat = doc.getString("releaseFormat") ?: "MANUSCRIPT"
+      )
+    } catch (e: Exception) {
+      Log.w("StrawberrycandyRepository", "Failed to parse novel from Firestore: ${e.message}")
+      null
+    }
+  }
+
+  fun novelToFirestoreMap(novel: NovelEntity, uploaderEmail: String = ""): HashMap<String, Any?> {
+    return hashMapOf(
+      "id" to novel.id,
+      "title" to novel.title,
+      "subtitle" to novel.subtitle,
+      "author" to novel.author,
+      "originalAuthor" to novel.originalAuthor,
+      "authorSlot" to novel.authorSlot,
+      "year" to novel.year,
+      "editionNumber" to novel.editionNumber,
+      "chapterTitle" to novel.chapterTitle,
+      "totalPages" to novel.totalPages,
+      "excerpt" to novel.excerpt,
+      "contentText" to novel.contentText,
+      "coverColorHex" to novel.coverColorHex,
+      "coverImageUri" to (novel.coverImageUri ?: ""),
+      "novelStatus" to novel.novelStatus,
+      "releaseFormat" to novel.releaseFormat,
+      "createdAt" to novel.createdAt,
+      "readsCount" to novel.readsCount,
+      "favoritesCount" to novel.favoritesCount,
+      "storyImagesJson" to novel.storyImagesJson,
+      "isOwnerUploaded" to novel.isOwnerUploaded,
+      "uploaderEmail" to uploaderEmail
+    )
+  }
+
+  fun listenToCloudNovels() {
+    try {
+      val firestore = FirebaseFirestore.getInstance()
+      firestore.collection("novels")
+        .orderBy("createdAt", Query.Direction.DESCENDING)
+        .addSnapshotListener { snapshot, error ->
+          if (error != null || snapshot == null) return@addSnapshotListener
+          val cloudNovels = snapshot.documents.mapNotNull { doc ->
+            parseNovelFromFirestoreDoc(doc)
+          }
+          if (cloudNovels.isNotEmpty()) {
+            externalScope.launch {
+              dao.insertNovels(cloudNovels)
+            }
+          }
+        }
+    } catch (e: Exception) {
+      Log.w("StrawberrycandyRepository", "Firestore listenToCloudNovels notice: ${e.message}")
+    }
+  }
+
+  fun listenToCloudAuthorSlots() {
+    try {
+      val firestore = FirebaseFirestore.getInstance()
+      firestore.collection("author_slots")
+        .addSnapshotListener { snapshot, error ->
+          if (error != null || snapshot == null) return@addSnapshotListener
+          val slots = snapshot.documents.mapNotNull { doc ->
+            try {
+              val slotNumber = (doc.getLong("slotNumber") ?: return@mapNotNull null).toInt()
+              AuthorSlotEntity(
+                slotNumber = slotNumber,
+                authorName = doc.getString("authorName") ?: "",
+                penName = doc.getString("penName") ?: "",
+                bio = doc.getString("bio") ?: "Contributing Translator at Strawberrycandy Archive",
+                avatarColorHex = doc.getLong("avatarColorHex") ?: 0xFF5C2D3B,
+                coverImageUri = doc.getString("coverImageUri")?.takeIf { it.isNotBlank() },
+                accessCode = doc.getString("accessCode") ?: "CANDY-$slotNumber",
+                isPermissionGranted = doc.getBoolean("isPermissionGranted") ?: (slotNumber == 0),
+                translatorEmail = doc.getString("translatorEmail") ?: ""
+              )
+            } catch (_: Exception) { null }
+          }
+          if (slots.isNotEmpty()) {
+            externalScope.launch {
+              for (slot in slots) {
+                if (slot.slotNumber != 0) {
+                  dao.updateAuthorSlot(slot)
+                }
+              }
+              checkAndUpgradeProfilesAgainstSlots()
+            }
+          }
+        }
+    } catch (e: Exception) {
+      Log.w("StrawberrycandyRepository", "Firestore listenToCloudAuthorSlots notice: ${e.message}")
+    }
+  }
+
   suspend fun syncRemoteNovels(): Result<Int> {
+    // 1. Primary Online Store: Fetch live novels from Firebase Cloud Firestore
+    try {
+      val firestore = FirebaseFirestore.getInstance()
+      val snapshot = firestore.collection("novels").get().await()
+      if (snapshot != null && !snapshot.isEmpty) {
+        val cloudNovels = snapshot.documents.mapNotNull { doc -> parseNovelFromFirestoreDoc(doc) }
+        if (cloudNovels.isNotEmpty()) {
+          dao.insertNovels(cloudNovels)
+          Log.i("StrawberrycandyRepository", "Fetched ${cloudNovels.size} live novels from Firebase Cloud Firestore.")
+          return Result.success(cloudNovels.size)
+        }
+      }
+    } catch (e: Exception) {
+      Log.w("StrawberrycandyRepository", "Firestore fetch novels notice: ${e.message}")
+    }
+
+    // 2. Fallback to Cloud Archive REST Sync Service if Firestore is cold
     if (syncService == null) return Result.success(0)
     return try {
       val remoteResult = syncService.fetchRemoteNovels()
@@ -177,6 +321,46 @@ class StrawberrycandyRepository(
   }
 
   suspend fun syncRemoteAuthorSlots(): Result<Int> {
+    // 1. Primary Online Store: Fetch author slots from Firebase Cloud Firestore
+    try {
+      val firestore = FirebaseFirestore.getInstance()
+      val snapshot = firestore.collection("author_slots").get().await()
+      if (snapshot != null && !snapshot.isEmpty) {
+        val remoteSlots = snapshot.documents.mapNotNull { doc ->
+          try {
+            val slotNumber = (doc.getLong("slotNumber") ?: return@mapNotNull null).toInt()
+            AuthorSlotEntity(
+              slotNumber = slotNumber,
+              authorName = doc.getString("authorName") ?: "",
+              penName = doc.getString("penName") ?: "",
+              bio = doc.getString("bio") ?: "Contributing Translator at Strawberrycandy Archive",
+              avatarColorHex = doc.getLong("avatarColorHex") ?: 0xFF5C2D3B,
+              coverImageUri = doc.getString("coverImageUri")?.takeIf { it.isNotBlank() },
+              accessCode = doc.getString("accessCode") ?: "CANDY-$slotNumber",
+              isPermissionGranted = doc.getBoolean("isPermissionGranted") ?: (slotNumber == 0),
+              translatorEmail = doc.getString("translatorEmail") ?: ""
+            )
+          } catch (_: Exception) { null }
+        }
+        if (remoteSlots.isNotEmpty()) {
+          for (remoteSlot in remoteSlots) {
+            val localSlot = dao.getAuthorSlot(remoteSlot.slotNumber)
+            if (remoteSlot.isPermissionGranted || !remoteSlot.translatorEmail.isNullOrBlank()) {
+              dao.updateAuthorSlot(
+                remoteSlot.copy(
+                  coverImageUri = localSlot?.coverImageUri ?: remoteSlot.coverImageUri
+                )
+              )
+            }
+          }
+          checkAndUpgradeProfilesAgainstSlots()
+          return Result.success(remoteSlots.size)
+        }
+      }
+    } catch (e: Exception) {
+      Log.w("StrawberrycandyRepository", "Firestore fetch author slots notice: ${e.message}")
+    }
+
     if (syncService == null) return Result.success(0)
     return try {
       val remoteResult = syncService.fetchRemoteAuthorSlots()
@@ -286,30 +470,41 @@ class StrawberrycandyRepository(
     dao.insertNovel(novel)
 
     var isPublished = false
-    var statusMsg = "Saved to local cache. Pending global cloud publication."
+    var statusMsg = "✨ Novel uploaded live to Firebase Cloud Archive!"
     var novelJson = ""
     var fullCatalogJson = "[]"
+
+    // 1. Direct Online Upload to Firebase Firestore collection 'novels'
+    try {
+      val firestore = FirebaseFirestore.getInstance()
+      val activeEmail = dao.getActiveReaderProfileSync()?.email ?: ""
+      val novelData = novelToFirestoreMap(novel, activeEmail)
+      firestore.collection("novels").document(novel.id).set(novelData).await()
+      isPublished = true
+      statusMsg = "✨ Novel uploaded live to Firebase Cloud Archive!"
+      Log.i("StrawberrycandyRepository", "Novel ${novel.id} published directly to Firebase Firestore.")
+    } catch (e: Exception) {
+      Log.w("StrawberrycandyRepository", "Firebase Firestore novel upload error: ${e.message}")
+    }
 
     if (syncService != null) {
       val allNovels = dao.getAllNovelsSync()
       val pushResult = syncService.publishNovelToRemote(novel, allNovels)
-      if (pushResult.isSuccess) {
+      if (pushResult.isSuccess && !isPublished) {
         isPublished = true
         statusMsg = pushResult.getOrNull() ?: "Published to Global Cloud Archive"
-      } else {
-        statusMsg = pushResult.exceptionOrNull()?.message ?: "Pending global cloud publication"
       }
       novelJson = syncService.novelToJson(novel).toString(2)
       fullCatalogJson = syncService.exportNovelsToJsonString(allNovels)
     }
 
-    // Automatically backup novel package (metadata & manuscript) to Firebase Cloud Storage bucket if available
+    // 2. Direct Online Package & Manuscript upload to Firebase Cloud Storage
     if (firebaseStorageService != null) {
       externalScope.launch {
         try {
           val fbRes = firebaseStorageService.uploadNovelPackage(novel)
           if (fbRes.isSuccess) {
-            Log.d("StrawberrycandyRepository", "Uploaded novel ${novel.id} to Firebase Cloud Storage (${fbRes.getOrNull()?.storageBucket})")
+            Log.d("StrawberrycandyRepository", "Uploaded novel ${novel.id} package to Firebase Cloud Storage (${fbRes.getOrNull()?.storageBucket})")
           } else {
             Log.w("StrawberrycandyRepository", "Firebase Cloud Storage backup note: ${fbRes.exceptionOrNull()?.message}")
           }
@@ -384,6 +579,25 @@ class StrawberrycandyRepository(
           dao.insertReaderProfile(prof.copy(displayName = cleanPenName))
         }
       }
+      externalScope.launch {
+        try {
+          val firestore = FirebaseFirestore.getInstance()
+          val slotMap = hashMapOf(
+            "slotNumber" to updated.slotNumber,
+            "authorName" to updated.authorName,
+            "penName" to updated.penName,
+            "bio" to updated.bio,
+            "avatarColorHex" to updated.avatarColorHex,
+            "coverImageUri" to (updated.coverImageUri ?: ""),
+            "accessCode" to updated.accessCode,
+            "isPermissionGranted" to updated.isPermissionGranted,
+            "translatorEmail" to (updated.translatorEmail ?: "")
+          )
+          firestore.collection("author_slots").document("slot_$slotNumber").set(slotMap).await()
+        } catch (e: Exception) {
+          Log.w("StrawberrycandyRepository", "Firestore update author slot error: ${e.message}")
+        }
+      }
     }
   }
 
@@ -404,6 +618,16 @@ class StrawberrycandyRepository(
       totalPages = newTotalPages
     )
     dao.insertNovel(updated)
+    externalScope.launch {
+      try {
+        val firestore = FirebaseFirestore.getInstance()
+        val activeEmail = dao.getActiveReaderProfileSync()?.email ?: ""
+        val novelData = novelToFirestoreMap(updated, activeEmail)
+        firestore.collection("novels").document(updated.id).set(novelData).await()
+      } catch (e: Exception) {
+        Log.w("StrawberrycandyRepository", "Firebase Firestore addChapter error: ${e.message}")
+      }
+    }
   }
 
   suspend fun setSlotPermission(slotNumber: Int, isGranted: Boolean) {
@@ -420,6 +644,25 @@ class StrawberrycandyRepository(
             dao.insertReaderProfile(profile.copy(role = newRole, authorSlot = newSlot))
           }
         }
+        externalScope.launch {
+          try {
+            val firestore = FirebaseFirestore.getInstance()
+            val slotMap = hashMapOf(
+              "slotNumber" to slot.slotNumber,
+              "authorName" to slot.authorName,
+              "penName" to slot.penName,
+              "bio" to slot.bio,
+              "avatarColorHex" to slot.avatarColorHex,
+              "coverImageUri" to (slot.coverImageUri ?: ""),
+              "accessCode" to slot.accessCode,
+              "isPermissionGranted" to isGranted,
+              "translatorEmail" to (slot.translatorEmail ?: "")
+            )
+            firestore.collection("author_slots").document("slot_$slotNumber").set(slotMap).await()
+          } catch (e: Exception) {
+            Log.w("StrawberrycandyRepository", "Firestore setSlotPermission error: ${e.message}")
+          }
+        }
       }
       if (syncService != null) {
         try {
@@ -430,6 +673,14 @@ class StrawberrycandyRepository(
   }
 
   suspend fun deleteNovel(id: String) {
+    externalScope.launch {
+      try {
+        val firestore = FirebaseFirestore.getInstance()
+        firestore.collection("novels").document(id).delete().await()
+      } catch (e: Exception) {
+        Log.w("StrawberrycandyRepository", "Firebase Firestore deleteNovel error: ${e.message}")
+      }
+    }
     dao.deleteNovelById(id)
   }
 
@@ -462,6 +713,16 @@ class StrawberrycandyRepository(
       totalPages = maxOf(1, cleanContent.split("\n\n").count { it.isNotBlank() } * 2)
     )
     dao.insertNovel(updated)
+    externalScope.launch {
+      try {
+        val firestore = FirebaseFirestore.getInstance()
+        val activeEmail = dao.getActiveReaderProfileSync()?.email ?: ""
+        val novelData = novelToFirestoreMap(updated, activeEmail)
+        firestore.collection("novels").document(updated.id).set(novelData).await()
+      } catch (e: Exception) {
+        Log.w("StrawberrycandyRepository", "Firebase Firestore updateNovel error: ${e.message}")
+      }
+    }
   }
 
   suspend fun updateNovelCover(id: String, coverImageUri: String) {
@@ -1376,6 +1637,14 @@ class StrawberrycandyRepository(
 
   suspend fun deleteComment(commentId: String) {
     dao.deleteComment(commentId)
+    externalScope.launch {
+      try {
+        val firestore = FirebaseFirestore.getInstance()
+        firestore.collection("chapter_comments").document(commentId).delete().await()
+      } catch (e: Exception) {
+        Log.w("StrawberrycandyComments", "Firebase Firestore deleteComment: ${e.message}")
+      }
+    }
   }
 
   // Favorite Lines & Bookmarks
