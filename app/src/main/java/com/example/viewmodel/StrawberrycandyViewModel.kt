@@ -77,6 +77,7 @@ data class StrawberrycandyUiState(
   val cloudPublishModalNovelJson: String? = null,
   val cloudPublishModalCatalogJson: String? = null,
   val isAlreadyCloudPublished: Boolean = false,
+  val rememberedAccounts: List<ReaderProfileEntity> = emptyList(),
 )
 
 class StrawberrycandyViewModel(application: Application) : AndroidViewModel(application) {
@@ -168,13 +169,19 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     Pair(dialogs, cloud)
   }
 
+  private val _userAndAccountsState = combine(repository.activeUser, repository.rememberedAccounts) { user, accounts ->
+    Pair(user, accounts)
+  }
+
   val uiState: StateFlow<StrawberrycandyUiState> = combine(
-    repository.activeUser,
+    _userAndAccountsState,
     repository.allNovelsWithState,
     repository.authorSlots,
     _filterState,
     _dialogAndCloudState
-  ) { user, novels, slots, searchParams, combinedState ->
+  ) { userAccounts, novels, slots, searchParams, combinedState ->
+    val user = userAccounts.first
+    val remembered = userAccounts.second
     val dialogList = combinedState.first
     val cloudList = combinedState.second
     val isAuthOpen = dialogList[0] as Boolean
@@ -280,6 +287,7 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
       cloudPublishModalNovelJson = cloudModalNovelJson,
       cloudPublishModalCatalogJson = cloudModalCatalogJson,
       isAlreadyCloudPublished = isAlreadyPublished,
+      rememberedAccounts = remembered,
     )
   }.stateIn(
     viewModelScope,
@@ -436,14 +444,21 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     return false
   }
 
-  fun isTranslatorOrOwner(user: ReaderProfileEntity? = activeUser.value): Boolean {
-    return canEditNovel(user, authorSlots.value)
+  fun isTranslatorOrOwner(user: ReaderProfileEntity? = activeUser.value, slots: List<AuthorSlotEntity> = authorSlots.value): Boolean {
+    if (user == null) return false
+    if (user.role.equals("OWNER", ignoreCase = true) || isOwnerEmail(user.email)) return true
+    if (user.role.equals("TRANSLATOR", ignoreCase = true)) return true
+    if (isPermittedTranslator(user, slots)) return true
+    return false
   }
 
   fun canUploadNovel(user: ReaderProfileEntity? = activeUser.value, slots: List<AuthorSlotEntity> = authorSlots.value): Boolean {
+    // Only available to translators and owner
     if (user == null) return false
-    if (isOwner(user)) return true
-    return isPermittedTranslator(user, slots)
+    if (user.role.equals("OWNER", ignoreCase = true) || isOwnerEmail(user.email)) return true
+    if (user.role.equals("TRANSLATOR", ignoreCase = true)) return true
+    if (isPermittedTranslator(user, slots)) return true
+    return false
   }
 
   fun signInWithGoogle(
@@ -507,6 +522,30 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
         _snackbarMessage.value = error
         onError?.invoke(error)
       }
+    }
+  }
+
+  fun requestPasswordResetCode(email: String, onResult: (Result<String>) -> Unit) {
+    viewModelScope.launch {
+      val result = repository.sendPasswordRecoveryCode(email)
+      onResult(result)
+    }
+  }
+
+  fun resetPasswordWithCode(
+    email: String,
+    code: String,
+    newPassword: String,
+    onResult: (Result<Unit>) -> Unit
+  ) {
+    viewModelScope.launch {
+      val result = repository.resetPasswordWithCode(email, code, newPassword)
+      if (result.isSuccess) {
+        _isAuthDialogOpen.value = false
+        _authErrorMessage.value = null
+        _snackbarMessage.value = "Password reset successfully! Logged in as $email"
+      }
+      onResult(result)
     }
   }
 
@@ -693,14 +732,11 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
       val authorLabel = if (authorSlot == 0) "Strawberrycandy" else "$author (Room $authorSlot)"
 
       if (uploadResult.isPublishedToCloud) {
-        _snackbarMessage.value = "✨ Global Archive: Novel '$title' by $authorLabel is now live for all APK readers worldwide!"
+        _snackbarMessage.value = "✨ Novel '$title' by $authorLabel is now live on the Cloud Archive! All APK readers can now see it."
+        refreshCloudArchive(silent = true)
       } else {
-        // Open Cloud Publishing Hub so translator/owner can complete global distribution
-        _cloudPublishModalNovel.value = uploadResult.novel
-        _cloudPublishModalNovelJson.value = uploadResult.novelJson
-        _cloudPublishModalCatalogJson.value = uploadResult.fullCatalogJson
-        _isAlreadyCloudPublished.value = false
-        _snackbarMessage.value = "Manuscript prepared for Global Archive. Choose publishing destination so all APK users see it."
+        // Saved locally in SQLite
+        _snackbarMessage.value = "Manuscript '$title' saved to your library. It will sync to Cloud Archive when connected."
       }
     }
   }
@@ -1010,5 +1046,9 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
 
   fun clearSnackbarMessage() {
     _snackbarMessage.value = null
+  }
+
+  fun showSnackbar(message: String) {
+    _snackbarMessage.value = message
   }
 }

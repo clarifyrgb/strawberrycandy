@@ -116,11 +116,15 @@ fun AuthorRoomsModal(
 ) {
   val context = LocalContext.current
   val isOwnerUser = currentUser != null && StrawberrycandyViewModel.isOwnerEmail(currentUser.email)
-  val isTranslatorUser = currentUser?.role == "TRANSLATOR"
-  val isReaderUser = currentUser == null || currentUser.role == "READER" || (!isOwnerUser && !isTranslatorUser)
+  val isTranslatorUser = currentUser?.role == "TRANSLATOR" || (currentUser?.authorSlot != null && currentUser.authorSlot > 0)
+  val isReaderUser = currentUser == null || (!isOwnerUser && !isTranslatorUser)
 
   var activeRoleView by remember(currentUser) {
-    mutableStateOf(if (isOwnerUser) UserRoleView.ADMIN_OWNER else UserRoleView.READER)
+    mutableStateOf(
+      if (isOwnerUser) UserRoleView.ADMIN_OWNER
+      else if (isTranslatorUser) UserRoleView.TRANSLATOR
+      else UserRoleView.READER
+    )
   }
   var editingSlotNumber by remember { mutableIntStateOf(-1) }
   var editPenName by remember { mutableStateOf("") }

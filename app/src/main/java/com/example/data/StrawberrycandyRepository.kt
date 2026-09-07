@@ -91,6 +91,8 @@ class StrawberrycandyRepository(
 
   val activeUser: Flow<ReaderProfileEntity?> = dao.getActiveReaderProfile()
 
+  val rememberedAccounts: Flow<List<ReaderProfileEntity>> = dao.getAllRememberedAccounts()
+
   val authorSlots: Flow<List<AuthorSlotEntity>> = dao.getAllAuthorSlots()
 
   val allNovelsWithState: Flow<List<NovelWithState>> =
@@ -312,13 +314,13 @@ class StrawberrycandyRepository(
     val userId = "usr_" + provider.lowercase() + "_" + cleanEmail.replace(Regex("[^a-z0-9]"), "_")
     val isOwner = isOwnerEmail(cleanEmail)
 
-    // Check existing profile
+    // Check existing profile for this email or userId
     val existingProfile = dao.getReaderProfileByEmail(cleanEmail) ?: dao.getReaderProfile(userId)
     if (!isOwner && existingProfile != null && !existingProfile.passwordHash.isNullOrBlank() && password.isNotBlank()) {
       if (existingProfile.passwordHash != password) {
         return Result.failure(
           IllegalArgumentException(
-            "Incorrect password for Google Account $cleanEmail. The password entered must match your account password."
+            "Incorrect password for $cleanEmail. The password entered must match your account password. If you forgot your password, tap 'Forgot Password?' to retrieve it."
           )
         )
       }
@@ -370,6 +372,9 @@ class StrawberrycandyRepository(
 
     val existingPoints = existingProfile?.penNamePoints ?: 0
 
+    // Set other accounts to logged out so only this profile is active, but accounts remain saved and remembered
+    dao.logoutAllProfiles()
+
     val profile = ReaderProfileEntity(
       userId = userId,
       displayName = finalName,
@@ -379,7 +384,8 @@ class StrawberrycandyRepository(
       authorSlot = finalSlot,
       penNamePoints = existingPoints,
       lastLoginTimestamp = System.currentTimeMillis(),
-      passwordHash = password.ifBlank { existingProfile?.passwordHash ?: "account_pass" }
+      passwordHash = password.ifBlank { existingProfile?.passwordHash ?: "account_pass" },
+      isLoggedIn = true
     )
     dao.insertReaderProfile(profile)
 
@@ -408,8 +414,80 @@ class StrawberrycandyRepository(
     }
   }
 
+  // Active recovery sessions in memory (email -> RecoverySession)
+  private data class RecoverySession(val email: String, val code: String, val timestamp: Long)
+  private val activeRecoverySessions = java.util.concurrent.ConcurrentHashMap<String, RecoverySession>()
+
+  suspend fun sendPasswordRecoveryCode(email: String): Result<String> {
+    val cleanEmail = email.trim().lowercase()
+    if (cleanEmail.isBlank() || !cleanEmail.contains("@")) {
+      return Result.failure(IllegalArgumentException("Please enter a valid Gmail address."))
+    }
+    val existingProfile = dao.getReaderProfileByEmail(cleanEmail)
+    val isOwner = isOwnerEmail(cleanEmail)
+    if (existingProfile == null && !isOwner) {
+      return Result.failure(
+        IllegalArgumentException("No account found for $cleanEmail on this device. Please sign in or register with your Gmail address.")
+      )
+    }
+    // Generate secure 6-digit recovery code
+    val code = (100000..999999).random().toString()
+    activeRecoverySessions[cleanEmail] = RecoverySession(cleanEmail, code, System.currentTimeMillis())
+    return Result.success(code)
+  }
+
+  suspend fun resetPasswordWithCode(email: String, code: String, newPassword: String): Result<Unit> {
+    val cleanEmail = email.trim().lowercase()
+    val session = activeRecoverySessions[cleanEmail]
+    if (session == null) {
+      return Result.failure(IllegalArgumentException("No active recovery request found for $cleanEmail. Please request a new verification code."))
+    }
+    // Code expires after 15 minutes
+    if (System.currentTimeMillis() - session.timestamp > 15 * 60 * 1000) {
+      activeRecoverySessions.remove(cleanEmail)
+      return Result.failure(IllegalArgumentException("The verification code has expired. Please request a new code."))
+    }
+    if (session.code != code.trim()) {
+      return Result.failure(IllegalArgumentException("Invalid verification code. Please check the 6-digit code sent to $cleanEmail."))
+    }
+    val trimmedPass = newPassword.trim()
+    if (trimmedPass.length < 4) {
+      return Result.failure(IllegalArgumentException("Password must be at least 4 characters."))
+    }
+
+    val isOwner = isOwnerEmail(cleanEmail)
+    val existingProfile = dao.getReaderProfileByEmail(cleanEmail)
+    dao.logoutAllProfiles()
+
+    if (existingProfile != null) {
+      val updated = existingProfile.copy(
+        passwordHash = trimmedPass,
+        isLoggedIn = true,
+        lastLoginTimestamp = System.currentTimeMillis()
+      )
+      dao.insertReaderProfile(updated)
+    } else {
+      val userId = "usr_google_" + cleanEmail.replace(Regex("[^a-z0-9]"), "_")
+      val profile = ReaderProfileEntity(
+        userId = userId,
+        displayName = if (isOwner) "Clarify" else cleanEmail.substringBefore("@").replace(".", " ").replaceFirstChar { it.uppercase() },
+        email = cleanEmail,
+        provider = "GOOGLE",
+        role = if (isOwner) "OWNER" else "READER",
+        authorSlot = if (isOwner) 0 else null,
+        passwordHash = trimmedPass,
+        isLoggedIn = true,
+        lastLoginTimestamp = System.currentTimeMillis()
+      )
+      dao.insertReaderProfile(profile)
+    }
+    activeRecoverySessions.remove(cleanEmail)
+    return Result.success(Unit)
+  }
+
   suspend fun signOut() {
-    dao.clearReaderProfiles()
+    // Preserve all accounts and their credentials, only mark current session as logged out
+    dao.logoutAllProfiles()
   }
 
   suspend fun toggleFavorite(userId: String, novelId: String) {

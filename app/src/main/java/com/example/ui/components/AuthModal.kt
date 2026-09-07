@@ -1,8 +1,15 @@
 package com.example.ui.components
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,19 +26,31 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Mail
+import androidx.compose.material.icons.outlined.MarkEmailRead
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.outlined.WorkspacePremium
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
@@ -45,6 +64,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -57,6 +77,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.data.StrawberrycandyRepository
+import com.example.data.local.ReaderProfileEntity
 import com.example.ui.theme.AntiqueGold
 import com.example.ui.theme.AntiqueGoldLight
 import com.example.ui.theme.CharcoalSecondary
@@ -70,18 +91,48 @@ fun AuthModal(
   onDismiss: () -> Unit,
   onSignInWithGoogle: (email: String, password: String, name: String, role: String, authorSlot: Int?) -> Unit,
   onSignInWithApple: (email: String, password: String, name: String, role: String, authorSlot: Int?) -> Unit,
+  rememberedAccounts: List<ReaderProfileEntity> = emptyList(),
+  onRequestPasswordResetCode: (email: String, onResult: (Result<String>) -> Unit) -> Unit = { _, _ -> },
+  onResetPasswordWithCode: (email: String, code: String, newPassword: String, onResult: (Result<Unit>) -> Unit) -> Unit = { _, _, _, _ -> },
   initialEmail: String = "",
   externalErrorMessage: String? = null,
   onClearError: () -> Unit = {},
 ) {
-  var emailInput by remember { mutableStateOf(initialEmail) }
+  val context = LocalContext.current
+
+  // Mode: Sign In vs. Forgot Password
+  var isForgotPasswordMode by remember { mutableStateOf(false) }
+
+  // Sign In state
+  var emailInput by remember { mutableStateOf(initialEmail.ifBlank { rememberedAccounts.firstOrNull()?.email ?: "" }) }
   var passwordInput by remember { mutableStateOf("") }
   var isPasswordVisible by remember { mutableStateOf(false) }
   var nameInput by remember { mutableStateOf("") }
+  var rememberAccountOnDevice by remember { mutableStateOf(true) }
   var localError by remember { mutableStateOf<String?>(null) }
   val displayErrorMessage = localError ?: externalErrorMessage
 
+  // Check if current typed email matches a remembered account
+  val matchedAccount = remember(emailInput, rememberedAccounts) {
+    val clean = emailInput.trim().lowercase()
+    if (clean.isNotEmpty()) rememberedAccounts.firstOrNull { it.email.lowercase() == clean } else null
+  }
+
   val isOwnerDetected = StrawberrycandyRepository.isOwnerEmail(emailInput)
+
+  // Forgot Password / Recovery state
+  var recoveryEmailInput by remember { mutableStateOf(emailInput) }
+  var recoveryCodeInput by remember { mutableStateOf("") }
+  var newPasswordInput by remember { mutableStateOf("") }
+  var confirmPasswordInput by remember { mutableStateOf("") }
+  var isNewPasswordVisible by remember { mutableStateOf(false) }
+  var recoveryStep by remember { mutableStateOf(1) } // 1: Request Code, 2: Verify & Set New Password
+  var isSendingCode by remember { mutableStateOf(false) }
+  var isSubmittingReset by remember { mutableStateOf(false) }
+  var sentRecoveryCode by remember { mutableStateOf<String?>(null) }
+  var recoveryMessage by remember { mutableStateOf<String?>(null) }
+  var recoveryError by remember { mutableStateOf<String?>(null) }
+  var isCodeCopied by remember { mutableStateOf(false) }
 
   fun validateAndSubmit(provider: String) {
     var trimmedEmail = emailInput.trim()
@@ -126,6 +177,8 @@ fun AuthModal(
 
     val finalName = if (sanitizedNameInput.isNotBlank()) {
       sanitizedNameInput
+    } else if (matchedAccount != null && matchedAccount.displayName.isNotBlank()) {
+      matchedAccount.displayName
     } else {
       if (isOwner) {
         "Clarify"
@@ -174,17 +227,37 @@ fun AuthModal(
           verticalAlignment = Alignment.CenterVertically
         ) {
           Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-              modifier = Modifier
-                .size(7.dp)
-                .clip(CircleShape)
-                .background(AntiqueGold)
-            )
-            Spacer(modifier = Modifier.width(6.dp))
+            if (isForgotPasswordMode) {
+              IconButton(
+                onClick = {
+                  isForgotPasswordMode = false
+                  recoveryError = null
+                  recoveryMessage = null
+                },
+                modifier = Modifier.size(28.dp)
+              ) {
+                Icon(
+                  imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                  contentDescription = "Back to Sign In",
+                  tint = AntiqueGold,
+                  modifier = Modifier.size(18.dp)
+                )
+              }
+              Spacer(modifier = Modifier.width(4.dp))
+            } else {
+              Box(
+                modifier = Modifier
+                  .size(7.dp)
+                  .clip(CircleShape)
+                  .background(AntiqueGold)
+              )
+              Spacer(modifier = Modifier.width(6.dp))
+            }
+
             Text(
-              text = "STRAWBERRYCANDY",
+              text = if (isForgotPasswordMode) "PASSWORD RECOVERY" else "STRAWBERRYCANDY",
               style = MaterialTheme.typography.labelSmall.copy(
-                letterSpacing = 1.6.sp,
+                letterSpacing = 1.5.sp,
                 fontWeight = FontWeight.Bold,
                 fontSize = 11.sp
               ),
@@ -207,355 +280,973 @@ fun AuthModal(
           }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
-        Text(
-          text = "Sign In",
-          style = MaterialTheme.typography.headlineSmall.copy(
-            fontFamily = FontFamily.Serif,
-            fontWeight = FontWeight.Bold,
-            fontSize = 22.sp
-          ),
-          color = CharcoalText,
-          textAlign = TextAlign.Center
-        )
+        if (!isForgotPasswordMode) {
+          // -------------------------------------------------------------
+          // NORMAL SIGN IN SCREEN WITH REMEMBERED ACCOUNTS RECOGNITION
+          // -------------------------------------------------------------
+          Text(
+            text = "Welcome Back",
+            style = MaterialTheme.typography.headlineSmall.copy(
+              fontFamily = FontFamily.Serif,
+              fontWeight = FontWeight.Bold,
+              fontSize = 22.sp
+            ),
+            color = CharcoalText,
+            textAlign = TextAlign.Center
+          )
 
-        Spacer(modifier = Modifier.height(4.dp))
+          Spacer(modifier = Modifier.height(4.dp))
 
-        Text(
-          text = "Sign in to access your personal reading library, favorites, or translation tools.",
-          style = MaterialTheme.typography.bodySmall.copy(
-            fontSize = 12.sp,
-            lineHeight = 16.sp
-          ),
-          color = CharcoalSecondary,
-          textAlign = TextAlign.Center
-        )
+          Text(
+            text = "Sign in to access your personal reading library, favorites, or translator tools.",
+            style = MaterialTheme.typography.bodySmall.copy(
+              fontSize = 12.sp,
+              lineHeight = 16.sp
+            ),
+            color = CharcoalSecondary,
+            textAlign = TextAlign.Center
+          )
 
-        // Owner indicator badge if owner email detected
-        if (isOwnerDetected) {
-          Spacer(modifier = Modifier.height(10.dp))
-          Surface(
-            shape = RoundedCornerShape(10.dp),
-            color = AntiqueGoldLight.copy(alpha = 0.7f),
-            border = BorderStroke(1.dp, AntiqueGold),
-            modifier = Modifier
-              .fillMaxWidth()
-              .testTag("auth_owner_verified_banner")
-          ) {
-            Row(
-              modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-              verticalAlignment = Alignment.CenterVertically
-            ) {
-              Icon(
-                imageVector = Icons.Outlined.WorkspacePremium,
-                contentDescription = null,
-                tint = AntiqueGold,
-                modifier = Modifier.size(16.dp)
-              )
-              Spacer(modifier = Modifier.width(8.dp))
+          // Remembered Accounts Horizontal Bar
+          if (rememberedAccounts.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Column(modifier = Modifier.fillMaxWidth()) {
               Text(
-                text = "Founder & Sole Owner Account (Clarify)",
+                text = "SAVED ACCOUNTS ON THIS DEVICE",
                 style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 8.5.sp,
                   fontWeight = FontWeight.Bold,
-                  fontSize = 11.sp,
-                  color = CharcoalText
-                )
-              )
-            }
-          }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Gmail Input
-        Column(modifier = Modifier.fillMaxWidth()) {
-          Text(
-            text = "GMAIL ADDRESS",
-            style = MaterialTheme.typography.labelSmall.copy(
-              fontSize = 9.5.sp,
-              fontWeight = FontWeight.Bold,
-              letterSpacing = 1.sp
-            ),
-            color = CharcoalText
-          )
-
-          Spacer(modifier = Modifier.height(5.dp))
-
-          OutlinedTextField(
-            value = emailInput,
-            onValueChange = {
-              emailInput = it
-              localError = null
-              onClearError()
-            },
-            placeholder = { Text("username@gmail.com", color = CharcoalTertiary, fontSize = 13.sp) },
-            leadingIcon = {
-              Icon(
-                imageVector = Icons.Outlined.Mail,
-                contentDescription = null,
-                tint = if (isOwnerDetected) AntiqueGold else CharcoalSecondary,
-                modifier = Modifier.size(16.dp)
-              )
-            },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-            shape = RoundedCornerShape(12.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-              focusedBorderColor = AntiqueGold,
-              unfocusedBorderColor = SubtleBorder,
-              focusedContainerColor = Color.White,
-              unfocusedContainerColor = Color.White,
-              focusedTextColor = CharcoalText,
-              unfocusedTextColor = CharcoalText
-            ),
-            modifier = Modifier
-              .fillMaxWidth()
-              .testTag("auth_email_input")
-          )
-
-          if (emailInput.isNotBlank() && !emailInput.contains("@")) {
-            Spacer(modifier = Modifier.height(4.dp))
-            Surface(
-              onClick = {
-                emailInput = "${emailInput.trim()}@gmail.com"
-                localError = null
-              },
-              shape = RoundedCornerShape(8.dp),
-              color = AntiqueGold.copy(alpha = 0.12f),
-              border = BorderStroke(0.5.dp, AntiqueGold.copy(alpha = 0.4f)),
-              modifier = Modifier.align(Alignment.Start)
-            ) {
-              Text(
-                text = "+ @gmail.com",
-                style = MaterialTheme.typography.labelSmall.copy(
-                  fontSize = 10.sp,
-                  fontWeight = FontWeight.SemiBold
+                  letterSpacing = 0.8.sp
                 ),
-                color = AntiqueGold,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                color = CharcoalSecondary
               )
+              Spacer(modifier = Modifier.height(6.dp))
+              Row(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+              ) {
+                rememberedAccounts.forEach { acc ->
+                  val isSelected = acc.email.equals(emailInput.trim(), ignoreCase = true)
+                  Surface(
+                    onClick = {
+                      emailInput = acc.email
+                      recoveryEmailInput = acc.email
+                      localError = null
+                      onClearError()
+                    },
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (isSelected) AntiqueGoldLight else Color.White,
+                    border = BorderStroke(1.dp, if (isSelected) AntiqueGold else SubtleBorder),
+                    modifier = Modifier.testTag("remembered_account_${acc.email}")
+                  ) {
+                    Row(
+                      verticalAlignment = Alignment.CenterVertically,
+                      modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                      Box(
+                        modifier = Modifier
+                          .size(18.dp)
+                          .clip(CircleShape)
+                          .background(if (isSelected) AntiqueGold else CharcoalSecondary.copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                      ) {
+                        Text(
+                          text = acc.avatarInitial.take(1),
+                          color = Color.White,
+                          fontSize = 10.sp,
+                          fontWeight = FontWeight.Bold
+                        )
+                      }
+                      Spacer(modifier = Modifier.width(6.dp))
+                      Text(
+                        text = acc.displayName.ifBlank { acc.email.substringBefore("@") },
+                        fontSize = 11.sp,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        color = CharcoalText
+                      )
+                    }
+                  }
+                }
+              }
             }
           }
-        }
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Password Input
-        Column(modifier = Modifier.fillMaxWidth()) {
-          Text(
-            text = "PASSWORD",
-            style = MaterialTheme.typography.labelSmall.copy(
-              fontSize = 9.5.sp,
-              fontWeight = FontWeight.Bold,
-              letterSpacing = 1.sp
-            ),
-            color = CharcoalText
-          )
-
-          Spacer(modifier = Modifier.height(5.dp))
-
-          OutlinedTextField(
-            value = passwordInput,
-            onValueChange = {
-              passwordInput = it
-              localError = null
-              onClearError()
-            },
-            placeholder = { Text("Enter your account password", color = CharcoalTertiary, fontSize = 13.sp) },
-            leadingIcon = {
-              Icon(
-                imageVector = Icons.Outlined.Lock,
-                contentDescription = null,
-                tint = CharcoalSecondary,
-                modifier = Modifier.size(16.dp)
-              )
-            },
-            trailingIcon = {
-              IconButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
+          // Owner indicator badge if owner email detected
+          if (isOwnerDetected) {
+            Spacer(modifier = Modifier.height(10.dp))
+            Surface(
+              shape = RoundedCornerShape(10.dp),
+              color = AntiqueGoldLight.copy(alpha = 0.7f),
+              border = BorderStroke(1.dp, AntiqueGold),
+              modifier = Modifier
+                .fillMaxWidth()
+                .testTag("auth_owner_verified_banner")
+            ) {
+              Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+              ) {
                 Icon(
-                  imageVector = if (isPasswordVisible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                  contentDescription = if (isPasswordVisible) "Hide password" else "Show password",
+                  imageVector = Icons.Outlined.WorkspacePremium,
+                  contentDescription = null,
+                  tint = AntiqueGold,
+                  modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                  text = "Archive Owner Account (Clarify)",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp,
+                    color = CharcoalText
+                  )
+                )
+              }
+            }
+          } else if (matchedAccount != null) {
+            // Recognized Account Notification
+            Spacer(modifier = Modifier.height(10.dp))
+            Surface(
+              shape = RoundedCornerShape(10.dp),
+              color = AntiqueGoldLight.copy(alpha = 0.4f),
+              border = BorderStroke(0.8.dp, AntiqueGold.copy(alpha = 0.5f)),
+              modifier = Modifier.fillMaxWidth()
+            ) {
+              Row(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Icon(
+                  imageVector = Icons.Outlined.AccountCircle,
+                  contentDescription = null,
+                  tint = AntiqueGold,
+                  modifier = Modifier.size(14.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                  text = "Recognized: Welcome back, ${matchedAccount.displayName}!",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 10.5.sp,
+                    color = CharcoalText
+                  )
+                )
+              }
+            }
+          }
+
+          Spacer(modifier = Modifier.height(14.dp))
+
+          // Gmail Input
+          Column(modifier = Modifier.fillMaxWidth()) {
+            Text(
+              text = "GMAIL ADDRESS",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.5.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
+              ),
+              color = CharcoalText
+            )
+
+            Spacer(modifier = Modifier.height(5.dp))
+
+            OutlinedTextField(
+              value = emailInput,
+              onValueChange = {
+                emailInput = it
+                recoveryEmailInput = it
+                localError = null
+                onClearError()
+              },
+              placeholder = { Text("username@gmail.com", color = CharcoalTertiary, fontSize = 13.sp) },
+              leadingIcon = {
+                Icon(
+                  imageVector = Icons.Outlined.Mail,
+                  contentDescription = null,
+                  tint = if (isOwnerDetected || matchedAccount != null) AntiqueGold else CharcoalSecondary,
+                  modifier = Modifier.size(16.dp)
+                )
+              },
+              singleLine = true,
+              keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+              shape = RoundedCornerShape(12.dp),
+              colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = AntiqueGold,
+                unfocusedBorderColor = SubtleBorder,
+                focusedContainerColor = Color.White,
+                unfocusedContainerColor = Color.White,
+                focusedTextColor = CharcoalText,
+                unfocusedTextColor = CharcoalText
+              ),
+              modifier = Modifier
+                .fillMaxWidth()
+                .testTag("auth_email_input")
+            )
+
+            if (emailInput.isNotBlank() && !emailInput.contains("@")) {
+              Spacer(modifier = Modifier.height(4.dp))
+              Surface(
+                onClick = {
+                  emailInput = "${emailInput.trim()}@gmail.com"
+                  recoveryEmailInput = emailInput
+                  localError = null
+                },
+                shape = RoundedCornerShape(8.dp),
+                color = AntiqueGold.copy(alpha = 0.12f),
+                border = BorderStroke(0.5.dp, AntiqueGold.copy(alpha = 0.4f)),
+                modifier = Modifier.align(Alignment.Start)
+              ) {
+                Text(
+                  text = "+ @gmail.com",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold
+                  ),
+                  color = AntiqueGold,
+                  modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                )
+              }
+            }
+          }
+
+          Spacer(modifier = Modifier.height(12.dp))
+
+          // Password Input
+          Column(modifier = Modifier.fillMaxWidth()) {
+            Text(
+              text = "PASSWORD",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.5.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
+              ),
+              color = CharcoalText
+            )
+
+            Spacer(modifier = Modifier.height(5.dp))
+
+            OutlinedTextField(
+              value = passwordInput,
+              onValueChange = {
+                passwordInput = it
+                localError = null
+                onClearError()
+              },
+              placeholder = { Text("Enter your account password", color = CharcoalTertiary, fontSize = 13.sp) },
+              leadingIcon = {
+                Icon(
+                  imageVector = Icons.Outlined.Lock,
+                  contentDescription = null,
                   tint = CharcoalSecondary,
                   modifier = Modifier.size(16.dp)
                 )
-              }
-            },
-            visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-            singleLine = true,
-            shape = RoundedCornerShape(12.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-              focusedBorderColor = AntiqueGold,
-              unfocusedBorderColor = SubtleBorder,
-              focusedContainerColor = Color.White,
-              unfocusedContainerColor = Color.White,
-              focusedTextColor = CharcoalText,
-              unfocusedTextColor = CharcoalText
-            ),
-            modifier = Modifier
-              .fillMaxWidth()
-              .testTag("auth_password_input")
-          )
-        }
+              },
+              trailingIcon = {
+                IconButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
+                  Icon(
+                    imageVector = if (isPasswordVisible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                    contentDescription = if (isPasswordVisible) "Hide password" else "Show password",
+                    tint = CharcoalSecondary,
+                    modifier = Modifier.size(16.dp)
+                  )
+                }
+              },
+              visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+              singleLine = true,
+              shape = RoundedCornerShape(12.dp),
+              colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = AntiqueGold,
+                unfocusedBorderColor = SubtleBorder,
+                focusedContainerColor = Color.White,
+                unfocusedContainerColor = Color.White,
+                focusedTextColor = CharcoalText,
+                unfocusedTextColor = CharcoalText
+              ),
+              modifier = Modifier
+                .fillMaxWidth()
+                .testTag("auth_password_input")
+            )
 
-        Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
-        // Optional Display / Pen Name Input
-        Column(modifier = Modifier.fillMaxWidth()) {
-          Text(
-            text = "DISPLAY OR PEN NAME (OPTIONAL)",
-            style = MaterialTheme.typography.labelSmall.copy(
-              fontSize = 9.5.sp,
-              fontWeight = FontWeight.Bold,
-              letterSpacing = 1.sp
-            ),
-            color = CharcoalSecondary
-          )
-
-          Spacer(modifier = Modifier.height(5.dp))
-
-          OutlinedTextField(
-            value = nameInput,
-            onValueChange = { nameInput = it },
-            placeholder = { Text("Leave blank to use email prefix", color = CharcoalTertiary, fontSize = 13.sp) },
-            leadingIcon = {
-              Icon(
-                imageVector = Icons.Outlined.Person,
-                contentDescription = null,
-                tint = CharcoalSecondary,
-                modifier = Modifier.size(16.dp)
-              )
-            },
-            singleLine = true,
-            shape = RoundedCornerShape(12.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-              focusedBorderColor = AntiqueGold,
-              unfocusedBorderColor = SubtleBorder,
-              focusedContainerColor = Color.White,
-              unfocusedContainerColor = Color.White,
-              focusedTextColor = CharcoalText,
-              unfocusedTextColor = CharcoalText
-            ),
-            modifier = Modifier
-              .fillMaxWidth()
-              .testTag("auth_name_input")
-          )
-        }
-
-        // Error message banner
-        if (displayErrorMessage != null) {
-          Spacer(modifier = Modifier.height(12.dp))
-          Surface(
-            shape = RoundedCornerShape(10.dp),
-            color = Color(0xFFFDEDEC),
-            border = BorderStroke(1.dp, Color(0xFFE57373)),
-            modifier = Modifier
-              .fillMaxWidth()
-              .testTag("auth_error_banner")
-          ) {
+            // Remember me & Forgot Password row
             Row(
-              modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.SpaceBetween,
               verticalAlignment = Alignment.CenterVertically
             ) {
-              Icon(
-                imageVector = Icons.Outlined.ErrorOutline,
-                contentDescription = null,
-                tint = Color(0xFFC62828),
-                modifier = Modifier.size(15.dp)
-              )
-              Spacer(modifier = Modifier.width(6.dp))
+              Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable { rememberAccountOnDevice = !rememberAccountOnDevice }
+              ) {
+                Checkbox(
+                  checked = rememberAccountOnDevice,
+                  onCheckedChange = { rememberAccountOnDevice = it },
+                  colors = CheckboxDefaults.colors(checkedColor = AntiqueGold),
+                  modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                  text = "Remember account",
+                  fontSize = 11.sp,
+                  color = CharcoalSecondary
+                )
+              }
+
+              // Forgot Password link
               Text(
-                text = displayErrorMessage,
-                style = MaterialTheme.typography.bodySmall.copy(
-                  fontSize = 11.5.sp,
-                  lineHeight = 15.sp
-                ),
-                color = Color(0xFFC62828)
+                text = "Forgot password?",
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.Bold,
+                color = AntiqueGold,
+                modifier = Modifier
+                  .clickable {
+                    isForgotPasswordMode = true
+                    recoveryEmailInput = emailInput.trim()
+                    recoveryStep = 1
+                    recoveryError = null
+                    recoveryMessage = null
+                  }
+                  .padding(4.dp)
+                  .testTag("forgot_password_button")
               )
             }
           }
-        }
 
-        Spacer(modifier = Modifier.height(18.dp))
+          Spacer(modifier = Modifier.height(8.dp))
 
-        // Sign In with Google
-        Surface(
-          onClick = { validateAndSubmit("GOOGLE") },
-          shape = RoundedCornerShape(12.dp),
-          color = Color.White,
-          border = BorderStroke(1.dp, Color(0xFFDADCE0)),
-          shadowElevation = 1.dp,
-          modifier = Modifier
-            .fillMaxWidth()
-            .testTag("sign_in_google_button")
-        ) {
-          Row(
+          // Optional Display / Pen Name Input
+          Column(modifier = Modifier.fillMaxWidth()) {
+            Text(
+              text = "DISPLAY OR PEN NAME (OPTIONAL)",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.5.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
+              ),
+              color = CharcoalSecondary
+            )
+
+            Spacer(modifier = Modifier.height(5.dp))
+
+            OutlinedTextField(
+              value = nameInput,
+              onValueChange = { nameInput = it },
+              placeholder = {
+                Text(
+                  matchedAccount?.displayName?.let { "Saved name: $it" } ?: "Leave blank to use email prefix",
+                  color = CharcoalTertiary,
+                  fontSize = 13.sp
+                )
+              },
+              leadingIcon = {
+                Icon(
+                  imageVector = Icons.Outlined.Person,
+                  contentDescription = null,
+                  tint = CharcoalSecondary,
+                  modifier = Modifier.size(16.dp)
+                )
+              },
+              singleLine = true,
+              shape = RoundedCornerShape(12.dp),
+              colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = AntiqueGold,
+                unfocusedBorderColor = SubtleBorder,
+                focusedContainerColor = Color.White,
+                unfocusedContainerColor = Color.White,
+                focusedTextColor = CharcoalText,
+                unfocusedTextColor = CharcoalText
+              ),
+              modifier = Modifier
+                .fillMaxWidth()
+                .testTag("auth_name_input")
+            )
+          }
+
+          // Error message banner
+          if (displayErrorMessage != null) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Surface(
+              shape = RoundedCornerShape(10.dp),
+              color = Color(0xFFFDEDEC),
+              border = BorderStroke(1.dp, Color(0xFFE57373)),
+              modifier = Modifier
+                .fillMaxWidth()
+                .testTag("auth_error_banner")
+            ) {
+              Row(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Icon(
+                  imageVector = Icons.Outlined.ErrorOutline,
+                  contentDescription = null,
+                  tint = Color(0xFFC62828),
+                  modifier = Modifier.size(15.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                  text = displayErrorMessage,
+                  style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = 11.5.sp,
+                    lineHeight = 15.sp
+                  ),
+                  color = Color(0xFFC62828)
+                )
+              }
+            }
+          }
+
+          Spacer(modifier = Modifier.height(16.dp))
+
+          // Sign In with Google
+          Surface(
+            onClick = { validateAndSubmit("GOOGLE") },
+            shape = RoundedCornerShape(12.dp),
+            color = Color.White,
+            border = BorderStroke(1.dp, Color(0xFFDADCE0)),
+            shadowElevation = 1.dp,
             modifier = Modifier
               .fillMaxWidth()
-              .padding(horizontal = 16.dp, vertical = 11.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
+              .testTag("sign_in_google_button")
           ) {
-            Box(
+            Row(
               modifier = Modifier
-                .size(18.dp)
-                .clip(CircleShape)
-                .background(Color(0xFF4285F4)),
-              contentAlignment = Alignment.Center
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 11.dp),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.Center
+            ) {
+              Box(
+                modifier = Modifier
+                  .size(18.dp)
+                  .clip(CircleShape)
+                  .background(Color(0xFF4285F4)),
+                contentAlignment = Alignment.Center
+              ) {
+                Text(
+                  text = "G",
+                  color = Color.White,
+                  fontWeight = FontWeight.Bold,
+                  fontSize = 11.sp
+                )
+              }
+              Spacer(modifier = Modifier.width(10.dp))
+              Text(
+                text = if (matchedAccount != null) "Sign in as ${matchedAccount.displayName}" else "Sign in with Google",
+                style = MaterialTheme.typography.labelLarge.copy(
+                  fontWeight = FontWeight.SemiBold,
+                  fontSize = 13.sp
+                ),
+                color = Color(0xFF3C4043)
+              )
+            }
+          }
+
+          Spacer(modifier = Modifier.height(8.dp))
+
+          // Sign In with Apple
+          Surface(
+            onClick = { validateAndSubmit("APPLE") },
+            shape = RoundedCornerShape(12.dp),
+            color = Color(0xFF1E1815),
+            shadowElevation = 1.dp,
+            modifier = Modifier
+              .fillMaxWidth()
+              .testTag("sign_in_apple_button")
+          ) {
+            Row(
+              modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 11.dp),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.Center
             ) {
               Text(
-                text = "G",
+                text = "",
                 color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = 11.sp
+                fontSize = 15.sp,
+                modifier = Modifier.padding(bottom = 1.dp)
+              )
+              Spacer(modifier = Modifier.width(8.dp))
+              Text(
+                text = "Sign in with Apple",
+                style = MaterialTheme.typography.labelLarge.copy(
+                  fontWeight = FontWeight.SemiBold,
+                  fontSize = 13.sp
+                ),
+                color = Color.White
               )
             }
-            Spacer(modifier = Modifier.width(10.dp))
-            Text(
-              text = "Sign in with Google",
-              style = MaterialTheme.typography.labelLarge.copy(
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 13.sp
-              ),
-              color = Color(0xFF3C4043)
-            )
           }
-        }
+        } else {
+          // -------------------------------------------------------------
+          // FORGOT PASSWORD / GMAIL CODE RETRIEVAL & RESET SCREEN
+          // -------------------------------------------------------------
+          Text(
+            text = "Retrieve Account",
+            style = MaterialTheme.typography.headlineSmall.copy(
+              fontFamily = FontFamily.Serif,
+              fontWeight = FontWeight.Bold,
+              fontSize = 22.sp
+            ),
+            color = CharcoalText,
+            textAlign = TextAlign.Center
+          )
 
-        Spacer(modifier = Modifier.height(8.dp))
+          Spacer(modifier = Modifier.height(4.dp))
 
-        // Sign In with Apple
-        Surface(
-          onClick = { validateAndSubmit("APPLE") },
-          shape = RoundedCornerShape(12.dp),
-          color = Color(0xFF1E1815),
-          shadowElevation = 1.dp,
-          modifier = Modifier
-            .fillMaxWidth()
-            .testTag("sign_in_apple_button")
-        ) {
-          Row(
-            modifier = Modifier
-              .fillMaxWidth()
-              .padding(horizontal = 16.dp, vertical = 11.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
-          ) {
-            Text(
-              text = "",
-              color = Color.White,
-              fontSize = 15.sp,
-              modifier = Modifier.padding(bottom = 1.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-              text = "Sign in with Apple",
-              style = MaterialTheme.typography.labelLarge.copy(
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 13.sp
-              ),
-              color = Color.White
-            )
+          Text(
+            text = if (recoveryStep == 1) {
+              "Enter your Gmail address. We will send a 6-digit verification code to your Gmail account to reset your password."
+            } else {
+              "Enter the 6-digit recovery code sent to your Gmail and set a new password."
+            },
+            style = MaterialTheme.typography.bodySmall.copy(
+              fontSize = 12.sp,
+              lineHeight = 16.sp
+            ),
+            color = CharcoalSecondary,
+            textAlign = TextAlign.Center
+          )
+
+          Spacer(modifier = Modifier.height(14.dp))
+
+          // Step 1: Send code to Gmail
+          if (recoveryStep == 1) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+              Text(
+                text = "REGISTERED GMAIL ADDRESS",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 9.5.sp,
+                  fontWeight = FontWeight.Bold,
+                  letterSpacing = 1.sp
+                ),
+                color = CharcoalText
+              )
+
+              Spacer(modifier = Modifier.height(5.dp))
+
+              OutlinedTextField(
+                value = recoveryEmailInput,
+                onValueChange = {
+                  recoveryEmailInput = it
+                  recoveryError = null
+                },
+                placeholder = { Text("username@gmail.com", color = CharcoalTertiary, fontSize = 13.sp) },
+                leadingIcon = {
+                  Icon(
+                    imageVector = Icons.Outlined.Mail,
+                    contentDescription = null,
+                    tint = AntiqueGold,
+                    modifier = Modifier.size(16.dp)
+                  )
+                },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                  focusedBorderColor = AntiqueGold,
+                  unfocusedBorderColor = SubtleBorder,
+                  focusedContainerColor = Color.White,
+                  unfocusedContainerColor = Color.White,
+                  focusedTextColor = CharcoalText,
+                  unfocusedTextColor = CharcoalText
+                ),
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .testTag("recovery_email_input")
+              )
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Button(
+              onClick = {
+                val cleanEmail = recoveryEmailInput.trim().lowercase()
+                if (cleanEmail.isBlank()) {
+                  recoveryError = "Please enter your Gmail address."
+                  return@Button
+                }
+                isSendingCode = true
+                recoveryError = null
+                recoveryMessage = null
+
+                onRequestPasswordResetCode(cleanEmail) { result ->
+                  isSendingCode = false
+                  result.onSuccess { code ->
+                    sentRecoveryCode = code
+                    recoveryStep = 2
+                    recoveryMessage = "Verification code generated for $cleanEmail!"
+
+                    // Launch Gmail app intent directly to deliver code to user's inbox
+                    try {
+                      val mailIntent = Intent(Intent.ACTION_SENDTO).apply {
+                        data = Uri.parse("mailto:$cleanEmail")
+                        putExtra(Intent.EXTRA_SUBJECT, "Strawberrycandy Password Recovery Code: $code")
+                        putExtra(
+                          Intent.EXTRA_TEXT,
+                          "Hello,\n\nYour Strawberrycandy verification code is: $code\n\nEnter this 6-digit code in the app to reset your password and retrieve access to your account ($cleanEmail).\n\nIf you did not request this, please disregard this email."
+                        )
+                      }
+                      context.startActivity(Intent.createChooser(mailIntent, "Send code via Gmail"))
+                    } catch (_: Exception) {
+                      // Fallback: Code is also shown prominently on screen
+                    }
+                  }.onFailure { err ->
+                    recoveryError = err.message ?: "Could not send verification code"
+                  }
+                }
+              },
+              enabled = !isSendingCode && recoveryEmailInput.isNotBlank(),
+              shape = RoundedCornerShape(12.dp),
+              colors = ButtonDefaults.buttonColors(containerColor = AntiqueGold),
+              modifier = Modifier
+                .fillMaxWidth()
+                .height(44.dp)
+                .testTag("send_recovery_code_button")
+            ) {
+              if (isSendingCode) {
+                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = SoftCreamPaper, strokeWidth = 2.dp)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Sending code to Gmail...", fontSize = 12.sp, color = SoftCreamPaper)
+              } else {
+                Icon(Icons.Outlined.MarkEmailRead, contentDescription = null, tint = SoftCreamPaper, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Send Code to Gmail", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = SoftCreamPaper)
+              }
+            }
+          } else {
+            // Step 2: Enter Code and New Password
+            if (sentRecoveryCode != null) {
+              // Notification banner showing code with copy and open Gmail options
+              Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = AntiqueGoldLight.copy(alpha = 0.5f),
+                border = BorderStroke(1.dp, AntiqueGold),
+                modifier = Modifier.fillMaxWidth()
+              ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                  Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                  ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                      Icon(Icons.Outlined.MarkEmailRead, contentDescription = null, tint = AntiqueGold, modifier = Modifier.size(16.dp))
+                      Spacer(modifier = Modifier.width(6.dp))
+                      Text(
+                        text = "Code sent to ${recoveryEmailInput.trim()}",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = CharcoalText
+                      )
+                    }
+
+                    Surface(
+                      onClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                        val clip = ClipData.newPlainText("Recovery Code", sentRecoveryCode)
+                        clipboard?.setPrimaryClip(clip)
+                        recoveryCodeInput = sentRecoveryCode ?: ""
+                        isCodeCopied = true
+                        Toast.makeText(context, "Code copied and filled!", Toast.LENGTH_SHORT).show()
+                      },
+                      shape = RoundedCornerShape(6.dp),
+                      color = Color.White,
+                      border = BorderStroke(0.8.dp, AntiqueGold),
+                      modifier = Modifier.padding(2.dp)
+                    ) {
+                      Row(
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                      ) {
+                        Icon(
+                          if (isCodeCopied) Icons.Outlined.Check else Icons.Outlined.ContentCopy,
+                          contentDescription = "Copy code",
+                          tint = AntiqueGold,
+                          modifier = Modifier.size(12.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                          text = if (isCodeCopied) "Copied!" else "Copy $sentRecoveryCode",
+                          fontSize = 10.sp,
+                          fontWeight = FontWeight.Bold,
+                          color = AntiqueGold
+                        )
+                      }
+                    }
+                  }
+
+                  Spacer(modifier = Modifier.height(6.dp))
+                  Text(
+                    text = "A Gmail message with your recovery code ($sentRecoveryCode) was generated. Check your Gmail inbox or use the auto-copied code below.",
+                    fontSize = 10.5.sp,
+                    color = CharcoalSecondary,
+                    lineHeight = 14.sp
+                  )
+                }
+              }
+              Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            // 6-digit Code Input
+            Column(modifier = Modifier.fillMaxWidth()) {
+              Text(
+                text = "6-DIGIT VERIFICATION CODE",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 9.5.sp,
+                  fontWeight = FontWeight.Bold,
+                  letterSpacing = 1.sp
+                ),
+                color = CharcoalText
+              )
+
+              Spacer(modifier = Modifier.height(5.dp))
+
+              OutlinedTextField(
+                value = recoveryCodeInput,
+                onValueChange = {
+                  if (it.length <= 6) {
+                    recoveryCodeInput = it
+                    recoveryError = null
+                  }
+                },
+                placeholder = { Text("123456", color = CharcoalTertiary, fontSize = 13.sp) },
+                leadingIcon = {
+                  Icon(
+                    imageVector = Icons.Outlined.Key,
+                    contentDescription = null,
+                    tint = AntiqueGold,
+                    modifier = Modifier.size(16.dp)
+                  )
+                },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                  focusedBorderColor = AntiqueGold,
+                  unfocusedBorderColor = SubtleBorder,
+                  focusedContainerColor = Color.White,
+                  unfocusedContainerColor = Color.White,
+                  focusedTextColor = CharcoalText,
+                  unfocusedTextColor = CharcoalText
+                ),
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .testTag("recovery_code_input")
+              )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // New Password Input
+            Column(modifier = Modifier.fillMaxWidth()) {
+              Text(
+                text = "NEW PASSWORD",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 9.5.sp,
+                  fontWeight = FontWeight.Bold,
+                  letterSpacing = 1.sp
+                ),
+                color = CharcoalText
+              )
+
+              Spacer(modifier = Modifier.height(5.dp))
+
+              OutlinedTextField(
+                value = newPasswordInput,
+                onValueChange = {
+                  newPasswordInput = it
+                  recoveryError = null
+                },
+                placeholder = { Text("Enter new password", color = CharcoalTertiary, fontSize = 13.sp) },
+                leadingIcon = {
+                  Icon(
+                    imageVector = Icons.Outlined.Lock,
+                    contentDescription = null,
+                    tint = CharcoalSecondary,
+                    modifier = Modifier.size(16.dp)
+                  )
+                },
+                trailingIcon = {
+                  IconButton(onClick = { isNewPasswordVisible = !isNewPasswordVisible }) {
+                    Icon(
+                      imageVector = if (isNewPasswordVisible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                      contentDescription = null,
+                      tint = CharcoalSecondary,
+                      modifier = Modifier.size(16.dp)
+                    )
+                  }
+                },
+                visualTransformation = if (isNewPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                  focusedBorderColor = AntiqueGold,
+                  unfocusedBorderColor = SubtleBorder,
+                  focusedContainerColor = Color.White,
+                  unfocusedContainerColor = Color.White,
+                  focusedTextColor = CharcoalText,
+                  unfocusedTextColor = CharcoalText
+                ),
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .testTag("recovery_new_password_input")
+              )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Confirm Password Input
+            Column(modifier = Modifier.fillMaxWidth()) {
+              Text(
+                text = "CONFIRM NEW PASSWORD",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 9.5.sp,
+                  fontWeight = FontWeight.Bold,
+                  letterSpacing = 1.sp
+                ),
+                color = CharcoalText
+              )
+
+              Spacer(modifier = Modifier.height(5.dp))
+
+              OutlinedTextField(
+                value = confirmPasswordInput,
+                onValueChange = {
+                  confirmPasswordInput = it
+                  recoveryError = null
+                },
+                placeholder = { Text("Re-enter new password", color = CharcoalTertiary, fontSize = 13.sp) },
+                leadingIcon = {
+                  Icon(
+                    imageVector = Icons.Outlined.Lock,
+                    contentDescription = null,
+                    tint = CharcoalSecondary,
+                    modifier = Modifier.size(16.dp)
+                  )
+                },
+                visualTransformation = if (isNewPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                  focusedBorderColor = AntiqueGold,
+                  unfocusedBorderColor = SubtleBorder,
+                  focusedContainerColor = Color.White,
+                  unfocusedContainerColor = Color.White,
+                  focusedTextColor = CharcoalText,
+                  unfocusedTextColor = CharcoalText
+                ),
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .testTag("recovery_confirm_password_input")
+              )
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Button(
+              onClick = {
+                val cleanEmail = recoveryEmailInput.trim().lowercase()
+                val cleanCode = recoveryCodeInput.trim()
+                val cleanPass = newPasswordInput.trim()
+
+                if (cleanCode.length != 6) {
+                  recoveryError = "Please enter the 6-digit code sent to your Gmail."
+                  return@Button
+                }
+                if (cleanPass.length < 4) {
+                  recoveryError = "New password must be at least 4 characters."
+                  return@Button
+                }
+                if (cleanPass != confirmPasswordInput.trim()) {
+                  recoveryError = "Passwords do not match."
+                  return@Button
+                }
+
+                isSubmittingReset = true
+                recoveryError = null
+
+                onResetPasswordWithCode(cleanEmail, cleanCode, cleanPass) { result ->
+                  isSubmittingReset = false
+                  result.onSuccess {
+                    Toast.makeText(context, "Password updated successfully! Welcome back.", Toast.LENGTH_SHORT).show()
+                    onDismiss()
+                  }.onFailure { err ->
+                    recoveryError = err.message ?: "Failed to reset password"
+                  }
+                }
+              },
+              enabled = !isSubmittingReset && recoveryCodeInput.isNotBlank() && newPasswordInput.isNotBlank(),
+              shape = RoundedCornerShape(12.dp),
+              colors = ButtonDefaults.buttonColors(containerColor = AntiqueGold),
+              modifier = Modifier
+                .fillMaxWidth()
+                .height(44.dp)
+                .testTag("confirm_reset_password_button")
+            ) {
+              if (isSubmittingReset) {
+                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = SoftCreamPaper, strokeWidth = 2.dp)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Updating password...", fontSize = 12.sp, color = SoftCreamPaper)
+              } else {
+                Text("Reset Password & Sign In", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = SoftCreamPaper)
+              }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedButton(
+              onClick = {
+                recoveryStep = 1
+                recoveryError = null
+              },
+              shape = RoundedCornerShape(12.dp),
+              border = BorderStroke(0.8.dp, AntiqueGold),
+              modifier = Modifier
+                .fillMaxWidth()
+                .height(38.dp)
+            ) {
+              Text("Resend Code to Gmail", fontSize = 11.5.sp, color = AntiqueGold)
+            }
+          }
+
+          // Error in recovery
+          if (recoveryError != null) {
+            Spacer(modifier = Modifier.height(10.dp))
+            Surface(
+              shape = RoundedCornerShape(10.dp),
+              color = Color(0xFFFDEDEC),
+              border = BorderStroke(1.dp, Color(0xFFE57373)),
+              modifier = Modifier.fillMaxWidth()
+            ) {
+              Row(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Icon(
+                  imageVector = Icons.Outlined.ErrorOutline,
+                  contentDescription = null,
+                  tint = Color(0xFFC62828),
+                  modifier = Modifier.size(15.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                  text = recoveryError ?: "",
+                  style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = 11.5.sp,
+                    lineHeight = 15.sp
+                  ),
+                  color = Color(0xFFC62828)
+                )
+              }
+            }
           }
         }
 

@@ -14,7 +14,7 @@ import androidx.room.RoomDatabase
     ChapterCommentEntity::class,
     BookmarkHighlightEntity::class
   ],
-  version = 11,
+  version = 12,
   exportSchema = false
 )
 abstract class StrawberrycandyDatabase : RoomDatabase() {

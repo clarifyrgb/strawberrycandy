@@ -15,4 +15,5 @@ data class ReaderProfileEntity(
   val lastLoginTimestamp: Long = System.currentTimeMillis(),
   val penNamePoints: Int = 0,
   val passwordHash: String? = null,
+  val isLoggedIn: Boolean = true,
 )

@@ -30,7 +30,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -128,6 +130,7 @@ import com.example.ui.components.ReaderProfileModal
 import com.example.ui.components.TranslatorProfileModal
 import com.example.ui.theme.AntiqueGold
 import com.example.ui.theme.AntiqueGoldLight
+import com.example.ui.theme.CardWarmWhite
 import com.example.ui.theme.DeepBurgundy
 import com.example.ui.theme.CharcoalSecondary
 import com.example.ui.theme.CharcoalTertiary
@@ -226,23 +229,49 @@ fun HomeScreen(
           }
         },
         onOpenUpload = {
-          selectedUploadSlot = activeUser?.authorSlot ?: 0
-          viewModel.openUploadDialog()
+          if (activeUser == null) {
+            viewModel.openAuthDialog()
+            viewModel.showSnackbar("Please sign in to publish novels directly to the Cloud Archive")
+          } else {
+            selectedUploadSlot = activeUser.authorSlot ?: 0
+            viewModel.openUploadDialog()
+          }
         },
         activeTranslatorsCount = activeTranslators.size
       )
 
-      // 2. Novel Search Bar for Readers and Translators
-      NovelSearchBar(
-        query = uiState.novelSearchQuery,
-        onQueryChange = { viewModel.setNovelSearchQuery(it) },
-        onClearQuery = { viewModel.clearNovelSearchQuery() },
-        matchCount = novels.size,
-        totalCount = allNovelsList.size,
-        modifier = Modifier
-          .fillMaxWidth()
-          .padding(horizontal = 16.dp, vertical = 6.dp)
-      )
+      if (activeUser == null) {
+        // Guest mode: Novels are hidden until user logs in
+        GuestArchiveLockedView(
+          rememberedAccounts = uiState.rememberedAccounts,
+          onOpenAuth = { viewModel.openAuthDialog() }
+        )
+      } else {
+        // Logged-in mode
+        // 1. Room for Translators and Owner (appears after signing in!)
+        if (canUploadNovel) {
+          TranslatorAndOwnerRoomCard(
+            activeUser = activeUser,
+            isSoleOwner = isSoleOwner,
+            onOpenAuthorRooms = { isAuthorRoomsModalOpen = true },
+            onOpenUpload = {
+              selectedUploadSlot = activeUser.authorSlot ?: 0
+              viewModel.openUploadDialog()
+            }
+          )
+        }
+
+        // 2. Novel Search Bar for Readers and Translators
+        NovelSearchBar(
+          query = uiState.novelSearchQuery,
+          onQueryChange = { viewModel.setNovelSearchQuery(it) },
+          onClearQuery = { viewModel.clearNovelSearchQuery() },
+          matchCount = novels.size,
+          totalCount = allNovelsList.size,
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+        )
 
       // Real-Time Alert for newly posted novels in APK
       val alertNovel = uiState.newlyPostedNovelAlert
@@ -435,234 +464,6 @@ fun HomeScreen(
         }
       }
 
-      // Translator Collective Archive (strawberrycandy + Permitted Translators)
-      Row(
-        modifier = Modifier
-          .fillMaxWidth()
-          .horizontalScroll(rememberScrollState())
-          .padding(horizontal = 24.dp, vertical = 2.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically
-      ) {
-        // "All Translators" opens the Translator Archive with live active count
-        FilterChip(
-          selected = true,
-          enabled = activeUser != null,
-          onClick = {
-            if (activeUser != null) {
-              isAuthorRoomsModalOpen = true
-            }
-          },
-          leadingIcon = {
-            Icon(
-              imageVector = if (activeUser != null) Icons.Outlined.WorkspacePremium else Icons.Outlined.Lock,
-              contentDescription = if (activeUser != null) null else "Log in required",
-              tint = if (activeUser != null) AntiqueGold else CharcoalSecondary.copy(alpha = 0.5f),
-              modifier = Modifier.size(13.dp)
-            )
-          },
-          label = {
-            Text(
-              if (activeUser != null) "All Translators (${activeTranslators.size} Active)" else "Curators (Log in to view)",
-              style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold
-              )
-            )
-          },
-          colors = FilterChipDefaults.filterChipColors(
-            selectedContainerColor = CharcoalText,
-            selectedLabelColor = SoftCreamPaper,
-            containerColor = SoftCreamPaper,
-            labelColor = CharcoalSecondary,
-            disabledContainerColor = SoftCreamPaper.copy(alpha = 0.5f),
-            disabledLabelColor = CharcoalSecondary.copy(alpha = 0.5f)
-          ),
-          border = BorderStroke(1.dp, if (activeUser != null) CharcoalText else SubtleBorder.copy(alpha = 0.5f)),
-          shape = RoundedCornerShape(12.dp)
-        )
-
-        val ownerSlot = uiState.authorSlots.find { it.slotNumber == 0 } ?: AuthorSlotEntity(
-          slotNumber = 0,
-          authorName = "strawberrycandy",
-          penName = "strawberrycandy",
-          bio = "Founder & Curator at Strawberrycandy Archive. Permanent editorial administrator.",
-          avatarColorHex = 0xFF8C2D48,
-          accessCode = "ARCHIVE-OWNER-0",
-          isClaimed = true,
-          isPermissionGranted = true
-        )
-
-        FilterChip(
-          selected = false,
-          enabled = activeUser != null,
-          onClick = {
-            if (activeUser != null) {
-              selectedTranslatorForDetail = ownerSlot
-            }
-          },
-          leadingIcon = {
-            Icon(
-              imageVector = if (activeUser != null) Icons.Outlined.WorkspacePremium else Icons.Outlined.Lock,
-              contentDescription = if (activeUser != null) null else "Log in required",
-              tint = if (activeUser != null) AntiqueGold else CharcoalSecondary.copy(alpha = 0.5f),
-              modifier = Modifier.size(12.dp)
-            )
-          },
-          label = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-              Text(
-                "strawberrycandy",
-                style = MaterialTheme.typography.labelSmall.copy(
-                  fontSize = 11.sp,
-                  fontWeight = FontWeight.SemiBold
-                )
-              )
-              val founderCount = novels.count { it.authorSlot == 0 }
-              if (founderCount > 0) {
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                  "($founderCount)",
-                  style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 9.5.sp,
-                    color = if (activeUser != null) AntiqueGold else CharcoalSecondary.copy(alpha = 0.5f)
-                  )
-                )
-              }
-            }
-          },
-          colors = FilterChipDefaults.filterChipColors(
-            selectedContainerColor = SoftCreamPaper,
-            selectedLabelColor = CharcoalText,
-            containerColor = SoftCreamPaper,
-            labelColor = CharcoalSecondary,
-            disabledContainerColor = SoftCreamPaper.copy(alpha = 0.5f),
-            disabledLabelColor = CharcoalSecondary.copy(alpha = 0.5f)
-          ),
-          border = BorderStroke(1.dp, if (activeUser != null) AntiqueGold.copy(alpha = 0.5f) else SubtleBorder.copy(alpha = 0.4f)),
-          shape = RoundedCornerShape(12.dp)
-        )
-
-        // Active Curators (Permitted Translators)
-        activeTranslators.forEach { slot ->
-          val safePenName = slot.penName.replace(Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"), "").trim().ifBlank {
-            "Translator ${slot.slotNumber}"
-          }
-          FilterChip(
-            selected = false,
-            enabled = activeUser != null,
-            onClick = {
-              if (activeUser != null) {
-                selectedTranslatorForDetail = slot
-              }
-            },
-            leadingIcon = {
-              if (activeUser != null) {
-                Box(
-                  modifier = Modifier
-                    .size(7.dp)
-                    .background(Color(0xFF2E7D32), CircleShape)
-                )
-              } else {
-                Icon(
-                  imageVector = Icons.Outlined.Lock,
-                  contentDescription = "Log in required",
-                  tint = CharcoalSecondary.copy(alpha = 0.5f),
-                  modifier = Modifier.size(11.dp)
-                )
-              }
-            },
-            label = {
-              Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                  safePenName,
-                  style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium
-                  )
-                )
-                val count = novels.count { it.authorSlot == slot.slotNumber }
-                if (count > 0) {
-                  Spacer(modifier = Modifier.width(4.dp))
-                  Text(
-                    "($count)",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                      fontSize = 9.5.sp,
-                      color = CharcoalTertiary
-                    )
-                  )
-                }
-              }
-            },
-            colors = FilterChipDefaults.filterChipColors(
-              selectedContainerColor = SoftCreamPaper,
-              selectedLabelColor = CharcoalText,
-              containerColor = SoftCreamPaper,
-              labelColor = CharcoalSecondary,
-              disabledContainerColor = SoftCreamPaper.copy(alpha = 0.5f),
-              disabledLabelColor = CharcoalSecondary.copy(alpha = 0.5f)
-            ),
-            border = BorderStroke(1.dp, SubtleBorder),
-            shape = RoundedCornerShape(12.dp)
-          )
-        }
-
-        // Translators who can be granted permission in the future (Only visible to Archive Sole Owner)
-        if (isSoleOwner && futureGrantableTranslators.isNotEmpty()) {
-          Box(
-            modifier = Modifier
-              .padding(horizontal = 4.dp)
-              .width(1.dp)
-              .height(18.dp)
-              .background(SubtleBorder)
-          )
-
-          futureGrantableTranslators.forEach { slot ->
-            FilterChip(
-              selected = false,
-              onClick = { slotToGrantPermission = slot },
-              leadingIcon = {
-                Icon(
-                  imageVector = Icons.Outlined.PersonAdd,
-                  contentDescription = "Grant Permission",
-                  tint = AntiqueGold,
-                  modifier = Modifier.size(12.dp)
-                )
-              },
-              label = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                  Text(
-                    slot.penName,
-                    style = MaterialTheme.typography.labelSmall.copy(
-                      fontSize = 11.sp,
-                      fontWeight = FontWeight.Normal
-                    ),
-                    color = CharcoalText.copy(alpha = 0.88f)
-                  )
-                  Spacer(modifier = Modifier.width(4.dp))
-                  Text(
-                    "(+Grant)",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                      fontSize = 9.sp,
-                      fontWeight = FontWeight.Bold,
-                      color = AntiqueGold
-                    )
-                  )
-                }
-              },
-              colors = FilterChipDefaults.filterChipColors(
-                selectedContainerColor = AntiqueGold.copy(alpha = 0.08f),
-                selectedLabelColor = CharcoalText,
-                containerColor = AntiqueGold.copy(alpha = 0.04f),
-                labelColor = CharcoalSecondary
-              ),
-              border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.45f)),
-              shape = RoundedCornerShape(12.dp)
-            )
-          }
-        }
-      }
-
       Spacer(modifier = Modifier.height(10.dp))
 
       // 4. "Continue Where You Stopped Reading" Card (if active reader has reading progress)
@@ -827,7 +628,7 @@ fun HomeScreen(
               textAlign = TextAlign.Center
             )
 
-            if (isGlobalArchiveEmpty) {
+            if (isGlobalArchiveEmpty && canUploadNovel) {
               Spacer(modifier = Modifier.height(14.dp))
               Button(
                 onClick = {
@@ -972,6 +773,7 @@ fun HomeScreen(
           )
         }
       }
+    } // End of activeUser != null
 
       Spacer(modifier = Modifier.height(18.dp))
 
@@ -1040,6 +842,13 @@ fun HomeScreen(
         },
         onSignInWithApple = { email, password, name, role, authorSlot ->
           viewModel.signInWithApple(email = email, password = password, displayName = name, role = role, authorSlot = authorSlot)
+        },
+        rememberedAccounts = uiState.rememberedAccounts,
+        onRequestPasswordResetCode = { email, onResult ->
+          viewModel.requestPasswordResetCode(email, onResult)
+        },
+        onResetPasswordWithCode = { email, code, newPassword, onResult ->
+          viewModel.resetPasswordWithCode(email, code, newPassword, onResult)
         },
         externalErrorMessage = uiState.authErrorMessage,
         onClearError = { viewModel.clearAuthError() }
@@ -1394,7 +1203,7 @@ private fun TopUtilityBar(
       verticalAlignment = Alignment.CenterVertically
     ) {
       // Left: Brand Title STRAWBERRYCANDY
-      Column {
+      Column(modifier = Modifier.weight(1f, fill = false)) {
         Text(
           text = "STRAWBERRYCANDY",
           style = MaterialTheme.typography.titleMedium.copy(
@@ -1542,36 +1351,6 @@ private fun TopUtilityBar(
               )
             }
           }
-        } else {
-          // Clean Sign In button
-          Surface(
-            onClick = onOpenAuth,
-            shape = RoundedCornerShape(16.dp),
-            color = SoftCreamPaper,
-            border = BorderStroke(1.dp, AntiqueGold),
-            modifier = Modifier.testTag("sign_in_prompt_button")
-          ) {
-            Row(
-              verticalAlignment = Alignment.CenterVertically,
-              modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-            ) {
-              Icon(
-                imageVector = Icons.Outlined.Person,
-                contentDescription = null,
-                tint = AntiqueGold,
-                modifier = Modifier.size(14.dp)
-              )
-              Spacer(modifier = Modifier.width(4.dp))
-              Text(
-                text = "Sign In",
-                style = MaterialTheme.typography.labelSmall.copy(
-                  fontWeight = FontWeight.Bold,
-                  fontSize = 11.sp
-                ),
-                color = CharcoalText
-              )
-            }
-          }
         }
       }
     }
@@ -1635,7 +1414,7 @@ private fun TopUtilityBar(
               )
               Spacer(modifier = Modifier.width(3.dp))
               Text(
-                text = "Upload",
+                text = "✍️ Publish Novel",
                 style = MaterialTheme.typography.labelSmall.copy(
                   fontWeight = FontWeight.Bold,
                   fontSize = 9.5.sp
@@ -3053,4 +2832,343 @@ private fun CuratedCoverGridCard(
     }
   }
 }
+}
+
+@Composable
+private fun GuestArchiveLockedView(
+  rememberedAccounts: List<ReaderProfileEntity>,
+  onOpenAuth: () -> Unit
+) {
+  Column(
+    modifier = Modifier
+      .fillMaxWidth()
+      .padding(horizontal = 20.dp, vertical = 20.dp),
+    horizontalAlignment = Alignment.CenterHorizontally
+  ) {
+    Surface(
+      shape = RoundedCornerShape(22.dp),
+      color = CardWarmWhite,
+      border = BorderStroke(1.2.dp, AntiqueGold.copy(alpha = 0.45f)),
+      shadowElevation = 2.dp,
+      modifier = Modifier
+        .fillMaxWidth()
+        .testTag("guest_archive_locked_card")
+    ) {
+      Column(
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(horizontal = 20.dp, vertical = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+      ) {
+        // Icon Crest
+        Box(
+          modifier = Modifier
+            .size(54.dp)
+            .clip(CircleShape)
+            .background(AntiqueGold.copy(alpha = 0.12f)),
+          contentAlignment = Alignment.Center
+        ) {
+          Icon(
+            imageVector = Icons.AutoMirrored.Outlined.MenuBook,
+            contentDescription = "Archive Portal",
+            tint = AntiqueGold,
+            modifier = Modifier.size(28.dp)
+          )
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        Text(
+          text = "STRAWBERRYCANDY ARCHIVE",
+          style = MaterialTheme.typography.labelSmall.copy(
+            letterSpacing = 2.sp,
+            fontWeight = FontWeight.Bold,
+            fontSize = 11.sp
+          ),
+          color = AntiqueGold
+        )
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        Text(
+          text = "Sign In to Access Novels",
+          style = MaterialTheme.typography.headlineSmall.copy(
+            fontFamily = FontFamily.Serif,
+            fontWeight = FontWeight.Bold,
+            fontSize = 20.sp
+          ),
+          color = CharcoalText,
+          textAlign = TextAlign.Center
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+          text = "To protect translated manuscripts and synchronize your reading progress, please sign in with your account. Returning readers and curators can sign in to resume reading.",
+          style = MaterialTheme.typography.bodySmall.copy(
+            fontSize = 12.sp,
+            lineHeight = 17.sp
+          ),
+          color = CharcoalSecondary,
+          textAlign = TextAlign.Center
+        )
+
+        // Saved accounts quick access
+        if (rememberedAccounts.isNotEmpty()) {
+          Spacer(modifier = Modifier.height(16.dp))
+          HorizontalDivider(color = SubtleBorder.copy(alpha = 0.8f), thickness = 0.8.dp)
+          Spacer(modifier = Modifier.height(12.dp))
+
+          Text(
+            text = "SAVED ACCOUNTS ON THIS DEVICE",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 9.sp,
+              fontWeight = FontWeight.Bold,
+              letterSpacing = 0.8.sp
+            ),
+            color = CharcoalSecondary
+          )
+
+          Spacer(modifier = Modifier.height(8.dp))
+
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.Center
+          ) {
+            rememberedAccounts.forEach { acc ->
+              Surface(
+                onClick = onOpenAuth,
+                shape = RoundedCornerShape(14.dp),
+                color = SoftCreamPaper,
+                border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.5f)),
+                modifier = Modifier
+                  .padding(horizontal = 4.dp)
+                  .testTag("guest_saved_account_${acc.email}")
+              ) {
+                Row(
+                  verticalAlignment = Alignment.CenterVertically,
+                  modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                ) {
+                  Box(
+                    modifier = Modifier
+                      .size(16.dp)
+                      .clip(CircleShape)
+                      .background(AntiqueGold),
+                    contentAlignment = Alignment.Center
+                  ) {
+                    Text(
+                      text = acc.avatarInitial.take(1),
+                      color = Color.White,
+                      fontSize = 9.sp,
+                      fontWeight = FontWeight.Bold
+                    )
+                  }
+                  Spacer(modifier = Modifier.width(6.dp))
+                  Text(
+                    text = acc.displayName.ifBlank { acc.email.substringBefore("@") },
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = CharcoalText
+                  )
+                }
+              }
+            }
+          }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // Large Sign In Button
+        Button(
+          onClick = onOpenAuth,
+          shape = RoundedCornerShape(14.dp),
+          colors = ButtonDefaults.buttonColors(containerColor = AntiqueGold),
+          elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp),
+          modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .testTag("guest_sign_in_button")
+        ) {
+          Icon(
+            imageVector = Icons.Outlined.Person,
+            contentDescription = null,
+            tint = SoftCreamPaper,
+            modifier = Modifier.size(18.dp)
+          )
+          Spacer(modifier = Modifier.width(8.dp))
+          Text(
+            text = "Sign In / Register Account",
+            style = MaterialTheme.typography.labelLarge.copy(
+              fontWeight = FontWeight.Bold,
+              fontSize = 13.5.sp
+            ),
+            color = SoftCreamPaper
+          )
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun TranslatorAndOwnerRoomCard(
+  activeUser: ReaderProfileEntity,
+  isSoleOwner: Boolean,
+  onOpenAuthorRooms: () -> Unit,
+  onOpenUpload: () -> Unit
+) {
+  Surface(
+    shape = RoundedCornerShape(16.dp),
+    color = CardWarmWhite,
+    border = BorderStroke(1.2.dp, AntiqueGold),
+    shadowElevation = 2.dp,
+    modifier = Modifier
+      .fillMaxWidth()
+      .padding(horizontal = 16.dp, vertical = 6.dp)
+      .testTag("translator_and_owner_room_card")
+  ) {
+    Column(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(14.dp)
+    ) {
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          modifier = Modifier.weight(1f)
+        ) {
+          Box(
+            modifier = Modifier
+              .size(34.dp)
+              .clip(CircleShape)
+              .background(AntiqueGold.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center
+          ) {
+            Icon(
+              imageVector = Icons.Outlined.MeetingRoom,
+              contentDescription = "Room for Translators & Owner",
+              tint = AntiqueGold,
+              modifier = Modifier.size(19.dp)
+            )
+          }
+          Spacer(modifier = Modifier.width(10.dp))
+          Column {
+            Text(
+              text = "ROOM FOR TRANSLATORS & OWNER",
+              style = MaterialTheme.typography.labelSmall.copy(
+                letterSpacing = 1.1.sp,
+                fontWeight = FontWeight.Bold,
+                fontSize = 10.5.sp
+              ),
+              color = AntiqueGold
+            )
+            Text(
+              text = if (isSoleOwner) "Archive Owner Workspace (Clarify)" else "Translator Room ${activeUser.authorSlot ?: 1}",
+              style = MaterialTheme.typography.bodySmall.copy(
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 12.sp
+              ),
+              color = CharcoalText
+            )
+          }
+        }
+
+        Spacer(modifier = Modifier.width(6.dp))
+        Surface(
+          shape = RoundedCornerShape(8.dp),
+          color = AntiqueGoldLight,
+          border = BorderStroke(0.6.dp, AntiqueGold.copy(alpha = 0.4f))
+        ) {
+          Text(
+            text = if (isSoleOwner) "OWNER" else "TRANSLATOR",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 8.5.sp,
+              fontWeight = FontWeight.Bold
+            ),
+            color = AntiqueGold,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+          )
+        }
+      }
+
+      Spacer(modifier = Modifier.height(10.dp))
+
+      Text(
+        text = "Manage author rooms, translator bio, photo covers, review contributor slots, and post new translated novels directly to the archive.",
+        style = MaterialTheme.typography.bodySmall.copy(
+          fontSize = 11.sp,
+          lineHeight = 15.sp
+        ),
+        color = CharcoalSecondary
+      )
+
+      Spacer(modifier = Modifier.height(12.dp))
+
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+      ) {
+        // Enter Room Button
+        Button(
+          onClick = onOpenAuthorRooms,
+          shape = RoundedCornerShape(10.dp),
+          colors = ButtonDefaults.buttonColors(containerColor = SoftCreamPaper),
+          border = BorderStroke(1.dp, AntiqueGold),
+          modifier = Modifier
+            .weight(1.2f)
+            .height(38.dp)
+            .testTag("enter_translator_owner_room_button")
+        ) {
+          Icon(
+            imageVector = Icons.Outlined.MeetingRoom,
+            contentDescription = null,
+            tint = AntiqueGold,
+            modifier = Modifier.size(15.dp)
+          )
+          Spacer(modifier = Modifier.width(6.dp))
+          Text(
+            text = "Enter Room",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontWeight = FontWeight.Bold,
+              fontSize = 11.5.sp
+            ),
+            color = AntiqueGold
+          )
+        }
+
+        // Post Novel Button
+        Button(
+          onClick = onOpenUpload,
+          shape = RoundedCornerShape(10.dp),
+          colors = ButtonDefaults.buttonColors(containerColor = AntiqueGold),
+          modifier = Modifier
+            .weight(1f)
+            .height(38.dp)
+            .testTag("room_post_novel_button")
+        ) {
+          Icon(
+            imageVector = Icons.Filled.Add,
+            contentDescription = null,
+            tint = SoftCreamPaper,
+            modifier = Modifier.size(15.dp)
+          )
+          Spacer(modifier = Modifier.width(4.dp))
+          Text(
+            text = "Post Novel",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontWeight = FontWeight.Bold,
+              fontSize = 11.5.sp
+            ),
+            color = SoftCreamPaper
+          )
+        }
+      }
+    }
+  }
 }

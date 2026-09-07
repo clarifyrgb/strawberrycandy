@@ -73,8 +73,14 @@ interface StrawberrycandyDao {
   suspend fun getNovelCount(): Int
 
   // Reader Profiles (Google / Apple)
-  @Query("SELECT * FROM reader_profiles ORDER BY lastLoginTimestamp DESC LIMIT 1")
+  @Query("SELECT * FROM reader_profiles WHERE isLoggedIn = 1 ORDER BY lastLoginTimestamp DESC LIMIT 1")
   fun getActiveReaderProfile(): Flow<ReaderProfileEntity?>
+
+  @Query("SELECT * FROM reader_profiles ORDER BY lastLoginTimestamp DESC")
+  fun getAllRememberedAccounts(): Flow<List<ReaderProfileEntity>>
+
+  @Query("SELECT * FROM reader_profiles ORDER BY lastLoginTimestamp DESC")
+  suspend fun getAllProfilesList(): List<ReaderProfileEntity>
 
   @Query("SELECT * FROM reader_profiles WHERE userId = :userId LIMIT 1")
   suspend fun getReaderProfile(userId: String): ReaderProfileEntity?
@@ -84,6 +90,15 @@ interface StrawberrycandyDao {
 
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun insertReaderProfile(profile: ReaderProfileEntity)
+
+  @Query("UPDATE reader_profiles SET isLoggedIn = 0")
+  suspend fun logoutAllProfiles()
+
+  @Query("UPDATE reader_profiles SET passwordHash = :newPassword WHERE LOWER(email) = LOWER(:email)")
+  suspend fun updatePasswordByEmail(email: String, newPassword: String): Int
+
+  @Query("DELETE FROM reader_profiles WHERE userId = :userId")
+  suspend fun deleteProfile(userId: String)
 
   @Query("DELETE FROM reader_profiles")
   suspend fun clearReaderProfiles()

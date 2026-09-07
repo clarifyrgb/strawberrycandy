@@ -224,6 +224,83 @@ fun CloudPublishModal(
           Spacer(modifier = Modifier.height(16.dp))
         }
 
+        // Action Option 0: Instant 1-Click Direct Cloud Upload (Recommended / Wattpad style)
+        Surface(
+          shape = RoundedCornerShape(16.dp),
+          color = AntiqueGold.copy(alpha = 0.08f),
+          border = androidx.compose.foundation.BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.4f)),
+          modifier = Modifier.fillMaxWidth()
+        ) {
+          Column(modifier = Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              Icon(
+                imageVector = Icons.Outlined.Public,
+                contentDescription = null,
+                tint = AntiqueGold,
+                modifier = Modifier.size(16.dp)
+              )
+              Spacer(modifier = Modifier.width(6.dp))
+              Text(
+                text = "WATTPAD-STYLE DIRECT CLOUD UPLOAD (RECOMMENDED)",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  letterSpacing = 0.8.sp,
+                  fontWeight = FontWeight.Bold
+                ),
+                color = CharcoalText
+              )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+              text = "Upload directly to the Strawberrycandy Global Cloud Archive. Zero tokens, zero configuration — instant sync for all APK readers worldwide.",
+              style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp, lineHeight = 16.sp),
+              color = CharcoalSecondary
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            Button(
+              onClick = {
+                isPublishing = true
+                statusMessage = null
+                onPublishToCloud(null, null) { success, msg ->
+                  isPublishing = false
+                  isSuccess = success
+                  statusMessage = msg
+                }
+              },
+              enabled = !isPublishing,
+              shape = RoundedCornerShape(12.dp),
+              colors = ButtonDefaults.buttonColors(containerColor = DeepBurgundy),
+              modifier = Modifier
+                .fillMaxWidth()
+                .testTag("publish_direct_cloud_button")
+            ) {
+              if (isPublishing) {
+                CircularProgressIndicator(
+                  color = SoftCreamPaper,
+                  strokeWidth = 2.dp,
+                  modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Publishing to Cloud...", color = SoftCreamPaper, fontSize = 12.sp)
+              } else {
+                Icon(
+                  imageVector = Icons.Outlined.CloudUpload,
+                  contentDescription = null,
+                  tint = SoftCreamPaper,
+                  modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                  text = "Publish to Cloud (No Token Needed)",
+                  style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                  color = SoftCreamPaper
+                )
+              }
+            }
+          }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
         // Action Option 1: Direct Push to GitHub repository (novels.json)
         Text(
           text = "OPTION 1: DIRECT COMMIT TO GITHUB REPO",

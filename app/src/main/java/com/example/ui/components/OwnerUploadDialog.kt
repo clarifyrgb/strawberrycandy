@@ -289,7 +289,7 @@ fun OwnerUploadDialog(
         Spacer(modifier = Modifier.height(10.dp))
 
         Text(
-          text = "Publish Manuscript",
+          text = "Publish Manuscript to Cloud",
           style = MaterialTheme.typography.headlineSmall.copy(
             fontFamily = FontFamily.Serif
           ),
@@ -299,7 +299,7 @@ fun OwnerUploadDialog(
         Spacer(modifier = Modifier.height(6.dp))
 
         Text(
-          text = "Select your reserved author room to upload under your verified pen name to Strawberrycandy.",
+          text = "Direct Wattpad-style cloud upload. No tokens or HTTPS URLs required — your novel is published directly to the Global Cloud Archive for all APK readers.",
           style = MaterialTheme.typography.bodySmall,
           color = CharcoalSecondary
         )
@@ -1204,7 +1204,7 @@ fun OwnerUploadDialog(
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-              text = "Global Distribution: Once published, this novel is prepared for the Cloud Archive so anyone with the APK installed can read it.",
+              text = "Direct Cloud Publishing: Once you tap publish, this novel is uploaded directly to the Global Cloud Archive. No tokens or URLs needed — all readers will see it immediately!",
               style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 15.sp),
               color = DeepBurgundy
             )
@@ -1254,7 +1254,7 @@ fun OwnerUploadDialog(
           )
           Spacer(modifier = Modifier.width(8.dp))
           Text(
-            text = "Publish to Cloud Archive",
+            text = "Publish Directly to Cloud Archive",
             style = MaterialTheme.typography.labelLarge.copy(
               letterSpacing = 0.6.sp,
               fontWeight = FontWeight.SemiBold

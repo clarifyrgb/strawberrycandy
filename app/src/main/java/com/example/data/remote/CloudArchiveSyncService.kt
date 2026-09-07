@@ -23,6 +23,8 @@ class CloudArchiveSyncService(private val context: Context) {
     const val KEY_LAST_SYNC_COUNT = "last_sync_count"
     const val KEY_LAST_SYNC_ERROR = "last_sync_error"
 
+    const val DEFAULT_CLOUD_ARCHIVE_URL =
+      "https://api.restful-api.dev/objects/ff808181a067127101a07b2efb503348"
     const val DEFAULT_READ_URL =
       "https://raw.githubusercontent.com/clarifyrgb/strawberrycandy/refs/heads/main/novels.json"
     const val FALLBACK_READ_URL =
@@ -33,7 +35,7 @@ class CloudArchiveSyncService(private val context: Context) {
   private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
   fun getReadUrl(): String {
-    return prefs.getString(KEY_READ_URL, DEFAULT_READ_URL)?.trim()?.ifBlank { DEFAULT_READ_URL } ?: DEFAULT_READ_URL
+    return prefs.getString(KEY_READ_URL, DEFAULT_CLOUD_ARCHIVE_URL)?.trim()?.ifBlank { DEFAULT_CLOUD_ARCHIVE_URL } ?: DEFAULT_CLOUD_ARCHIVE_URL
   }
 
   fun setReadUrl(url: String) {
@@ -81,25 +83,49 @@ class CloudArchiveSyncService(private val context: Context) {
   suspend fun fetchRemoteNovels(customUrl: String? = null): Result<List<NovelEntity>> = withContext(Dispatchers.IO) {
     val targetUrl = customUrl?.trim()?.ifBlank { null } ?: getReadUrl()
 
-    // Try primary target URL first
+    // 1. Try primary target URL first (default: DEFAULT_CLOUD_ARCHIVE_URL)
     val firstAttempt = tryFetchFromUrl(targetUrl)
     if (firstAttempt.isSuccess) {
       val novels = firstAttempt.getOrNull() ?: emptyList()
-      recordSyncSuccess(novels.size)
-      return@withContext Result.success(novels)
-    }
-
-    // If primary failed and it was the default URL, try the fallback raw branch
-    if (targetUrl == DEFAULT_READ_URL) {
-      val secondAttempt = tryFetchFromUrl(FALLBACK_READ_URL)
-      if (secondAttempt.isSuccess) {
-        val novels = secondAttempt.getOrNull() ?: emptyList()
+      if (novels.isNotEmpty()) {
         recordSyncSuccess(novels.size)
         return@withContext Result.success(novels)
       }
     }
 
-    // If remote is unreachable, attempt to read bundled asset as offline fallback
+    // 2. If primary target was custom or empty, fallback to DEFAULT_CLOUD_ARCHIVE_URL
+    if (targetUrl != DEFAULT_CLOUD_ARCHIVE_URL) {
+      val cloudAttempt = tryFetchFromUrl(DEFAULT_CLOUD_ARCHIVE_URL)
+      if (cloudAttempt.isSuccess) {
+        val novels = cloudAttempt.getOrNull() ?: emptyList()
+        if (novels.isNotEmpty()) {
+          recordSyncSuccess(novels.size)
+          return@withContext Result.success(novels)
+        }
+      }
+    }
+
+    // 3. Fallback to GitHub raw main branch
+    val githubAttempt = tryFetchFromUrl(DEFAULT_READ_URL)
+    if (githubAttempt.isSuccess) {
+      val novels = githubAttempt.getOrNull() ?: emptyList()
+      if (novels.isNotEmpty()) {
+        recordSyncSuccess(novels.size)
+        return@withContext Result.success(novels)
+      }
+    }
+
+    // 4. Try GitHub fallback branch
+    val githubFallbackAttempt = tryFetchFromUrl(FALLBACK_READ_URL)
+    if (githubFallbackAttempt.isSuccess) {
+      val novels = githubFallbackAttempt.getOrNull() ?: emptyList()
+      if (novels.isNotEmpty()) {
+        recordSyncSuccess(novels.size)
+        return@withContext Result.success(novels)
+      }
+    }
+
+    // 5. If remote is unreachable, read bundled asset as offline fallback
     val assetNovels = readBundledAssetNovels()
     if (assetNovels.isNotEmpty()) {
       return@withContext Result.success(assetNovels)
@@ -159,7 +185,18 @@ class CloudArchiveSyncService(private val context: Context) {
       val obj = JSONObject(text)
       when {
         obj.has("novels") -> obj.getJSONArray("novels")
-        obj.has("data") -> obj.getJSONArray("data")
+        obj.has("data") -> {
+          val dataVal = obj.opt("data")
+          when (dataVal) {
+            is JSONArray -> dataVal
+            is JSONObject -> {
+              if (dataVal.has("novels")) dataVal.getJSONArray("novels")
+              else if (dataVal.has("items")) dataVal.getJSONArray("items")
+              else JSONArray()
+            }
+            else -> JSONArray()
+          }
+        }
         obj.has("items") -> obj.getJSONArray("items")
         else -> {
           // Check if it's a Firebase RTDB map of ID -> Object
@@ -279,26 +316,80 @@ class CloudArchiveSyncService(private val context: Context) {
     val writeUrl = getWriteUrl()
     val token = getGitHubToken()
 
-    // Mode A: Firebase Realtime Database
+    // Mode A: Firebase Realtime Database (if explicitly configured)
     if (writeUrl.isNotBlank() && writeUrl.contains("firebaseio.com", ignoreCase = true)) {
       return@withContext publishToFirebase(novel, writeUrl)
     }
 
-    // Mode B: GitHub Contents API (Direct commit to clarifyrgb/strawberrycandy/novels.json)
+    // Mode B: GitHub Contents API (if user explicitly provided a PAT)
     if (token.isNotBlank()) {
       return@withContext publishToGitHubApi(novel, allNovels, token)
     }
 
-    // Mode C: Custom REST API Endpoint
+    // Mode C: Custom REST API Endpoint (if user explicitly provided a custom write URL)
     if (writeUrl.isNotBlank()) {
       return@withContext publishToCustomEndpoint(novel, writeUrl)
     }
 
-    Result.failure(
-      IllegalStateException(
-        "No remote cloud write destination configured yet. Use GitHub Token, Firebase URL, or export novels.json to publish globally."
-      )
-    )
+    // Mode D: Wattpad-style Direct Global Cloud Archive (Zero-Token, Zero-HTTPS config required!)
+    return@withContext publishToDefaultCloudArchive(novel, allNovels)
+  }
+
+  private fun publishToDefaultCloudArchive(
+    novel: NovelEntity,
+    allNovels: List<NovelEntity>
+  ): Result<String> {
+    var connection: HttpURLConnection? = null
+    try {
+      // 1. Fetch current remote novels from the global cloud archive to preserve other translators' manuscripts
+      val existingRemoteNovels = tryFetchFromUrl(DEFAULT_CLOUD_ARCHIVE_URL).getOrNull() ?: emptyList()
+
+      // 2. Merge all novels: remote + local + current new novel
+      val mergedMap = LinkedHashMap<String, NovelEntity>()
+      existingRemoteNovels.forEach { mergedMap[it.id] = it }
+      allNovels.forEach { mergedMap[it.id] = it }
+      mergedMap[novel.id] = novel
+
+      val mergedList = mergedMap.values.toList()
+
+      val array = JSONArray()
+      mergedList.forEach { array.put(novelToJson(it)) }
+
+      val payload = JSONObject().apply {
+        put("name", "Strawberrycandy Global Cloud Archive")
+        put("data", JSONObject().apply {
+          put("novels", array)
+        })
+      }.toString()
+
+      val url = URL(DEFAULT_CLOUD_ARCHIVE_URL)
+      connection = (url.openConnection() as HttpURLConnection).apply {
+        requestMethod = "PUT"
+        connectTimeout = 12000
+        readTimeout = 12000
+        doOutput = true
+        setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        setRequestProperty("Accept", "application/json")
+        setRequestProperty("User-Agent", "Strawberrycandy-Android-APK")
+      }
+
+      OutputStreamWriter(connection.outputStream, StandardCharsets.UTF_8).use {
+        it.write(payload)
+        it.flush()
+      }
+
+      val code = connection.responseCode
+      if (code in 200..299) {
+        recordSyncSuccess(mergedList.size)
+        return Result.success("✨ Successfully uploaded '${novel.title}' directly to the Global Cloud Archive! All APK readers can now read it.")
+      } else {
+        return Result.failure(Exception("Cloud archive server returned HTTP $code: ${connection.responseMessage}"))
+      }
+    } catch (e: Exception) {
+      return Result.failure(e)
+    } finally {
+      connection?.disconnect()
+    }
   }
 
   private fun publishToFirebase(novel: NovelEntity, baseUrl: String): Result<String> {

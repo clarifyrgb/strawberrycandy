@@ -1,7 +1,9 @@
 package com.example
 
+import android.app.Application
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.example.viewmodel.StrawberrycandyViewModel
 import com.example.data.StrawberrycandyRepository
 import com.example.data.local.NovelEntity
 import com.example.data.local.ReaderProfileEntity
@@ -10,7 +12,9 @@ import com.example.data.local.UserReadingStateEntity
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -164,5 +168,97 @@ class ExampleRobolectricTest {
     assertNotNull(returningUser)
     assertEquals("TRANSLATOR", returningUser?.role)
     assertEquals(1, returningUser?.authorSlot)
+
+    // Sign out should NOT erase remembered accounts
+    repo.signOut()
+    assertNull(repo.activeUser.first())
+    val rememberedList = repo.rememberedAccounts.first()
+    assertTrue(rememberedList.any { it.email == "translator1@gmail.com" })
+
+    // Forgot password flow: request 6-digit code for Gmail
+    val codeResult = repo.sendPasswordRecoveryCode("translator1@gmail.com")
+    assertTrue(codeResult.isSuccess)
+    val recoveryCode = codeResult.getOrNull()
+    assertNotNull(recoveryCode)
+    assertEquals(6, recoveryCode?.length)
+
+    // Reset password using recovery code
+    val resetResult = repo.resetPasswordWithCode(
+      email = "translator1@gmail.com",
+      code = recoveryCode!!,
+      newPassword = "newsecretpassword123"
+    )
+    assertTrue(resetResult.isSuccess)
+
+    // Verify user is automatically signed in with updated credentials
+    val recoveredUser = repo.activeUser.first()
+    assertNotNull(recoveredUser)
+    assertEquals("translator1@gmail.com", recoveredUser?.email)
+
+    // Sign in with the new password succeeds
+    repo.signOut()
+    val newSignInResult = repo.signIn(
+      provider = "GOOGLE",
+      email = "translator1@gmail.com",
+      password = "newsecretpassword123",
+      displayName = ""
+    )
+    assertTrue(newSignInResult.isSuccess)
+  }
+
+  @Test
+  fun `upload novel permission is strictly restricted to translators and owner`() = runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val db = StrawberrycandyDatabase.getInstance(context)
+    val dao = db.strawberrycandyDao()
+    val repo = StrawberrycandyRepository(dao)
+
+    // Initially sign out (guest)
+    repo.signOut()
+    assertNull(repo.activeUser.first())
+
+    val app = ApplicationProvider.getApplicationContext<Application>()
+    val vm = StrawberrycandyViewModel(app)
+    assertFalse(vm.canUploadNovel(null))
+
+    // Sign in as Reader (non-translator)
+    repo.signIn(
+      provider = "GOOGLE",
+      email = "regularreader@gmail.com",
+      password = "password123",
+      displayName = "Casual Reader"
+    )
+    val readerUser = repo.activeUser.first()
+    assertNotNull(readerUser)
+    assertEquals("READER", readerUser?.role)
+    assertFalse(vm.canUploadNovel(readerUser))
+
+    // Sign in as Owner
+    repo.signOut()
+    repo.signIn(
+      provider = "GOOGLE",
+      email = "clarifymanga@gmail.com",
+      password = "ownerpassword123",
+      displayName = "Clarify"
+    )
+    val ownerUser = repo.activeUser.first()
+    assertNotNull(ownerUser)
+    assertTrue(vm.canUploadNovel(ownerUser))
+    assertTrue(vm.isOwner(ownerUser))
+
+    // Sign in as Translator
+    repo.signOut()
+    repo.signIn(
+      provider = "GOOGLE",
+      email = "translator1@gmail.com",
+      password = "newsecretpassword123",
+      displayName = "Translator One",
+      role = "TRANSLATOR",
+      authorSlot = 1
+    )
+    val translatorUser = repo.activeUser.first()
+    assertNotNull(translatorUser)
+    assertEquals("TRANSLATOR", translatorUser?.role)
+    assertTrue(vm.canUploadNovel(translatorUser))
   }
 }
