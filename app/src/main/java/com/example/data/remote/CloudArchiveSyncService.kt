@@ -525,4 +525,95 @@ class CloudArchiveSyncService(private val context: Context) {
       connection?.disconnect()
     }
   }
+
+  data class GitHubReleaseTagResult(
+    val isSuccess: Boolean,
+    val tagName: String,
+    val htmlUrl: String,
+    val message: String,
+    val releaseId: Long? = null
+  )
+
+  suspend fun createGitHubReleaseTag(
+    tagName: String,
+    releaseTitle: String,
+    releaseNotes: String,
+    targetBranch: String = "main",
+    isDraft: Boolean = false,
+    isPrerelease: Boolean = false,
+    token: String
+  ): Result<GitHubReleaseTagResult> = withContext(Dispatchers.IO) {
+    var connection: HttpURLConnection? = null
+    try {
+      var cleanTag = tagName.trim()
+      if (cleanTag.isBlank()) {
+        return@withContext Result.failure(IllegalArgumentException("Tag name cannot be empty (e.g. 'v1.0.1' or 'v1.0.2')"))
+      }
+      if (!cleanTag.startsWith("v", ignoreCase = true)) {
+        cleanTag = "v$cleanTag"
+      }
+
+      val apiUrl = "https://api.github.com/repos/$GITHUB_REPO_PATH/releases"
+      val releaseBody = JSONObject().apply {
+        put("tag_name", cleanTag)
+        put("target_commitish", targetBranch.trim().ifBlank { "main" })
+        put("name", releaseTitle.trim().ifBlank { "Strawberrycandy $cleanTag" })
+        put("body", releaseNotes.trim())
+        put("draft", isDraft)
+        put("prerelease", isPrerelease)
+        put("generate_release_notes", false)
+      }
+
+      connection = (URL(apiUrl).openConnection() as HttpURLConnection).apply {
+        requestMethod = "POST"
+        connectTimeout = 12000
+        readTimeout = 12000
+        doOutput = true
+        setRequestProperty("Authorization", "Bearer $token")
+        setRequestProperty("Content-Type", "application/json")
+        setRequestProperty("Accept", "application/vnd.github.v3+json")
+        setRequestProperty("User-Agent", "Strawberrycandy-Android-APK")
+      }
+
+      OutputStreamWriter(connection.outputStream, StandardCharsets.UTF_8).use {
+        it.write(releaseBody.toString())
+        it.flush()
+      }
+
+      val code = connection.responseCode
+      if (code in 200..299) {
+        val res = connection.inputStream.bufferedReader().use { it.readText() }
+        val json = JSONObject(res)
+        val htmlUrl = json.optString("html_url", "https://github.com/$GITHUB_REPO_PATH/releases/tag/$cleanTag")
+        val releaseId = json.optLong("id")
+        return@withContext Result.success(
+          GitHubReleaseTagResult(
+            isSuccess = true,
+            tagName = cleanTag,
+            htmlUrl = htmlUrl,
+            message = "✨ GitHub release and git tag '$cleanTag' successfully created!",
+            releaseId = releaseId
+          )
+        )
+      } else {
+        val errStream = connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+        if (code == 422 && (errStream.contains("already_exists") || errStream.contains("already exists"))) {
+          val existingUrl = "https://github.com/$GITHUB_REPO_PATH/releases/tag/$cleanTag"
+          return@withContext Result.success(
+            GitHubReleaseTagResult(
+              isSuccess = true,
+              tagName = cleanTag,
+              htmlUrl = existingUrl,
+              message = "ℹ️ Release tag '$cleanTag' already exists on GitHub. You can upload the APK directly to this release."
+            )
+          )
+        }
+        return@withContext Result.failure(Exception("GitHub API HTTP $code: $errStream"))
+      }
+    } catch (e: Exception) {
+      return@withContext Result.failure(e)
+    } finally {
+      connection?.disconnect()
+    }
+  }
 }

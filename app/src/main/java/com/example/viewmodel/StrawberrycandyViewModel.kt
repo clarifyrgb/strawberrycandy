@@ -792,6 +792,52 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     }
   }
 
+  fun createGitHubReleaseTag(
+    tagName: String,
+    releaseTitle: String,
+    releaseNotes: String,
+    targetBranch: String = "main",
+    isDraft: Boolean = false,
+    alsoUpdateManifest: Boolean = true,
+    versionCode: Int = 2,
+    onComplete: (Result<CloudArchiveSyncService.GitHubReleaseTagResult>) -> Unit
+  ) {
+    viewModelScope.launch {
+      val token = syncService.getGitHubToken()
+      if (token.isBlank()) {
+        onComplete(Result.failure(Exception("GitHub token is not configured. Please enter your GitHub Personal Access Token in the settings tab, or use 'Open GitHub Web' to create the release tag.")))
+        return@launch
+      }
+
+      val result = syncService.createGitHubReleaseTag(
+        tagName = tagName,
+        releaseTitle = releaseTitle,
+        releaseNotes = releaseNotes,
+        targetBranch = targetBranch,
+        isDraft = isDraft,
+        token = token
+      )
+
+      if (result.isSuccess) {
+        val data = result.getOrNull()
+        if (alsoUpdateManifest && data != null) {
+          val cleanVersion = data.tagName.removePrefix("v").removePrefix("V")
+          syncService.publishUpdateManifestToGitHub(
+            versionName = cleanVersion,
+            versionCode = versionCode,
+            title = releaseTitle.ifBlank { "Strawberrycandy ${data.tagName}" },
+            changelog = releaseNotes,
+            apkUrl = "https://github.com/clarifyrgb/strawberrycandy/releases/download/${data.tagName}/Strawberrycandy.apk",
+            releasePageUrl = data.htmlUrl,
+            token = token
+          )
+        }
+        _snackbarMessage.value = "🏷️ Release tag '${data?.tagName}' created on GitHub!"
+      }
+      onComplete(result)
+    }
+  }
+
   // Chapter Comments
   fun getCommentsForChapter(novelId: String, chapterTitle: String): Flow<List<ChapterCommentEntity>> {
     return repository.getCommentsForChapter(novelId, chapterTitle)

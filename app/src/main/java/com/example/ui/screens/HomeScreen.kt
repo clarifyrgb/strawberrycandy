@@ -1095,6 +1095,9 @@ fun HomeScreen(
         onPublishUpdateManifest = { versionName, versionCode, title, changelog, apkUrl, releasePageUrl, onComplete ->
           viewModel.publishUpdateManifest(versionName, versionCode, title, changelog, apkUrl, releasePageUrl, onComplete)
         },
+        onCreateGitHubReleaseTag = { tagName, releaseTitle, releaseNotes, targetBranch, isDraft, alsoUpdateManifest, versionCode, onComplete ->
+          viewModel.createGitHubReleaseTag(tagName, releaseTitle, releaseNotes, targetBranch, isDraft, alsoUpdateManifest, versionCode, onComplete)
+        },
         onDismiss = { isAboutModalOpen = false }
       )
     }
