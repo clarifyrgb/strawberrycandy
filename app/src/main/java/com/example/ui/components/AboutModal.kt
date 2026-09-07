@@ -105,6 +105,7 @@ import com.example.ui.theme.SubtleBorder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -182,7 +183,12 @@ fun AboutModal(
   fun triggerUpdateCheck() {
     updateStatus = UpdateStatus.Checking
     coroutineScope.launch {
-      val result = fetchAppUpdate(updateJsonUrl, currentVersionName, currentVersionCode)
+      val result = fetchAppUpdate(
+        repo = "clarifyrgb/strawberrycandy",
+        fallbackJsonUrl = updateJsonUrl,
+        currentVersionName = currentVersionName,
+        currentVersionCode = currentVersionCode
+      )
       updateStatus = result
     }
   }
@@ -643,19 +649,26 @@ private fun UpdateCheckerCard(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.weight(1f)
           ) {
+            Icon(
+              imageVector = Icons.Outlined.Upload,
+              contentDescription = null,
+              tint = AntiqueGold,
+              modifier = Modifier.size(13.dp)
+            )
+            Spacer(modifier = Modifier.width(5.dp))
             Text(
-              text = "Endpoint:",
+              text = "Tags Source:",
               style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
               color = CharcoalTertiary
             )
             Spacer(modifier = Modifier.width(4.dp))
             Text(
-              text = updateJsonUrl.substringAfter("raw.githubusercontent.com/").ifBlank { updateJsonUrl },
+              text = "github.com/clarifyrgb/strawberrycandy/tags",
               style = MaterialTheme.typography.labelSmall.copy(
                 fontSize = 10.sp,
-                fontWeight = FontWeight.Medium
+                fontWeight = FontWeight.SemiBold
               ),
-              color = CharcoalText,
+              color = AntiqueGold,
               maxLines = 1,
               overflow = TextOverflow.Ellipsis
             )
@@ -663,15 +676,15 @@ private fun UpdateCheckerCard(
 
           IconButton(
             onClick = {
-              val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(updateJsonUrl))
+              val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/clarifyrgb/strawberrycandy/tags"))
               try { context.startActivity(browserIntent) } catch (_: Exception) {}
             },
             modifier = Modifier.size(24.dp)
           ) {
             Icon(
               imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
-              contentDescription = "Open update.json URL",
-              tint = CharcoalSecondary,
+              contentDescription = "Open GitHub Tags",
+              tint = AntiqueGold,
               modifier = Modifier.size(13.dp)
             )
           }
@@ -684,7 +697,7 @@ private fun UpdateCheckerCard(
       when (updateStatus) {
         is UpdateStatus.Idle -> {
           Text(
-            text = "Check whether a newer APK release with bug fixes, new features, or reader enhancements is published on GitHub.",
+            text = "Always inspects latest APK releases and versions posted under github.com/clarifyrgb/strawberrycandy/tags.",
             style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
             color = CharcoalSecondary
           )
@@ -706,7 +719,7 @@ private fun UpdateCheckerCard(
             )
             Spacer(modifier = Modifier.width(10.dp))
             Text(
-              text = "Querying GitHub Releases API...",
+              text = "Looking for latest APK under GitHub tags...",
               style = MaterialTheme.typography.labelSmall.copy(
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium
@@ -851,6 +864,32 @@ private fun UpdateCheckerCard(
               }
             }
 
+            // Quick link to GitHub tags page
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.SpaceBetween,
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              Text(
+                text = "🏷️ Posted at github.com/clarifyrgb/strawberrycandy/tags",
+                fontSize = 8.5.sp,
+                color = Color(0xFF2E7D32)
+              )
+              Text(
+                text = "Open Tags",
+                fontSize = 8.5.sp,
+                color = Color(0xFF1B5E20),
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                  .clip(RoundedCornerShape(4.dp))
+                  .clickable {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/clarifyrgb/strawberrycandy/tags"))
+                    try { context.startActivity(intent) } catch (_: Exception) {}
+                  }
+                  .padding(horizontal = 4.dp, vertical = 2.dp)
+              )
+            }
+
             // Seamless update hint
             Surface(
               shape = RoundedCornerShape(8.dp),
@@ -897,7 +936,7 @@ private fun UpdateCheckerCard(
                   color = Color(0xFF2E7D32)
                 )
                 Text(
-                  text = "v${upToDate.checkedVersion} is the latest release • Checked ${upToDate.checkedTimestamp}",
+                  text = "v${upToDate.checkedVersion} is the latest version under GitHub tags • Checked ${upToDate.checkedTimestamp}",
                   style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
                   color = CharcoalSecondary
                 )
@@ -906,8 +945,27 @@ private fun UpdateCheckerCard(
 
             Row(
               modifier = Modifier.fillMaxWidth(),
-              horizontalArrangement = Arrangement.End
+              horizontalArrangement = Arrangement.SpaceBetween,
+              verticalAlignment = Alignment.CenterVertically
             ) {
+              OutlinedButton(
+                onClick = {
+                  val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/clarifyrgb/strawberrycandy/tags"))
+                  try { context.startActivity(intent) } catch (_: Exception) {}
+                },
+                shape = RoundedCornerShape(6.dp),
+                border = BorderStroke(0.8.dp, AntiqueGold.copy(alpha = 0.5f)),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                modifier = Modifier.height(26.dp)
+              ) {
+                Text(
+                  text = "Browse Tags (/tags)",
+                  fontSize = 9.sp,
+                  color = AntiqueGold,
+                  fontWeight = FontWeight.Medium
+                )
+              }
+
               OutlinedButton(
                 onClick = onSimulateUpdate,
                 shape = RoundedCornerShape(6.dp),
@@ -916,7 +974,7 @@ private fun UpdateCheckerCard(
                 modifier = Modifier.height(26.dp)
               ) {
                 Text(
-                  text = "Preview Update Available UI",
+                  text = "Preview Update UI",
                   fontSize = 9.sp,
                   color = Color(0xFF2E7D32),
                   fontWeight = FontWeight.Medium
@@ -958,14 +1016,18 @@ private fun UpdateCheckerCard(
               style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
               color = CharcoalSecondary
             )
-            Text(
-              text = "When your GitHub Actions 'release.yml' completes, releases tagged here will automatically be recognized.",
-              style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 9.5.sp,
-                fontFamily = FontFamily.Serif
-              ),
-              color = AntiqueGold
-            )
+            OutlinedButton(
+              onClick = {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/clarifyrgb/strawberrycandy/tags"))
+                try { context.startActivity(intent) } catch (_: Exception) {}
+              },
+              shape = RoundedCornerShape(6.dp),
+              border = BorderStroke(0.8.dp, AntiqueGold.copy(alpha = 0.5f)),
+              contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+              modifier = Modifier.height(26.dp)
+            ) {
+              Text("Open github.com/clarifyrgb/strawberrycandy/tags", fontSize = 9.sp, color = AntiqueGold)
+            }
           }
         }
         is UpdateStatus.Error -> {
@@ -992,6 +1054,18 @@ private fun UpdateCheckerCard(
               style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
               color = CharcoalSecondary
             )
+            OutlinedButton(
+              onClick = {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/clarifyrgb/strawberrycandy/tags"))
+                try { context.startActivity(intent) } catch (_: Exception) {}
+              },
+              shape = RoundedCornerShape(6.dp),
+              border = BorderStroke(0.8.dp, Color(0xFFC62828).copy(alpha = 0.5f)),
+              contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+              modifier = Modifier.height(26.dp)
+            ) {
+              Text("Browse GitHub Tags Directly", fontSize = 9.sp, color = Color(0xFFC62828))
+            }
           }
         }
       }
@@ -1019,32 +1093,6 @@ private fun UpdateCheckerCard(
             fontWeight = FontWeight.Bold,
             fontSize = 12.sp
           )
-        )
-      }
-
-      OutlinedButton(
-        onClick = onOpenReleaseManager,
-        modifier = Modifier
-          .fillMaxWidth()
-          .height(36.dp)
-          .testTag("create_release_tag_quick_button"),
-        shape = RoundedCornerShape(10.dp),
-        border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.6f))
-      ) {
-        Icon(
-          imageVector = Icons.Outlined.Upload,
-          contentDescription = null,
-          tint = AntiqueGold,
-          modifier = Modifier.size(14.dp)
-        )
-        Spacer(modifier = Modifier.width(6.dp))
-        Text(
-          text = "🏷️ Create GitHub Release Tag (v$currentVersion or Future)",
-          style = MaterialTheme.typography.labelMedium.copy(
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 10.5.sp
-          ),
-          color = AntiqueGold
         )
       }
     }
@@ -1861,6 +1909,27 @@ private fun GitHubReleaseAndTagManagerCard(
               Text("Copy JSON", fontSize = 10.sp, color = CharcoalText)
             }
           }
+
+          // Direct repository tags shortcut
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center
+          ) {
+            OutlinedButton(
+              onClick = {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/clarifyrgb/strawberrycandy/tags"))
+                try { context.startActivity(intent) } catch (_: Exception) {}
+              },
+              shape = RoundedCornerShape(8.dp),
+              border = BorderStroke(0.8.dp, AntiqueGold.copy(alpha = 0.5f)),
+              contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+              modifier = Modifier.height(28.dp)
+            ) {
+              Icon(Icons.AutoMirrored.Outlined.OpenInNew, contentDescription = null, modifier = Modifier.size(12.dp), tint = AntiqueGold)
+              Spacer(modifier = Modifier.width(4.dp))
+              Text("View all repository tags at github.com/clarifyrgb/strawberrycandy/tags", fontSize = 9.sp, color = AntiqueGold)
+            }
+          }
         }
       }
     }
@@ -1937,90 +2006,226 @@ private fun DiagnosticRow(label: String, value: String) {
 }
 
 // ---------------------------------------------------------------------
-// NETWORK QUERY: FETCH UPDATE.JSON AND GITHUB RELEASES
+// NETWORK QUERY: ALWAYS CHECK GITHUB REPOSITORY TAGS (clarifyrgb/strawberrycandy/tags)
 // ---------------------------------------------------------------------
+data class TagReleaseInfo(
+  val title: String,
+  val notes: String,
+  val htmlUrl: String,
+  val apkUrl: String,
+  val publishedDate: String
+)
+
 suspend fun fetchAppUpdate(
-  jsonUrl: String,
+  repo: String = "clarifyrgb/strawberrycandy",
+  fallbackJsonUrl: String = "https://raw.githubusercontent.com/clarifyrgb/strawberrycandy/refs/heads/main/update.json",
   currentVersionName: String,
   currentVersionCode: Int
 ): UpdateStatus = withContext(Dispatchers.IO) {
-  var connection: HttpURLConnection? = null
+  val cleanRepo = repo.trim().removePrefix("https://github.com/").removePrefix("github.com/").trimEnd('/')
+  val nowTimestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
 
+  // 1. ALWAYS query the GitHub repository tags first (https://github.com/clarifyrgb/strawberrycandy/tags)
   try {
-    val rawUrl = jsonUrl.trim()
-    val fullUrl = if (rawUrl.contains("raw.githubusercontent.com") && !rawUrl.contains("?")) {
-      "$rawUrl?t=${System.currentTimeMillis()}"
-    } else {
-      rawUrl
+    val tagsResult = queryGitHubTags(cleanRepo, currentVersionName, currentVersionCode, nowTimestamp)
+    if (tagsResult != null) {
+      return@withContext tagsResult
     }
-    val url = URL(fullUrl)
+  } catch (e: Exception) {
+    android.util.Log.w("AppUpdate", "Tags query failed, trying fallback: ${e.message}")
+  }
+
+  // 2. Fallback: Query GitHub releases/latest
+  try {
+    val releaseResult = queryGitHubLatestRelease(cleanRepo, currentVersionName)
+    if (releaseResult !is UpdateStatus.Error && releaseResult !is UpdateStatus.NoReleasesFound) {
+      return@withContext releaseResult
+    }
+  } catch (_: Exception) {}
+
+  // 3. Fallback: Query update.json if available
+  try {
+    val jsonResult = queryUpdateJson(fallbackJsonUrl, currentVersionName, currentVersionCode, nowTimestamp)
+    if (jsonResult != null) {
+      return@withContext jsonResult
+    }
+  } catch (_: Exception) {}
+
+  // 4. If all fail or no releases/tags exist
+  UpdateStatus.NoReleasesFound(
+    repository = cleanRepo,
+    message = "No release tags found under https://github.com/$cleanRepo/tags."
+  )
+}
+
+// Backwards compatibility overload
+suspend fun fetchAppUpdate(
+  fallbackJsonUrl: String,
+  currentVersionName: String,
+  currentVersionCode: Int
+): UpdateStatus = fetchAppUpdate(
+  repo = "clarifyrgb/strawberrycandy",
+  fallbackJsonUrl = fallbackJsonUrl,
+  currentVersionName = currentVersionName,
+  currentVersionCode = currentVersionCode
+)
+
+suspend fun queryGitHubTags(
+  cleanRepo: String,
+  currentVersionName: String,
+  currentVersionCode: Int,
+  nowTimestamp: String
+): UpdateStatus? = withContext(Dispatchers.IO) {
+  var connection: HttpURLConnection? = null
+  try {
+    val tagsApiUrl = "https://api.github.com/repos/$cleanRepo/tags?per_page=30&t=${System.currentTimeMillis()}"
+    val url = URL(tagsApiUrl)
     connection = (url.openConnection() as HttpURLConnection).apply {
       requestMethod = "GET"
       connectTimeout = 8000
       readTimeout = 8000
       useCaches = false
-      setRequestProperty("Accept", "application/json, text/plain, */*")
+      setRequestProperty("Accept", "application/vnd.github.v3+json")
       setRequestProperty("User-Agent", "Strawberrycandy-App-Update-Checker")
     }
 
     val responseCode = connection.responseCode
+    if (responseCode == 404) {
+      return@withContext UpdateStatus.NoReleasesFound(
+        repository = cleanRepo,
+        message = "No tags found under https://github.com/$cleanRepo/tags."
+      )
+    }
+    if (responseCode !in 200..299) {
+      return@withContext null // fallback
+    }
 
-    if (responseCode in 200..299) {
-      val responseText = connection.inputStream.bufferedReader().use { it.readText() }.trim()
+    val responseText = connection.inputStream.bufferedReader().use { it.readText() }.trim()
+    if (!responseText.startsWith("[")) {
+      return@withContext null
+    }
 
-      if (responseText.isNotEmpty() && responseText.startsWith("{") && responseText.endsWith("}")) {
-        val json = JSONObject(responseText)
+    val tagsArray = JSONArray(responseText)
+    if (tagsArray.length() == 0) {
+      return@withContext UpdateStatus.NoReleasesFound(
+        repository = cleanRepo,
+        message = "No tags found under https://github.com/$cleanRepo/tags."
+      )
+    }
 
-        val remoteVersionName = json.optString("versionName", json.optString("version", "")).trim()
-        val remoteVersionCode = json.optInt("versionCode", json.optInt("build", json.optInt("buildNumber", 0)))
-        val title = json.optString("title", json.optString("name", "Strawberrycandy $remoteVersionName"))
-        val changelog = json.optString("changelog", json.optString("notes", json.optString("description", "")))
-        val apkUrl = json.optString("apkUrl", json.optString("downloadUrl", json.optString("url", null)))
-        val releasePageUrl = json.optString("releasePageUrl", json.optString("githubUrl", "https://github.com/clarifyrgb/strawberrycandy/releases"))
-        val publishedDate = json.optString("publishedDate", json.optString("date", ""))
-
-        val hasNewCode = remoteVersionCode > currentVersionCode
-        val hasNewName = isVersionNewer(remoteVersionName, currentVersionName)
-        val nowTimestamp = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-
-        if (hasNewCode || hasNewName) {
-          val displayVersion = if (remoteVersionCode > 0 && remoteVersionName.isNotBlank()) {
-            "$remoteVersionName (Build $remoteVersionCode)"
-          } else if (remoteVersionName.isNotBlank()) {
-            remoteVersionName
-          } else {
-            "Build $remoteVersionCode"
-          }
-
-          return@withContext UpdateStatus.UpdateAvailable(
-            latestVersion = displayVersion,
-            releaseTitle = title,
-            releaseNotes = changelog,
-            apkDownloadUrl = apkUrl,
-            releasePageUrl = releasePageUrl,
-            publishedDate = publishedDate
-          )
-        } else if (remoteVersionName.isNotBlank() || remoteVersionCode > 0) {
-          return@withContext UpdateStatus.UpToDate(
-            checkedVersion = remoteVersionName.ifBlank { currentVersionName },
-            checkedTimestamp = nowTimestamp
-          )
-        }
+    val tagNames = mutableListOf<String>()
+    for (i in 0 until tagsArray.length()) {
+      val tagObj = tagsArray.getJSONObject(i)
+      val name = tagObj.optString("name", "").trim()
+      if (name.isNotBlank()) {
+        tagNames.add(name)
       }
     }
 
-    // If update.json is empty or not yet published, fall back to GitHub Releases API
-    queryGitHubLatestRelease("clarifyrgb/strawberrycandy", currentVersionName)
-  } catch (e: Exception) {
-    // Fall back to GitHub Releases API if raw json fails
-    try {
-      queryGitHubLatestRelease("clarifyrgb/strawberrycandy", currentVersionName)
-    } catch (_: Exception) {
-      UpdateStatus.Error("Error checking update: ${e.localizedMessage ?: e.javaClass.simpleName}")
+    if (tagNames.isEmpty()) {
+      return@withContext null
     }
+
+    // Find the latest semantic version tag
+    val latestTagName = findLatestTag(tagNames) ?: tagNames.first()
+    val cleanLatestVersion = latestTagName.removePrefix("v").removePrefix("V").trim()
+
+    // Query release metadata for this tag from GitHub
+    val releaseInfo = fetchReleaseForTag(cleanRepo, latestTagName)
+
+    val releaseTitle = releaseInfo?.title ?: "Strawberrycandy $latestTagName"
+    val releaseNotes = releaseInfo?.notes ?: "New version $latestTagName published under https://github.com/$cleanRepo/tags"
+    val htmlUrl = releaseInfo?.htmlUrl ?: "https://github.com/$cleanRepo/releases/tag/$latestTagName"
+    val apkUrl = releaseInfo?.apkUrl ?: "https://github.com/$cleanRepo/releases/download/$latestTagName/Strawberrycandy.apk"
+    val publishedDate = releaseInfo?.publishedDate ?: "Tagged Release"
+
+    val isNewer = isVersionNewer(cleanLatestVersion, currentVersionName)
+
+    if (isNewer) {
+      UpdateStatus.UpdateAvailable(
+        latestVersion = cleanLatestVersion,
+        releaseTitle = releaseTitle,
+        releaseNotes = releaseNotes,
+        apkDownloadUrl = apkUrl,
+        releasePageUrl = htmlUrl,
+        publishedDate = publishedDate
+      )
+    } else {
+      UpdateStatus.UpToDate(
+        checkedVersion = cleanLatestVersion.ifBlank { currentVersionName },
+        checkedTimestamp = nowTimestamp
+      )
+    }
+  } catch (e: Exception) {
+    android.util.Log.e("AppUpdate", "Error in queryGitHubTags: ${e.message}")
+    null
   } finally {
     connection?.disconnect()
   }
+}
+
+suspend fun fetchReleaseForTag(cleanRepo: String, tagName: String): TagReleaseInfo? = withContext(Dispatchers.IO) {
+  var connection: HttpURLConnection? = null
+  try {
+    val releaseUrl = "https://api.github.com/repos/$cleanRepo/releases/tags/$tagName"
+    val url = URL(releaseUrl)
+    connection = (url.openConnection() as HttpURLConnection).apply {
+      requestMethod = "GET"
+      connectTimeout = 7000
+      readTimeout = 7000
+      setRequestProperty("Accept", "application/vnd.github.v3+json")
+      setRequestProperty("User-Agent", "Strawberrycandy-App-Update-Checker")
+    }
+
+    if (connection.responseCode in 200..299) {
+      val text = connection.inputStream.bufferedReader().use { it.readText() }
+      val json = JSONObject(text)
+      val name = json.optString("name", "Strawberrycandy $tagName")
+      val body = json.optString("body", "")
+      val htmlUrl = json.optString("html_url", "https://github.com/$cleanRepo/releases/tag/$tagName")
+      val publishedAtRaw = json.optString("published_at", "")
+
+      val formattedDate = try {
+        if (publishedAtRaw.isNotBlank()) {
+          val parser = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
+          val date = parser.parse(publishedAtRaw)
+          if (date != null) {
+            SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()).format(date)
+          } else publishedAtRaw.take(10)
+        } else ""
+      } catch (_: Exception) {
+        publishedAtRaw.take(10)
+      }
+
+      var apkUrl: String? = null
+      val assets = json.optJSONArray("assets")
+      if (assets != null) {
+        for (i in 0 until assets.length()) {
+          val asset = assets.getJSONObject(i)
+          val assetName = asset.optString("name", "")
+          if (assetName.endsWith(".apk", ignoreCase = true)) {
+            apkUrl = asset.optString("browser_download_url", null)
+            break
+          }
+        }
+      }
+
+      val resolvedApkUrl = apkUrl ?: "https://github.com/$cleanRepo/releases/download/$tagName/Strawberrycandy.apk"
+
+      return@withContext TagReleaseInfo(
+        title = name,
+        notes = body,
+        htmlUrl = htmlUrl,
+        apkUrl = resolvedApkUrl,
+        publishedDate = formattedDate
+      )
+    }
+  } catch (e: Exception) {
+    android.util.Log.w("AppUpdate", "fetchReleaseForTag failed: ${e.message}")
+  } finally {
+    connection?.disconnect()
+  }
+  null
 }
 
 suspend fun queryGitHubLatestRelease(repo: String, currentVersion: String): UpdateStatus = withContext(Dispatchers.IO) {
@@ -2046,7 +2251,7 @@ suspend fun queryGitHubLatestRelease(repo: String, currentVersion: String): Upda
     if (responseCode == 404) {
       return@withContext UpdateStatus.NoReleasesFound(
         repository = cleanRepo,
-        message = "No releases found for '$cleanRepo'. Releases will appear here once your release workflow generates an APK tag."
+        message = "No releases found for '$cleanRepo'. Releases will appear here once an APK tag is posted."
       )
     }
 
@@ -2105,7 +2310,7 @@ suspend fun queryGitHubLatestRelease(repo: String, currentVersion: String): Upda
         latestVersion = remoteVersion,
         releaseTitle = releaseTitle,
         releaseNotes = releaseNotes,
-        apkDownloadUrl = apkDownloadUrl,
+        apkDownloadUrl = apkDownloadUrl ?: "https://github.com/$cleanRepo/releases/download/$tagName/Strawberrycandy.apk",
         releasePageUrl = htmlUrl,
         publishedDate = formattedDate
       )
@@ -2122,24 +2327,110 @@ suspend fun queryGitHubLatestRelease(repo: String, currentVersion: String): Upda
   }
 }
 
+suspend fun queryUpdateJson(
+  rawUrl: String,
+  currentVersionName: String,
+  currentVersionCode: Int,
+  nowTimestamp: String
+): UpdateStatus? = withContext(Dispatchers.IO) {
+  var connection: HttpURLConnection? = null
+  try {
+    val fullUrl = if (rawUrl.contains("raw.githubusercontent.com") && !rawUrl.contains("?")) {
+      "$rawUrl?t=${System.currentTimeMillis()}"
+    } else rawUrl
+
+    val url = URL(fullUrl)
+    connection = (url.openConnection() as HttpURLConnection).apply {
+      requestMethod = "GET"
+      connectTimeout = 6000
+      readTimeout = 6000
+      useCaches = false
+      setRequestProperty("Accept", "application/json, text/plain, */*")
+      setRequestProperty("User-Agent", "Strawberrycandy-App-Update-Checker")
+    }
+
+    if (connection.responseCode in 200..299) {
+      val text = connection.inputStream.bufferedReader().use { it.readText() }.trim()
+      if (text.startsWith("{") && text.endsWith("}")) {
+        val json = JSONObject(text)
+        val remoteVersionName = json.optString("versionName", json.optString("version", "")).trim()
+        val remoteVersionCode = json.optInt("versionCode", json.optInt("build", json.optInt("buildNumber", 0)))
+        val title = json.optString("title", json.optString("name", "Strawberrycandy $remoteVersionName"))
+        val changelog = json.optString("changelog", json.optString("notes", json.optString("description", "")))
+        val apkUrl = json.optString("apkUrl", json.optString("downloadUrl", null))
+        val releasePageUrl = json.optString("releasePageUrl", json.optString("githubUrl", "https://github.com/clarifyrgb/strawberrycandy/tags"))
+        val publishedDate = json.optString("publishedDate", "")
+
+        val hasNewCode = remoteVersionCode > currentVersionCode
+        val hasNewName = isVersionNewer(remoteVersionName, currentVersionName)
+
+        if (hasNewCode || hasNewName) {
+          val displayVersion = if (remoteVersionCode > 0 && remoteVersionName.isNotBlank()) {
+            "$remoteVersionName (Build $remoteVersionCode)"
+          } else if (remoteVersionName.isNotBlank()) {
+            remoteVersionName
+          } else {
+            "Build $remoteVersionCode"
+          }
+          return@withContext UpdateStatus.UpdateAvailable(
+            latestVersion = displayVersion,
+            releaseTitle = title,
+            releaseNotes = changelog,
+            apkDownloadUrl = apkUrl ?: "https://github.com/clarifyrgb/strawberrycandy/releases/download/v$remoteVersionName/Strawberrycandy.apk",
+            releasePageUrl = releasePageUrl,
+            publishedDate = publishedDate
+          )
+        } else if (remoteVersionName.isNotBlank() || remoteVersionCode > 0) {
+          return@withContext UpdateStatus.UpToDate(
+            checkedVersion = remoteVersionName.ifBlank { currentVersionName },
+            checkedTimestamp = nowTimestamp
+          )
+        }
+      }
+    }
+  } catch (_: Exception) {}
+  finally {
+    connection?.disconnect()
+  }
+  null
+}
+
 /**
- * Compares two semantic version strings (e.g. "1.1.0" vs "1.0.0")
+ * Compares two semantic version strings (e.g. "1.0.2" vs "1.0.1")
+ */
+fun compareSemVer(a: String, b: String): Int {
+  val cleanA = a.trim().removePrefix("v").removePrefix("V").trim()
+  val cleanB = b.trim().removePrefix("v").removePrefix("V").trim()
+  val partsA = cleanA.split('.').mapNotNull { seg ->
+    seg.takeWhile { it.isDigit() }.toIntOrNull()
+  }
+  val partsB = cleanB.split('.').mapNotNull { seg ->
+    seg.takeWhile { it.isDigit() }.toIntOrNull()
+  }
+  val maxLen = maxOf(partsA.size, partsB.size)
+  for (i in 0 until maxLen) {
+    val pA = partsA.getOrElse(i) { 0 }
+    val pB = partsB.getOrElse(i) { 0 }
+    if (pA != pB) return pA.compareTo(pB)
+  }
+  return cleanA.compareTo(cleanB)
+}
+
+/**
+ * Finds the tag with the latest semantic version from a list of tag names
+ */
+fun findLatestTag(tagNames: List<String>): String? {
+  if (tagNames.isEmpty()) return null
+  return tagNames.maxWithOrNull { a, b -> compareSemVer(a, b) }
+}
+
+/**
+ * Returns true if remote version is strictly newer than local version
  */
 fun isVersionNewer(remote: String, local: String): Boolean {
   val cleanRemote = remote.trim().removePrefix("v").removePrefix("V").trim()
   val cleanLocal = local.trim().removePrefix("v").removePrefix("V").trim()
   if (cleanRemote.isBlank()) return false
   if (cleanRemote.equals(cleanLocal, ignoreCase = true)) return false
-
-  val remoteParts = cleanRemote.split('.').mapNotNull { it.toIntOrNull() }
-  val localParts = cleanLocal.split('.').mapNotNull { it.toIntOrNull() }
-
-  val maxLen = maxOf(remoteParts.size, localParts.size)
-  for (i in 0 until maxLen) {
-    val r = remoteParts.getOrElse(i) { 0 }
-    val l = localParts.getOrElse(i) { 0 }
-    if (r > l) return true
-    if (r < l) return false
-  }
-  return false
+  return compareSemVer(cleanRemote, cleanLocal) > 0
 }
