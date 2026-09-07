@@ -1,9 +1,12 @@
 package com.example.ui.components
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
@@ -38,6 +41,7 @@ import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.CloudDone
 import androidx.compose.material.icons.outlined.CloudUpload
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.History
@@ -63,6 +67,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -143,13 +148,14 @@ fun AboutModal(
   gitHubToken: String = "",
   onSyncCloudArchive: () -> Unit = {},
   onSaveCloudSettings: (readUrl: String, writeUrl: String, token: String) -> Unit = { _, _, _ -> },
+  onPublishUpdateManifest: (versionName: String, versionCode: Int, title: String, changelog: String, apkUrl: String, releasePageUrl: String, onComplete: (Result<String>) -> Unit) -> Unit = { _, _, _, _, _, _, _ -> },
   onDismiss: () -> Unit
 ) {
   val context = LocalContext.current
   val coroutineScope = rememberCoroutineScope()
 
   // App version information
-  val currentVersionName = BuildConfig.VERSION_NAME.ifBlank { "1.0.0" }
+  val currentVersionName = BuildConfig.VERSION_NAME.ifBlank { "1.0.1" }
   val currentVersionCode = BuildConfig.VERSION_CODE
 
   // Default update endpoint from repository
@@ -173,6 +179,22 @@ fun AboutModal(
       val result = fetchAppUpdate(updateJsonUrl, currentVersionName, currentVersionCode)
       updateStatus = result
     }
+  }
+
+  fun simulateUpdateAvailable() {
+    updateStatus = UpdateStatus.UpdateAvailable(
+      latestVersion = "1.0.2 (Build 3)",
+      releaseTitle = "Strawberrycandy v1.0.2 - Live Update",
+      releaseNotes = "• Instant APK update detection with direct browser download\n• Preserved signing keys: Update installs seamlessly over your existing app without data loss\n• Global Cloud Archive manuscript sync\n• Reading mode typography & smooth scroll optimizations",
+      apkDownloadUrl = "https://github.com/clarifyrgb/strawberrycandy/releases/download/v1.0.2/Strawberrycandy.apk",
+      releasePageUrl = "https://github.com/clarifyrgb/strawberrycandy/releases",
+      publishedDate = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+    )
+  }
+
+  // Auto-check for updates on modal open
+  LaunchedEffect(Unit) {
+    triggerUpdateCheck()
   }
 
   Dialog(
@@ -337,7 +359,8 @@ fun AboutModal(
                   if (isEditingUrl) urlInput = updateJsonUrl
                 },
                 updateStatus = updateStatus,
-                onCheckUpdates = { triggerUpdateCheck() }
+                onCheckUpdates = { triggerUpdateCheck() },
+                onSimulateUpdate = { simulateUpdateAvailable() }
               )
             }
             1 -> {
@@ -355,6 +378,13 @@ fun AboutModal(
                 initialGitHubToken = gitHubToken,
                 onSyncNow = onSyncCloudArchive,
                 onSaveSettings = onSaveCloudSettings
+              )
+              Spacer(modifier = Modifier.height(12.dp))
+              UpdateManifestPublisherCard(
+                currentVersionName = currentVersionName,
+                currentVersionCode = currentVersionCode,
+                gitHubToken = gitHubToken,
+                onPublishUpdateManifest = onPublishUpdateManifest
               )
               Spacer(modifier = Modifier.height(12.dp))
               SystemDiagnosticsCard(
@@ -483,7 +513,8 @@ private fun UpdateCheckerCard(
   onSaveUrl: () -> Unit,
   onToggleEditUrl: () -> Unit,
   updateStatus: UpdateStatus,
-  onCheckUpdates: () -> Unit
+  onCheckUpdates: () -> Unit,
+  onSimulateUpdate: () -> Unit
 ) {
   val context = LocalContext.current
 
@@ -743,7 +774,7 @@ private fun UpdateCheckerCard(
               }
             }
 
-            // Direct Download Buttons
+            // Direct Download & Release Action Buttons
             Row(
               modifier = Modifier.fillMaxWidth(),
               horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -755,7 +786,7 @@ private fun UpdateCheckerCard(
                     try { context.startActivity(downloadIntent) } catch (_: Exception) {}
                   },
                   modifier = Modifier
-                    .weight(1f)
+                    .weight(1.2f)
                     .testTag("download_apk_button"),
                   shape = RoundedCornerShape(8.dp),
                   colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
@@ -771,6 +802,25 @@ private fun UpdateCheckerCard(
                     text = "Download APK",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold
+                  )
+                }
+
+                IconButton(
+                  onClick = {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                    val clip = ClipData.newPlainText("Strawberrycandy APK URL", update.apkDownloadUrl)
+                    clipboard?.setPrimaryClip(clip)
+                    Toast.makeText(context, "APK download link copied to clipboard!", Toast.LENGTH_SHORT).show()
+                  },
+                  modifier = Modifier
+                    .size(38.dp)
+                    .border(1.dp, Color(0xFF2E7D32).copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                ) {
+                  Icon(
+                    imageVector = Icons.Outlined.ContentCopy,
+                    contentDescription = "Copy APK Link",
+                    tint = Color(0xFF2E7D32),
+                    modifier = Modifier.size(16.dp)
                   )
                 }
               }
@@ -791,40 +841,78 @@ private fun UpdateCheckerCard(
                 )
               }
             }
+
+            // Seamless update hint
+            Surface(
+              shape = RoundedCornerShape(8.dp),
+              color = Color(0xFFE8F5E9).copy(alpha = 0.6f),
+              border = BorderStroke(0.6.dp, Color(0xFF81C784).copy(alpha = 0.4f)),
+              modifier = Modifier.fillMaxWidth()
+            ) {
+              Text(
+                text = "✨ In-Place Upgrade: Install this APK directly over your current app. All books, bookmarks, reader settings, and progress will be preserved automatically.",
+                fontSize = 9.sp,
+                color = Color(0xFF1B5E20),
+                lineHeight = 13.sp,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+              )
+            }
           }
         }
         is UpdateStatus.UpToDate -> {
           val upToDate = updateStatus
-          Row(
+          Column(
             modifier = Modifier
               .fillMaxWidth()
               .clip(RoundedCornerShape(10.dp))
               .background(Color(0xFFF1F8E9))
               .border(1.dp, Color(0xFFC5E1A5), RoundedCornerShape(10.dp))
               .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalArrangement = Arrangement.spacedBy(8.dp)
           ) {
-            Icon(
-              imageVector = Icons.Default.CheckCircle,
-              contentDescription = null,
-              tint = Color(0xFF388E3C),
-              modifier = Modifier.size(20.dp)
-            )
-            Spacer(modifier = Modifier.width(10.dp))
-            Column {
-              Text(
-                text = "Strawberrycandy is up to date!",
-                style = MaterialTheme.typography.labelMedium.copy(
-                  fontWeight = FontWeight.Bold,
-                  fontSize = 12.sp
-                ),
-                color = Color(0xFF2E7D32)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              Icon(
+                imageVector = Icons.Default.CheckCircle,
+                contentDescription = null,
+                tint = Color(0xFF388E3C),
+                modifier = Modifier.size(20.dp)
               )
-              Text(
-                text = "v${upToDate.checkedVersion} is the latest release available • Checked ${upToDate.checkedTimestamp}",
-                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-                color = CharcoalSecondary
-              )
+              Spacer(modifier = Modifier.width(10.dp))
+              Column {
+                Text(
+                  text = "Strawberrycandy is up to date!",
+                  style = MaterialTheme.typography.labelMedium.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp
+                  ),
+                  color = Color(0xFF2E7D32)
+                )
+                Text(
+                  text = "v${upToDate.checkedVersion} is the latest release • Checked ${upToDate.checkedTimestamp}",
+                  style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                  color = CharcoalSecondary
+                )
+              }
+            }
+
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.End
+            ) {
+              OutlinedButton(
+                onClick = onSimulateUpdate,
+                shape = RoundedCornerShape(6.dp),
+                border = BorderStroke(0.8.dp, Color(0xFF388E3C).copy(alpha = 0.5f)),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                modifier = Modifier.height(26.dp)
+              ) {
+                Text(
+                  text = "Preview Update Available UI",
+                  fontSize = 9.sp,
+                  color = Color(0xFF2E7D32),
+                  fontWeight = FontWeight.Medium
+                )
+              }
             }
           }
         }
@@ -1255,6 +1343,235 @@ private fun GlobalCloudArchiveCard(
 }
 
 // ---------------------------------------------------------------------
+// 4B. UPDATE MANIFEST PUBLISHER CARD
+// ---------------------------------------------------------------------
+@Composable
+private fun UpdateManifestPublisherCard(
+  currentVersionName: String,
+  currentVersionCode: Int,
+  gitHubToken: String,
+  onPublishUpdateManifest: (versionName: String, versionCode: Int, title: String, changelog: String, apkUrl: String, releasePageUrl: String, onComplete: (Result<String>) -> Unit) -> Unit
+) {
+  val context = LocalContext.current
+  var isExpanded by remember { mutableStateOf(false) }
+  var versionNameInput by remember { mutableStateOf(currentVersionName) }
+  var versionCodeInput by remember { mutableStateOf((currentVersionCode + 1).toString()) }
+  var titleInput by remember { mutableStateOf("Strawberrycandy v$currentVersionName") }
+  var changelogInput by remember { mutableStateOf("• In-app update system enhancements\n• Preserved reading progress & bookmarks\n• Cloud Archive manuscript synchronization") }
+  var apkUrlInput by remember { mutableStateOf("https://github.com/clarifyrgb/strawberrycandy/releases/download/v$currentVersionName/Strawberrycandy.apk") }
+  var releasePageUrlInput by remember { mutableStateOf("https://github.com/clarifyrgb/strawberrycandy/releases") }
+
+  var isPublishing by remember { mutableStateOf(false) }
+  var publishResult by remember { mutableStateOf<String?>(null) }
+
+  Card(
+    modifier = Modifier
+      .fillMaxWidth()
+      .testTag("update_manifest_publisher_card"),
+    shape = RoundedCornerShape(14.dp),
+    colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
+    border = BorderStroke(1.dp, SubtleBorder)
+  ) {
+    Column(
+      modifier = Modifier.padding(16.dp),
+      verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Icon(
+            imageVector = Icons.Outlined.SystemUpdate,
+            contentDescription = null,
+            tint = AntiqueGold,
+            modifier = Modifier.size(18.dp)
+          )
+          Spacer(modifier = Modifier.width(6.dp))
+          Text(
+            text = "RELEASE MANIFEST (update.json)",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 8.5.sp,
+              letterSpacing = 1.2.sp,
+              fontWeight = FontWeight.Bold
+            ),
+            color = AntiqueGold
+          )
+        }
+
+        OutlinedButton(
+          onClick = { isExpanded = !isExpanded },
+          shape = RoundedCornerShape(6.dp),
+          border = BorderStroke(0.8.dp, AntiqueGold.copy(alpha = 0.5f)),
+          contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+          modifier = Modifier.height(26.dp)
+        ) {
+          Text(
+            text = if (isExpanded) "Hide" else "Manage / Publish",
+            fontSize = 9.sp,
+            color = AntiqueGold,
+            fontWeight = FontWeight.SemiBold
+          )
+        }
+      }
+
+      Text(
+        text = "Installed build is v$currentVersionName (Build $currentVersionCode). When you publish an update to GitHub, updating update.json notifies all installed APKs so readers can download and install it in one tap.",
+        style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
+        color = CharcoalSecondary,
+        lineHeight = 14.sp
+      )
+
+      AnimatedVisibility(visible = isExpanded) {
+        Column(
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp),
+          verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+          ) {
+            OutlinedTextField(
+              value = versionNameInput,
+              onValueChange = {
+                versionNameInput = it
+                titleInput = "Strawberrycandy v$it"
+                apkUrlInput = "https://github.com/clarifyrgb/strawberrycandy/releases/download/v$it/Strawberrycandy.apk"
+              },
+              label = { Text("Version Name", fontSize = 10.sp) },
+              singleLine = true,
+              modifier = Modifier.weight(1f),
+              colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DeepBurgundy, unfocusedBorderColor = SubtleBorder),
+              shape = RoundedCornerShape(8.dp)
+            )
+
+            OutlinedTextField(
+              value = versionCodeInput,
+              onValueChange = { versionCodeInput = it },
+              label = { Text("Build Code", fontSize = 10.sp) },
+              singleLine = true,
+              modifier = Modifier.weight(1f),
+              colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DeepBurgundy, unfocusedBorderColor = SubtleBorder),
+              shape = RoundedCornerShape(8.dp)
+            )
+          }
+
+          OutlinedTextField(
+            value = titleInput,
+            onValueChange = { titleInput = it },
+            label = { Text("Update Title", fontSize = 10.sp) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DeepBurgundy, unfocusedBorderColor = SubtleBorder),
+            shape = RoundedCornerShape(8.dp)
+          )
+
+          OutlinedTextField(
+            value = apkUrlInput,
+            onValueChange = { apkUrlInput = it },
+            label = { Text("Direct APK Download URL", fontSize = 10.sp) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DeepBurgundy, unfocusedBorderColor = SubtleBorder),
+            shape = RoundedCornerShape(8.dp)
+          )
+
+          OutlinedTextField(
+            value = changelogInput,
+            onValueChange = { changelogInput = it },
+            label = { Text("Changelog / Release Highlights", fontSize = 10.sp) },
+            minLines = 2,
+            maxLines = 4,
+            modifier = Modifier.fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DeepBurgundy, unfocusedBorderColor = SubtleBorder),
+            shape = RoundedCornerShape(8.dp)
+          )
+
+          publishResult?.let { msg ->
+            Text(
+              text = msg,
+              fontSize = 10.sp,
+              color = if (msg.startsWith("✨")) Color(0xFF2E7D32) else Color(0xFFC2185B),
+              lineHeight = 13.sp
+            )
+          }
+
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+          ) {
+            Button(
+              onClick = {
+                val code = versionCodeInput.toIntOrNull() ?: (currentVersionCode + 1)
+                isPublishing = true
+                publishResult = null
+                onPublishUpdateManifest(
+                  versionNameInput.trim(),
+                  code,
+                  titleInput.trim(),
+                  changelogInput.trim(),
+                  apkUrlInput.trim(),
+                  releasePageUrlInput.trim()
+                ) { result ->
+                  isPublishing = false
+                  publishResult = if (result.isSuccess) {
+                    result.getOrNull() ?: "✨ Successfully published update.json to GitHub!"
+                  } else {
+                    result.exceptionOrNull()?.localizedMessage ?: "Failed to publish"
+                  }
+                }
+              },
+              enabled = !isPublishing,
+              shape = RoundedCornerShape(8.dp),
+              colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+              modifier = Modifier
+                .weight(1f)
+                .height(36.dp)
+            ) {
+              if (isPublishing) {
+                CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = Color.White)
+              } else {
+                Text("Publish to GitHub", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
+              }
+            }
+
+            OutlinedButton(
+              onClick = {
+                val json = """
+{
+  "versionName": "${versionNameInput.trim()}",
+  "versionCode": ${versionCodeInput.toIntOrNull() ?: (currentVersionCode + 1)},
+  "title": "${titleInput.trim()}",
+  "changelog": "${changelogInput.trim().replace("\n", "\\n")}",
+  "apkUrl": "${apkUrlInput.trim()}",
+  "releasePageUrl": "${releasePageUrlInput.trim()}",
+  "publishedDate": "${SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())}"
+}
+                """.trimIndent()
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                val clip = ClipData.newPlainText("update.json", json)
+                clipboard?.setPrimaryClip(clip)
+                Toast.makeText(context, "update.json copied to clipboard!", Toast.LENGTH_SHORT).show()
+              },
+              shape = RoundedCornerShape(8.dp),
+              border = BorderStroke(1.dp, SubtleBorder),
+              modifier = Modifier.height(36.dp)
+            ) {
+              Icon(Icons.Outlined.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp), tint = CharcoalText)
+              Spacer(modifier = Modifier.width(4.dp))
+              Text("Copy JSON", fontSize = 11.sp, color = CharcoalText)
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------
 // 5. SYSTEM & DEVICE DIAGNOSTICS CARD
 // ---------------------------------------------------------------------
 @Composable
@@ -1334,7 +1651,13 @@ suspend fun fetchAppUpdate(
   var connection: HttpURLConnection? = null
 
   try {
-    val url = URL(jsonUrl.trim())
+    val rawUrl = jsonUrl.trim()
+    val fullUrl = if (rawUrl.contains("raw.githubusercontent.com") && !rawUrl.contains("?")) {
+      "$rawUrl?t=${System.currentTimeMillis()}"
+    } else {
+      rawUrl
+    }
+    val url = URL(fullUrl)
     connection = (url.openConnection() as HttpURLConnection).apply {
       requestMethod = "GET"
       connectTimeout = 8000
@@ -1507,11 +1830,13 @@ suspend fun queryGitHubLatestRelease(repo: String, currentVersion: String): Upda
  * Compares two semantic version strings (e.g. "1.1.0" vs "1.0.0")
  */
 fun isVersionNewer(remote: String, local: String): Boolean {
-  if (remote.isBlank()) return false
-  if (remote.equals(local, ignoreCase = true)) return false
+  val cleanRemote = remote.trim().removePrefix("v").removePrefix("V").trim()
+  val cleanLocal = local.trim().removePrefix("v").removePrefix("V").trim()
+  if (cleanRemote.isBlank()) return false
+  if (cleanRemote.equals(cleanLocal, ignoreCase = true)) return false
 
-  val remoteParts = remote.split('.').mapNotNull { it.toIntOrNull() }
-  val localParts = local.split('.').mapNotNull { it.toIntOrNull() }
+  val remoteParts = cleanRemote.split('.').mapNotNull { it.toIntOrNull() }
+  val localParts = cleanLocal.split('.').mapNotNull { it.toIntOrNull() }
 
   val maxLen = maxOf(remoteParts.size, localParts.size)
   for (i in 0 until maxLen) {

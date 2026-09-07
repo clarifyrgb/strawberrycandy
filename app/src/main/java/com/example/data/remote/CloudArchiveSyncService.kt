@@ -443,4 +443,86 @@ class CloudArchiveSyncService(private val context: Context) {
       connection?.disconnect()
     }
   }
+
+  suspend fun publishUpdateManifestToGitHub(
+    versionName: String,
+    versionCode: Int,
+    title: String,
+    changelog: String,
+    apkUrl: String,
+    releasePageUrl: String,
+    token: String
+  ): Result<String> = withContext(Dispatchers.IO) {
+    var connection: HttpURLConnection? = null
+    try {
+      val apiUrl = "https://api.github.com/repos/$GITHUB_REPO_PATH/contents/update.json"
+      var existingSha: String? = null
+
+      try {
+        val checkConn = (URL(apiUrl).openConnection() as HttpURLConnection).apply {
+          requestMethod = "GET"
+          connectTimeout = 8000
+          readTimeout = 8000
+          setRequestProperty("Authorization", "Bearer $token")
+          setRequestProperty("Accept", "application/vnd.github.v3+json")
+          setRequestProperty("User-Agent", "Strawberrycandy-Android-APK")
+        }
+        if (checkConn.responseCode == 200) {
+          val res = checkConn.inputStream.bufferedReader().use { it.readText() }
+          val json = JSONObject(res)
+          existingSha = json.optString("sha")
+        }
+        checkConn.disconnect()
+      } catch (_: Exception) {}
+
+      val updateJson = JSONObject().apply {
+        put("versionName", versionName)
+        put("versionCode", versionCode)
+        put("title", title)
+        put("changelog", changelog)
+        put("apkUrl", apkUrl)
+        put("releasePageUrl", releasePageUrl)
+        put("publishedDate", java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date()))
+      }
+
+      val jsonText = updateJson.toString(2)
+      val base64Content = Base64.encodeToString(jsonText.toByteArray(StandardCharsets.UTF_8), Base64.NO_WRAP)
+
+      connection = (URL(apiUrl).openConnection() as HttpURLConnection).apply {
+        requestMethod = "PUT"
+        connectTimeout = 12000
+        readTimeout = 12000
+        doOutput = true
+        setRequestProperty("Authorization", "Bearer $token")
+        setRequestProperty("Content-Type", "application/json")
+        setRequestProperty("Accept", "application/vnd.github.v3+json")
+        setRequestProperty("User-Agent", "Strawberrycandy-Android-APK")
+      }
+
+      val requestBody = JSONObject().apply {
+        put("message", "Release APK update manifest: $versionName (Build $versionCode)")
+        put("content", base64Content)
+        if (existingSha != null && existingSha.isNotBlank()) {
+          put("sha", existingSha)
+        }
+      }
+
+      OutputStreamWriter(connection.outputStream, StandardCharsets.UTF_8).use {
+        it.write(requestBody.toString())
+        it.flush()
+      }
+
+      val code = connection.responseCode
+      if (code in 200..299) {
+        Result.success("✨ Successfully updated update.json on GitHub! All installed APKs will now detect this update.")
+      } else {
+        val err = connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+        Result.failure(Exception("GitHub API HTTP $code: $err"))
+      }
+    } catch (e: Exception) {
+      Result.failure(e)
+    } finally {
+      connection?.disconnect()
+    }
+  }
 }

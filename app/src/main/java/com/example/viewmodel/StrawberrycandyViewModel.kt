@@ -761,6 +761,37 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
   fun getGitHubToken(): String = syncService.getGitHubToken()
   fun setGitHubToken(token: String) = syncService.setGitHubToken(token)
 
+  fun publishUpdateManifest(
+    versionName: String,
+    versionCode: Int,
+    title: String,
+    changelog: String,
+    apkUrl: String,
+    releasePageUrl: String,
+    onComplete: (Result<String>) -> Unit
+  ) {
+    viewModelScope.launch {
+      val token = syncService.getGitHubToken()
+      if (token.isBlank()) {
+        onComplete(Result.failure(Exception("GitHub token is not configured. Please enter your GitHub Personal Access Token in the settings tab.")))
+        return@launch
+      }
+      val res = syncService.publishUpdateManifestToGitHub(
+        versionName = versionName,
+        versionCode = versionCode,
+        title = title,
+        changelog = changelog,
+        apkUrl = apkUrl,
+        releasePageUrl = releasePageUrl,
+        token = token
+      )
+      if (res.isSuccess) {
+        _snackbarMessage.value = "✨ Update manifest published to GitHub!"
+      }
+      onComplete(res)
+    }
+  }
+
   // Chapter Comments
   fun getCommentsForChapter(novelId: String, chapterTitle: String): Flow<List<ChapterCommentEntity>> {
     return repository.getCommentsForChapter(novelId, chapterTitle)

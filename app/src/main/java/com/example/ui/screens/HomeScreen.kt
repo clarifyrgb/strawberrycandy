@@ -1092,6 +1092,9 @@ fun HomeScreen(
           viewModel.setCloudWriteUrl(writeUrl)
           viewModel.setGitHubToken(token)
         },
+        onPublishUpdateManifest = { versionName, versionCode, title, changelog, apkUrl, releasePageUrl, onComplete ->
+          viewModel.publishUpdateManifest(versionName, versionCode, title, changelog, apkUrl, releasePageUrl, onComplete)
+        },
         onDismiss = { isAboutModalOpen = false }
       )
     }
