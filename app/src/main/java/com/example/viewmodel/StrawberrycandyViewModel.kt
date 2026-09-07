@@ -83,7 +83,12 @@ data class StrawberrycandyUiState(
 class StrawberrycandyViewModel(application: Application) : AndroidViewModel(application) {
   private val database = StrawberrycandyDatabase.getInstance(application)
   private val syncService = CloudArchiveSyncService(application)
-  private val repository = StrawberrycandyRepository(database.strawberrycandyDao(), syncService = syncService)
+  private val firebaseStorageService = com.example.data.remote.FirebaseCloudStorageService(application)
+  private val repository = StrawberrycandyRepository(
+    dao = database.strawberrycandyDao(),
+    syncService = syncService,
+    firebaseStorageService = firebaseStorageService
+  )
 
   private val _activeFilter = MutableStateFlow(ShelfFilter.ALL)
   private val _activeSort = MutableStateFlow(NovelSortOption.NEWEST)
@@ -776,6 +781,23 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
         refreshCloudArchive(silent = true)
       } else {
         val err = res.exceptionOrNull()?.message ?: "Publication failed"
+        onDone(false, err)
+      }
+    }
+  }
+
+  fun uploadNovelToFirebaseStorage(
+    onDone: (success: Boolean, message: String) -> Unit
+  ) {
+    val novel = _cloudPublishModalNovel.value ?: return
+    viewModelScope.launch {
+      val res = repository.publishNovelToFirebaseStorage(novel.id)
+      if (res.isSuccess) {
+        val msg = res.getOrNull() ?: "Uploaded to Firebase Cloud Storage!"
+        _snackbarMessage.value = msg
+        onDone(true, msg)
+      } else {
+        val err = res.exceptionOrNull()?.message ?: "Firebase Storage upload failed"
         onDone(false, err)
       }
     }

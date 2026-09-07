@@ -36,9 +36,11 @@ class StrawberrycandyRepository(
   private val dao: StrawberrycandyDao,
   private val externalScope: CoroutineScope = CoroutineScope(Dispatchers.IO),
   private val syncService: CloudArchiveSyncService? = null,
+  private val firebaseStorageService: com.example.data.remote.FirebaseCloudStorageService? = null,
 ) {
 
   fun getSyncService(): CloudArchiveSyncService? = syncService
+  fun getFirebaseStorageService(): com.example.data.remote.FirebaseCloudStorageService? = firebaseStorageService
 
   companion object {
     val OWNER_EMAILS = setOf(
@@ -284,6 +286,22 @@ class StrawberrycandyRepository(
       fullCatalogJson = syncService.exportNovelsToJsonString(allNovels)
     }
 
+    // Automatically backup novel package (metadata & manuscript) to Firebase Cloud Storage bucket if available
+    if (firebaseStorageService != null) {
+      externalScope.launch {
+        try {
+          val fbRes = firebaseStorageService.uploadNovelPackage(novel)
+          if (fbRes.isSuccess) {
+            Log.d("StrawberrycandyRepository", "Uploaded novel ${novel.id} to Firebase Cloud Storage (${fbRes.getOrNull()?.storageBucket})")
+          } else {
+            Log.w("StrawberrycandyRepository", "Firebase Cloud Storage backup note: ${fbRes.exceptionOrNull()?.message}")
+          }
+        } catch (e: Exception) {
+          Log.w("StrawberrycandyRepository", "Firebase Cloud Storage upload error: ${e.message}")
+        }
+      }
+    }
+
     return UploadNovelResult(
       novelId = novelId,
       novel = novel,
@@ -306,6 +324,18 @@ class StrawberrycandyRepository(
     val novel = dao.getNovelById(novelId) ?: return Result.failure(IllegalArgumentException("Novel not found"))
     val allNovels = dao.getAllNovelsSync()
     return syncService.publishNovelToRemote(novel, allNovels)
+  }
+
+  suspend fun publishNovelToFirebaseStorage(novelId: String): Result<String> {
+    val storage = firebaseStorageService ?: return Result.failure(IllegalStateException("Firebase Cloud Storage service unavailable"))
+    val novel = dao.getNovelById(novelId) ?: return Result.failure(IllegalArgumentException("Novel not found"))
+    val res = storage.uploadNovelPackage(novel)
+    return if (res.isSuccess) {
+      val summary = res.getOrNull()
+      Result.success("✨ Novel manuscript & metadata uploaded to Firebase Storage (gs://${summary?.storageBucket}/novels/$novelId/)")
+    } else {
+      Result.failure(res.exceptionOrNull() ?: Exception("Firebase Storage upload failed"))
+    }
   }
 
   suspend fun exportAllNovelsJson(): String {

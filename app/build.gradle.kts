@@ -7,7 +7,8 @@ plugins {
   alias(libs.plugins.google.devtools.ksp)
   alias(libs.plugins.roborazzi)
   alias(libs.plugins.secrets)
-  alias(libs.plugins.google.services)
+  // Add the Google services Gradle plugin
+  id("com.google.gms.google-services")
 }
 
 android {
@@ -93,7 +94,13 @@ googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.W
 // This makes it easy to add them back in the future if needed.
 dependencies {
   implementation(platform(libs.androidx.compose.bom))
-  implementation(platform(libs.firebase.bom))
+  // Import the Firebase BoM
+  implementation(platform("com.google.firebase:firebase-bom:34.18.0"))
+
+  // Firebase products
+  implementation("com.google.firebase:firebase-analytics")
+  implementation("com.google.firebase:firebase-storage")
+  implementation("com.google.firebase:firebase-firestore")
   // implementation(libs.accompanist.permissions)
   implementation(libs.androidx.activity.compose)
   // implementation(libs.androidx.camera.camera2)

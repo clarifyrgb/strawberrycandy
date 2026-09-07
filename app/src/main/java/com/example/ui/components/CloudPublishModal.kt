@@ -78,6 +78,7 @@ fun CloudPublishModal(
   initialWriteUrl: String = "",
   onDismiss: () -> Unit,
   onPublishToCloud: (token: String?, writeUrl: String?, onDone: (success: Boolean, message: String) -> Unit) -> Unit,
+  onUploadToFirebaseStorage: ((onDone: (success: Boolean, message: String) -> Unit) -> Unit)? = null,
 ) {
   val context = LocalContext.current
   var gitHubToken by remember { mutableStateOf(initialGitHubToken) }
@@ -470,6 +471,59 @@ fun CloudPublishModal(
         }
 
         Spacer(modifier = Modifier.height(20.dp))
+
+        // Action Option 2B: Firebase Cloud Storage Bucket
+        if (onUploadToFirebaseStorage != null) {
+          Text(
+            text = "FIREBASE CLOUD STORAGE (BUCKET BLOB)",
+            style = MaterialTheme.typography.labelSmall.copy(
+              letterSpacing = 1.0.sp,
+              fontWeight = FontWeight.Bold
+            ),
+            color = CharcoalSecondary
+          )
+          Spacer(modifier = Modifier.height(4.dp))
+          Text(
+            text = "Back up this novel's full manuscript, metadata JSON, and cover to your Firebase Storage bucket (gs://strawberrycandy.firebasestorage.app).",
+            style = MaterialTheme.typography.bodySmall,
+            color = CharcoalTertiary
+          )
+          Spacer(modifier = Modifier.height(8.dp))
+
+          OutlinedButton(
+            onClick = {
+              isPublishing = true
+              statusMessage = null
+              onUploadToFirebaseStorage { success, msg ->
+                isPublishing = false
+                isSuccess = success
+                statusMessage = msg
+              }
+            },
+            enabled = !isPublishing,
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier
+              .fillMaxWidth()
+              .height(44.dp)
+              .testTag("upload_firebase_storage_button"),
+            border = androidx.compose.foundation.BorderStroke(1.dp, DeepBurgundy)
+          ) {
+            Icon(
+              imageVector = Icons.Outlined.CloudUpload,
+              contentDescription = null,
+              modifier = Modifier.size(16.dp),
+              tint = DeepBurgundy
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+              "Upload to Firebase Storage Bucket",
+              style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+              color = DeepBurgundy
+            )
+          }
+
+          Spacer(modifier = Modifier.height(20.dp))
+        }
 
         // Action Option 3: Copy JSON to clipboard
         Text(

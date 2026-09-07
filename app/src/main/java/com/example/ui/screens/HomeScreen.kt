@@ -1161,6 +1161,9 @@ fun HomeScreen(
         onDismiss = { viewModel.dismissCloudPublishModal() },
         onPublishToCloud = { token, writeUrl, onDone ->
           viewModel.publishPendingNovelToCloud(token, writeUrl, onDone)
+        },
+        onUploadToFirebaseStorage = { onDone ->
+          viewModel.uploadNovelToFirebaseStorage(onDone)
         }
       )
     }

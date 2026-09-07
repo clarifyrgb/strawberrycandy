@@ -5,5 +5,6 @@ plugins {
   alias(libs.plugins.google.devtools.ksp) apply false
   alias(libs.plugins.roborazzi) apply false
   alias(libs.plugins.secrets) apply false
-  alias(libs.plugins.google.services) apply false
+  // Add the dependency for the Google services Gradle plugin
+  id("com.google.gms.google-services") version "4.5.0" apply false
 }

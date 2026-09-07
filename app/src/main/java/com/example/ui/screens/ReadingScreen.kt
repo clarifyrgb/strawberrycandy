@@ -1773,6 +1773,9 @@ fun ReadingScreen(
                 onDeleteComment = { commentId ->
                   viewModel?.deleteComment(commentId)
                 },
+                onSavePenName = { newName ->
+                  viewModel?.updateReaderName(newName)
+                },
                 modifier = Modifier.widthIn(max = 640.dp)
               )
 
