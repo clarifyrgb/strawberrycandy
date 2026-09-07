@@ -119,6 +119,7 @@ import com.example.model.NovelWithState
 import com.example.ui.components.AboutModal
 import com.example.ui.components.AuthModal
 import com.example.ui.components.AuthorRoomsModal
+import com.example.ui.components.CloudPublishModal
 import com.example.ui.components.EditNovelModal
 import com.example.ui.components.NovelSearchBar
 import com.example.ui.components.OwnerUploadDialog
@@ -320,6 +321,46 @@ fun HomeScreen(
               )
             }
           }
+
+          Spacer(modifier = Modifier.width(6.dp))
+          Surface(
+            shape = RoundedCornerShape(10.dp),
+            color = if (uiState.isCloudSyncing) DeepBurgundy.copy(alpha = 0.08f) else Color(0xFFF3E5F5),
+            border = BorderStroke(0.6.dp, if (uiState.isCloudSyncing) DeepBurgundy.copy(alpha = 0.3f) else Color(0xFFCE93D8)),
+            onClick = { viewModel.refreshCloudArchive() },
+            modifier = Modifier.testTag("cloud_sync_chip")
+          ) {
+            Row(
+              modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp),
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              if (uiState.isCloudSyncing) {
+                CircularProgressIndicator(
+                  modifier = Modifier.size(7.dp),
+                  strokeWidth = 1.dp,
+                  color = DeepBurgundy
+                )
+              } else {
+                Box(
+                  modifier = Modifier
+                    .size(5.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF7B1FA2))
+                )
+              }
+              Spacer(modifier = Modifier.width(4.dp))
+              Text(
+                text = if (uiState.isCloudSyncing) "SYNCING..." else "CLOUD ARCHIVE",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 8.sp,
+                  fontWeight = FontWeight.Bold,
+                  letterSpacing = 0.6.sp,
+                  color = if (uiState.isCloudSyncing) DeepBurgundy else Color(0xFF7B1FA2)
+                )
+              )
+            }
+          }
+
           if (uiState.activeFilter == ShelfFilter.NEW_RELEASES) {
             Spacer(modifier = Modifier.width(6.dp))
             Surface(
@@ -1039,6 +1080,18 @@ fun HomeScreen(
     if (isAboutModalOpen) {
       AboutModal(
         novelsCount = allNovelsList.size,
+        isCloudSyncing = uiState.isCloudSyncing,
+        lastCloudSyncTime = uiState.lastCloudSyncTime,
+        cloudSyncedNovelsCount = uiState.cloudSyncedNovelsCount,
+        cloudReadUrl = viewModel.getCloudReadUrl(),
+        cloudWriteUrl = viewModel.getCloudWriteUrl(),
+        gitHubToken = viewModel.getGitHubToken(),
+        onSyncCloudArchive = { viewModel.refreshCloudArchive() },
+        onSaveCloudSettings = { readUrl, writeUrl, token ->
+          viewModel.setCloudReadUrl(readUrl)
+          viewModel.setCloudWriteUrl(writeUrl)
+          viewModel.setGitHubToken(token)
+        },
         onDismiss = { isAboutModalOpen = false }
       )
     }
@@ -1256,6 +1309,22 @@ fun HomeScreen(
             novelStatus = novelStatus,
             releaseFormat = releaseFormat
           )
+        }
+      )
+    }
+
+    // Global Cloud Publishing Hub Modal
+    if (uiState.cloudPublishModalNovel != null) {
+      CloudPublishModal(
+        novel = uiState.cloudPublishModalNovel!!,
+        novelJson = uiState.cloudPublishModalNovelJson ?: "",
+        fullCatalogJson = uiState.cloudPublishModalCatalogJson ?: "[]",
+        isAlreadyCloudPublished = uiState.isAlreadyCloudPublished,
+        initialGitHubToken = viewModel.getGitHubToken(),
+        initialWriteUrl = viewModel.getCloudWriteUrl(),
+        onDismiss = { viewModel.dismissCloudPublishModal() },
+        onPublishToCloud = { token, writeUrl, onDone ->
+          viewModel.publishPendingNovelToCloud(token, writeUrl, onDone)
         }
       )
     }

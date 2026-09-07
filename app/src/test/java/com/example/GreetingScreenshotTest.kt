@@ -23,6 +23,8 @@ class GreetingScreenshotTest {
   fun greeting_screenshot() {
     composeTestRule.setContent { MyApplicationTheme { Greeting("Robolectric") } }
 
+    composeTestRule.waitForIdle()
+
     composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/greeting.png")
   }
 }

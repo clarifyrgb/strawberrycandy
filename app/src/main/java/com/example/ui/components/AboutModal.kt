@@ -36,10 +36,14 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.CloudDone
+import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.MenuBook
+import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Storage
@@ -86,6 +90,7 @@ import com.example.ui.theme.CharcoalSecondary
 import com.example.ui.theme.CharcoalTertiary
 import com.example.ui.theme.CharcoalText
 import com.example.ui.theme.CreamBackground
+import com.example.ui.theme.DeepBurgundy
 import com.example.ui.theme.SoftCreamPaper
 import com.example.ui.theme.SubtleBorder
 import kotlinx.coroutines.Dispatchers
@@ -130,6 +135,14 @@ sealed class UpdateStatus {
 @Composable
 fun AboutModal(
   novelsCount: Int = 0,
+  isCloudSyncing: Boolean = false,
+  lastCloudSyncTime: Long = 0L,
+  cloudSyncedNovelsCount: Int = 0,
+  cloudReadUrl: String = "",
+  cloudWriteUrl: String = "",
+  gitHubToken: String = "",
+  onSyncCloudArchive: () -> Unit = {},
+  onSaveCloudSettings: (readUrl: String, writeUrl: String, token: String) -> Unit = { _, _, _ -> },
   onDismiss: () -> Unit
 ) {
   val context = LocalContext.current
@@ -332,7 +345,18 @@ fun AboutModal(
               FeaturesShowcaseCard(novelsCount = novelsCount)
             }
             2 -> {
-              // TAB 2: SYSTEM & DEVICE DIAGNOSTICS
+              // TAB 2: SYSTEM & DEVICE DIAGNOSTICS & GLOBAL CLOUD ARCHIVE
+              GlobalCloudArchiveCard(
+                isCloudSyncing = isCloudSyncing,
+                lastSyncTime = lastCloudSyncTime,
+                cloudSyncedCount = cloudSyncedNovelsCount,
+                initialReadUrl = cloudReadUrl,
+                initialWriteUrl = cloudWriteUrl,
+                initialGitHubToken = gitHubToken,
+                onSyncNow = onSyncCloudArchive,
+                onSaveSettings = onSaveCloudSettings
+              )
+              Spacer(modifier = Modifier.height(12.dp))
               SystemDiagnosticsCard(
                 currentVersion = currentVersionName,
                 buildNumber = currentVersionCode,
@@ -1006,7 +1030,232 @@ private fun FeatureItem(
 }
 
 // ---------------------------------------------------------------------
-// 4. SYSTEM & DEVICE DIAGNOSTICS CARD
+// 4. GLOBAL CLOUD ARCHIVE CARD
+// ---------------------------------------------------------------------
+@Composable
+private fun GlobalCloudArchiveCard(
+  isCloudSyncing: Boolean,
+  lastSyncTime: Long,
+  cloudSyncedCount: Int,
+  initialReadUrl: String,
+  initialWriteUrl: String,
+  initialGitHubToken: String,
+  onSyncNow: () -> Unit,
+  onSaveSettings: (readUrl: String, writeUrl: String, token: String) -> Unit,
+) {
+  var isEditingSettings by remember { mutableStateOf(false) }
+  var readUrlInput by remember { mutableStateOf(initialReadUrl) }
+  var writeUrlInput by remember { mutableStateOf(initialWriteUrl) }
+  var tokenInput by remember { mutableStateOf(initialGitHubToken) }
+
+  Card(
+    modifier = Modifier
+      .fillMaxWidth()
+      .testTag("global_cloud_archive_card"),
+    shape = RoundedCornerShape(14.dp),
+    colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
+    border = BorderStroke(1.dp, SubtleBorder)
+  ) {
+    Column(
+      modifier = Modifier.padding(16.dp),
+      verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Icon(
+            imageVector = Icons.Outlined.CloudDone,
+            contentDescription = null,
+            tint = Color(0xFF2E7D32),
+            modifier = Modifier.size(18.dp)
+          )
+          Spacer(modifier = Modifier.width(6.dp))
+          Text(
+            text = "GLOBAL CLOUD ARCHIVE",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 8.5.sp,
+              letterSpacing = 1.2.sp,
+              fontWeight = FontWeight.Bold
+            ),
+            color = AntiqueGold
+          )
+        }
+
+        Surface(
+          shape = RoundedCornerShape(8.dp),
+          color = Color(0xFFE8F5E9),
+          border = BorderStroke(0.6.dp, Color(0xFF81C784))
+        ) {
+          Text(
+            text = "SHARED LIVE ARCHIVE",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 8.sp,
+              fontWeight = FontWeight.Bold,
+              letterSpacing = 0.5.sp,
+              color = Color(0xFF2E7D32)
+            ),
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+          )
+        }
+      }
+
+      Text(
+        text = "When translators or owners upload a novel, it pushes to the Global Archive so anyone who installed this APK can read the published manuscripts.",
+        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 15.sp),
+        color = CharcoalSecondary
+      )
+
+      HorizontalDivider(thickness = 0.6.dp, color = SubtleBorder)
+
+      DiagnosticRow(label = "Sync Architecture", value = "Remote Multi-User Shared Sync")
+      DiagnosticRow(
+        label = "Cloud Synced Manuscripts",
+        value = if (cloudSyncedCount > 0) "$cloudSyncedCount novels synchronized" else "Ready to sync"
+      )
+      val timeFormat = SimpleDateFormat("MMM d, h:mm a", Locale.getDefault())
+      val timeStr = if (lastSyncTime > 0) timeFormat.format(Date(lastSyncTime)) else "On startup"
+      DiagnosticRow(label = "Last Cloud Sync", value = timeStr)
+      DiagnosticRow(
+        label = "Primary Cloud Endpoint",
+        value = "clarifyrgb/strawberrycandy"
+      )
+
+      Spacer(modifier = Modifier.height(2.dp))
+
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+      ) {
+        Button(
+          onClick = onSyncNow,
+          enabled = !isCloudSyncing,
+          shape = RoundedCornerShape(10.dp),
+          colors = ButtonDefaults.buttonColors(containerColor = CharcoalText),
+          modifier = Modifier
+            .weight(1f)
+            .height(38.dp)
+            .testTag("sync_cloud_archive_button")
+        ) {
+          if (isCloudSyncing) {
+            CircularProgressIndicator(
+              modifier = Modifier.size(14.dp),
+              strokeWidth = 1.5.dp,
+              color = SoftCreamPaper
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text("Syncing...", fontSize = 11.sp, color = SoftCreamPaper)
+          } else {
+            Icon(
+              imageVector = Icons.Outlined.Refresh,
+              contentDescription = null,
+              modifier = Modifier.size(14.dp),
+              tint = SoftCreamPaper
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text("Sync Now", fontSize = 11.sp, color = SoftCreamPaper)
+          }
+        }
+
+        OutlinedButton(
+          onClick = { isEditingSettings = !isEditingSettings },
+          shape = RoundedCornerShape(10.dp),
+          modifier = Modifier
+            .height(38.dp)
+            .testTag("cloud_settings_toggle_button")
+        ) {
+          Icon(
+            imageVector = Icons.Outlined.Edit,
+            contentDescription = null,
+            modifier = Modifier.size(14.dp)
+          )
+          Spacer(modifier = Modifier.width(6.dp))
+          Text(if (isEditingSettings) "Hide Config" else "Endpoints", fontSize = 11.sp)
+        }
+      }
+
+      if (isEditingSettings) {
+        Spacer(modifier = Modifier.height(4.dp))
+        Column(
+          modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.White, RoundedCornerShape(10.dp))
+            .border(BorderStroke(0.6.dp, SubtleBorder), RoundedCornerShape(10.dp))
+            .padding(12.dp),
+          verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+          Text(
+            text = "CLOUD ARCHIVE ENDPOINTS",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 8.5.sp,
+              fontWeight = FontWeight.Bold,
+              letterSpacing = 1.sp
+            ),
+            color = CharcoalSecondary
+          )
+
+          OutlinedTextField(
+            value = readUrlInput,
+            onValueChange = { readUrlInput = it },
+            label = { Text("Read URL (novels.json)", fontSize = 10.sp) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(
+              focusedBorderColor = DeepBurgundy,
+              unfocusedBorderColor = SubtleBorder
+            ),
+            shape = RoundedCornerShape(8.dp)
+          )
+
+          OutlinedTextField(
+            value = writeUrlInput,
+            onValueChange = { writeUrlInput = it },
+            label = { Text("Write Endpoint (Firebase RTDB / Custom REST)", fontSize = 10.sp) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(
+              focusedBorderColor = DeepBurgundy,
+              unfocusedBorderColor = SubtleBorder
+            ),
+            shape = RoundedCornerShape(8.dp)
+          )
+
+          OutlinedTextField(
+            value = tokenInput,
+            onValueChange = { tokenInput = it },
+            label = { Text("GitHub Token (PAT with repo scope)", fontSize = 10.sp) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(
+              focusedBorderColor = DeepBurgundy,
+              unfocusedBorderColor = SubtleBorder
+            ),
+            shape = RoundedCornerShape(8.dp)
+          )
+
+          Button(
+            onClick = {
+              onSaveSettings(readUrlInput, writeUrlInput, tokenInput)
+              isEditingSettings = false
+            },
+            shape = RoundedCornerShape(8.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = AntiqueGold),
+            modifier = Modifier
+              .fillMaxWidth()
+              .height(36.dp)
+          ) {
+            Text("Save Cloud Endpoints", fontSize = 11.sp, color = CharcoalText, fontWeight = FontWeight.SemiBold)
+          }
+        }
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------
+// 5. SYSTEM & DEVICE DIAGNOSTICS CARD
 // ---------------------------------------------------------------------
 @Composable
 private fun SystemDiagnosticsCard(

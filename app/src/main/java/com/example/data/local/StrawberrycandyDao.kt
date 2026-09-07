@@ -30,8 +30,11 @@ interface StrawberrycandyDao {
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun insertNovel(novel: NovelEntity)
 
-  @Insert(onConflict = OnConflictStrategy.IGNORE)
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun insertNovels(novels: List<NovelEntity>)
+
+  @Query("SELECT * FROM novels ORDER BY createdAt DESC")
+  suspend fun getAllNovelsSync(): List<NovelEntity>
 
   @Query("DELETE FROM novels WHERE id = :id")
   suspend fun deleteNovelById(id: String)

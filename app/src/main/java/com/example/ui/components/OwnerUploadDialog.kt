@@ -38,6 +38,7 @@ import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Upload
 import androidx.compose.material.icons.outlined.WorkspacePremium
 import androidx.compose.material3.Button
@@ -79,6 +80,7 @@ import com.example.ui.theme.AntiqueGold
 import com.example.ui.theme.CharcoalSecondary
 import com.example.ui.theme.CharcoalTertiary
 import com.example.ui.theme.CharcoalText
+import com.example.ui.theme.DeepBurgundy
 import com.example.ui.theme.SoftCreamPaper
 import com.example.ui.theme.SubtleBorder
 import com.example.util.EpubParser
@@ -1183,6 +1185,34 @@ fun OwnerUploadDialog(
         val authorToCredit = if (selectedSlot == 0) "Strawberrycandy" else cleanCustomPenName
         val cleanOriginalAuthor = originalAuthor.replace(emailRegex, "").trim().ifEmpty { authorToCredit }
 
+        // Global Distribution Banner
+        Surface(
+          shape = RoundedCornerShape(12.dp),
+          color = DeepBurgundy.copy(alpha = 0.07f),
+          border = BorderStroke(0.8.dp, DeepBurgundy.copy(alpha = 0.25f)),
+          modifier = Modifier.fillMaxWidth()
+        ) {
+          Row(
+            modifier = Modifier.padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Icon(
+              imageVector = Icons.Outlined.Public,
+              contentDescription = null,
+              tint = DeepBurgundy,
+              modifier = Modifier.size(16.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+              text = "Global Distribution: Once published, this novel is prepared for the Cloud Archive so anyone with the APK installed can read it.",
+              style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 15.sp),
+              color = DeepBurgundy
+            )
+          }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
         // Publish Button
         Button(
           onClick = {
@@ -1224,7 +1254,7 @@ fun OwnerUploadDialog(
           )
           Spacer(modifier = Modifier.width(8.dp))
           Text(
-            text = "Publish as $authorToCredit",
+            text = "Publish to Cloud Archive",
             style = MaterialTheme.typography.labelLarge.copy(
               letterSpacing = 0.6.sp,
               fontWeight = FontWeight.SemiBold

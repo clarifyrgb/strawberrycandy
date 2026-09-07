@@ -43,7 +43,7 @@ class ExampleRobolectricTest {
     val repo = StrawberrycandyRepository(dao)
 
     // 1. Verify Owner Novel Upload under "Strawberrycandy"
-    val uploadedId = repo.uploadNovel(
+    val uploadResult = repo.uploadNovel(
       title = "The Whispering Pines",
       subtitle = "A Northern Solitude",
       chapterTitle = "Chapter I • Needle & Frost",
@@ -51,6 +51,7 @@ class ExampleRobolectricTest {
       content = "The forest gave no quarter to the restless. Snow drifted across the granite outcrop in quiet waves.",
       coverColorHex = 0xFF28362D
     )
+    val uploadedId = uploadResult.novelId
 
     val novel = dao.getNovelById(uploadedId)
     assertNotNull(novel)

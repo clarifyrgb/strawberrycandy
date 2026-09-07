@@ -8,6 +8,7 @@ import com.example.data.local.NovelEntity
 import com.example.data.local.ReaderProfileEntity
 import com.example.data.local.StrawberrycandyDao
 import com.example.data.local.UserReadingStateEntity
+import com.example.data.remote.CloudArchiveSyncService
 import com.example.model.NovelWithState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,10 +19,22 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import java.util.UUID
 
+data class UploadNovelResult(
+  val novelId: String,
+  val novel: NovelEntity,
+  val isPublishedToCloud: Boolean,
+  val cloudStatusMessage: String,
+  val novelJson: String,
+  val fullCatalogJson: String,
+)
+
 class StrawberrycandyRepository(
   private val dao: StrawberrycandyDao,
   private val externalScope: CoroutineScope = CoroutineScope(Dispatchers.IO),
+  private val syncService: CloudArchiveSyncService? = null,
 ) {
+
+  fun getSyncService(): CloudArchiveSyncService? = syncService
 
   companion object {
     val OWNER_EMAILS = setOf(
@@ -54,6 +67,25 @@ class StrawberrycandyRepository(
       dao.sanitizeCommentNames()
       syncOwnerConfiguration()
       eraseExampleTranslators()
+      syncRemoteNovels()
+    }
+  }
+
+  suspend fun syncRemoteNovels(): Result<Int> {
+    if (syncService == null) return Result.success(0)
+    return try {
+      val remoteResult = syncService.fetchRemoteNovels()
+      if (remoteResult.isSuccess) {
+        val remoteNovels = remoteResult.getOrNull() ?: emptyList()
+        if (remoteNovels.isNotEmpty()) {
+          dao.insertNovels(remoteNovels)
+        }
+        Result.success(remoteNovels.size)
+      } else {
+        Result.failure(remoteResult.exceptionOrNull() ?: Exception("Failed to sync remote novels"))
+      }
+    } catch (e: Exception) {
+      Result.failure(e)
     }
   }
 
@@ -91,7 +123,7 @@ class StrawberrycandyRepository(
     originalAuthor: String = "",
     novelStatus: String = "ONGOING",
     releaseFormat: String = "CHAPTER",
-  ): String {
+  ): UploadNovelResult {
     val novelId = "nov_" + UUID.randomUUID().toString().take(8)
     val novel = NovelEntity(
       id = novelId,
@@ -118,7 +150,52 @@ class StrawberrycandyRepository(
       releaseFormat = releaseFormat,
     )
     dao.insertNovel(novel)
-    return novelId
+
+    var isPublished = false
+    var statusMsg = "Saved to local cache. Pending global cloud publication."
+    var novelJson = ""
+    var fullCatalogJson = "[]"
+
+    if (syncService != null) {
+      val allNovels = dao.getAllNovelsSync()
+      val pushResult = syncService.publishNovelToRemote(novel, allNovels)
+      if (pushResult.isSuccess) {
+        isPublished = true
+        statusMsg = pushResult.getOrNull() ?: "Published to Global Cloud Archive"
+      } else {
+        statusMsg = pushResult.exceptionOrNull()?.message ?: "Pending global cloud publication"
+      }
+      novelJson = syncService.novelToJson(novel).toString(2)
+      fullCatalogJson = syncService.exportNovelsToJsonString(allNovels)
+    }
+
+    return UploadNovelResult(
+      novelId = novelId,
+      novel = novel,
+      isPublishedToCloud = isPublished,
+      cloudStatusMessage = statusMsg,
+      novelJson = novelJson,
+      fullCatalogJson = fullCatalogJson,
+    )
+  }
+
+  suspend fun publishNovelDirectToCloud(
+    novelId: String,
+    token: String? = null,
+    writeUrl: String? = null
+  ): Result<String> {
+    if (syncService == null) return Result.failure(IllegalStateException("Cloud sync service unavailable"))
+    if (!token.isNullOrBlank()) syncService.setGitHubToken(token)
+    if (!writeUrl.isNullOrBlank()) syncService.setWriteUrl(writeUrl)
+
+    val novel = dao.getNovelById(novelId) ?: return Result.failure(IllegalArgumentException("Novel not found"))
+    val allNovels = dao.getAllNovelsSync()
+    return syncService.publishNovelToRemote(novel, allNovels)
+  }
+
+  suspend fun exportAllNovelsJson(): String {
+    val allNovels = dao.getAllNovelsSync()
+    return syncService?.exportNovelsToJsonString(allNovels) ?: "[]"
   }
 
   suspend fun recordNovelRead(novelId: String) {

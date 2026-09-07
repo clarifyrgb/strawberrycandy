@@ -7,8 +7,10 @@ import com.example.data.StrawberrycandyRepository
 import com.example.data.local.AuthorSlotEntity
 import com.example.data.local.BookmarkHighlightEntity
 import com.example.data.local.ChapterCommentEntity
+import com.example.data.local.NovelEntity
 import com.example.data.local.ReaderProfileEntity
 import com.example.data.local.StrawberrycandyDatabase
+import com.example.data.remote.CloudArchiveSyncService
 import com.example.model.NovelWithState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -67,11 +69,20 @@ data class StrawberrycandyUiState(
   val newlyPostedNovelAlert: NovelWithState? = null,
   val hasNewReleases: Boolean = false,
   val isRealtimeConnected: Boolean = true,
+  val isCloudSyncing: Boolean = false,
+  val lastCloudSyncTime: Long = 0L,
+  val cloudSyncedNovelsCount: Int = 0,
+  val cloudSyncError: String? = null,
+  val cloudPublishModalNovel: NovelEntity? = null,
+  val cloudPublishModalNovelJson: String? = null,
+  val cloudPublishModalCatalogJson: String? = null,
+  val isAlreadyCloudPublished: Boolean = false,
 )
 
 class StrawberrycandyViewModel(application: Application) : AndroidViewModel(application) {
   private val database = StrawberrycandyDatabase.getInstance(application)
-  private val repository = StrawberrycandyRepository(database.strawberrycandyDao())
+  private val syncService = CloudArchiveSyncService(application)
+  private val repository = StrawberrycandyRepository(database.strawberrycandyDao(), syncService = syncService)
 
   private val _activeFilter = MutableStateFlow(ShelfFilter.ALL)
   private val _activeSort = MutableStateFlow(NovelSortOption.RECENTLY_READ)
@@ -85,6 +96,15 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
   private val _isProfileDialogOpen = MutableStateFlow(false)
   private val _snackbarMessage = MutableStateFlow<String?>(null)
   private val _dismissedAlertNovelId = MutableStateFlow<String?>(null)
+
+  private val _isCloudSyncing = MutableStateFlow(false)
+  private val _lastCloudSyncTime = MutableStateFlow(syncService.getLastSyncTime())
+  private val _cloudSyncedNovelsCount = MutableStateFlow(syncService.getLastSyncCount())
+  private val _cloudSyncError = MutableStateFlow(syncService.getLastSyncError())
+  private val _cloudPublishModalNovel = MutableStateFlow<NovelEntity?>(null)
+  private val _cloudPublishModalNovelJson = MutableStateFlow<String?>(null)
+  private val _cloudPublishModalCatalogJson = MutableStateFlow<String?>(null)
+  private val _isAlreadyCloudPublished = MutableStateFlow(false)
 
   val activeUser: StateFlow<ReaderProfileEntity?> = repository.activeUser
     .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
@@ -127,19 +147,51 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     listOf(isAuth, isUpload, isProfile, msg, extra.first, extra.second)
   }
 
+  private val _cloudState = combine(
+    _isCloudSyncing,
+    _lastCloudSyncTime,
+    _cloudSyncedNovelsCount,
+    _cloudSyncError,
+    combine(
+      _cloudPublishModalNovel,
+      _cloudPublishModalNovelJson,
+      _cloudPublishModalCatalogJson,
+      _isAlreadyCloudPublished
+    ) { novel, json, catJson, isPub ->
+      listOf(novel, json, catJson, isPub)
+    }
+  ) { syncing, time, count, err, modalExtra ->
+    listOf(syncing, time, count, err, modalExtra[0], modalExtra[1], modalExtra[2], modalExtra[3])
+  }
+
+  private val _dialogAndCloudState = combine(_dialogState, _cloudState) { dialogs, cloud ->
+    Pair(dialogs, cloud)
+  }
+
   val uiState: StateFlow<StrawberrycandyUiState> = combine(
     repository.activeUser,
     repository.allNovelsWithState,
     repository.authorSlots,
     _filterState,
-    _dialogState
-  ) { user, novels, slots, searchParams, dialogList ->
+    _dialogAndCloudState
+  ) { user, novels, slots, searchParams, combinedState ->
+    val dialogList = combinedState.first
+    val cloudList = combinedState.second
     val isAuthOpen = dialogList[0] as Boolean
     val isUploadOpen = dialogList[1] as Boolean
     val isProfileOpen = dialogList[2] as Boolean
     val msg = dialogList[3] as String?
     val authErr = dialogList[4] as String?
     val dismissedId = dialogList[5] as String?
+
+    val isCloudSyncing = cloudList[0] as Boolean
+    val lastCloudSyncTime = cloudList[1] as Long
+    val cloudSyncedCount = cloudList[2] as Int
+    val cloudSyncErr = cloudList[3] as String?
+    val cloudModalNovel = cloudList[4] as NovelEntity?
+    val cloudModalNovelJson = cloudList[5] as String?
+    val cloudModalCatalogJson = cloudList[6] as String?
+    val isAlreadyPublished = cloudList[7] as Boolean
 
     val newestNovel = novels.maxByOrNull { it.novel.createdAt }
     val isAlertVisible = newestNovel != null && newestNovel.isNewRelease && newestNovel.id != dismissedId
@@ -220,6 +272,14 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
       newlyPostedNovelAlert = alertNovel,
       hasNewReleases = hasNewReleases,
       isRealtimeConnected = true,
+      isCloudSyncing = isCloudSyncing,
+      lastCloudSyncTime = lastCloudSyncTime,
+      cloudSyncedNovelsCount = cloudSyncedCount,
+      cloudSyncError = cloudSyncErr,
+      cloudPublishModalNovel = cloudModalNovel,
+      cloudPublishModalNovelJson = cloudModalNovelJson,
+      cloudPublishModalCatalogJson = cloudModalCatalogJson,
+      isAlreadyCloudPublished = isAlreadyPublished,
     )
   }.stateIn(
     viewModelScope,
@@ -613,7 +673,7 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     releaseFormat: String = "CHAPTER",
   ) {
     viewModelScope.launch {
-      repository.uploadNovel(
+      val uploadResult = repository.uploadNovel(
         title = title,
         subtitle = subtitle,
         chapterTitle = chapterTitle,
@@ -631,9 +691,75 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
       _isUploadDialogOpen.value = false
       _dismissedAlertNovelId.value = null
       val authorLabel = if (authorSlot == 0) "Strawberrycandy" else "$author (Room $authorSlot)"
-      _snackbarMessage.value = "✨ Real-Time: Novel '$title' posted by $authorLabel is now live for all readers and translators!"
+
+      if (uploadResult.isPublishedToCloud) {
+        _snackbarMessage.value = "✨ Global Archive: Novel '$title' by $authorLabel is now live for all APK readers worldwide!"
+      } else {
+        // Open Cloud Publishing Hub so translator/owner can complete global distribution
+        _cloudPublishModalNovel.value = uploadResult.novel
+        _cloudPublishModalNovelJson.value = uploadResult.novelJson
+        _cloudPublishModalCatalogJson.value = uploadResult.fullCatalogJson
+        _isAlreadyCloudPublished.value = false
+        _snackbarMessage.value = "Manuscript prepared for Global Archive. Choose publishing destination so all APK users see it."
+      }
     }
   }
+
+  fun dismissCloudPublishModal() {
+    _cloudPublishModalNovel.value = null
+    _cloudPublishModalNovelJson.value = null
+    _cloudPublishModalCatalogJson.value = null
+  }
+
+  fun publishPendingNovelToCloud(
+    token: String?,
+    writeUrl: String?,
+    onDone: (success: Boolean, message: String) -> Unit
+  ) {
+    val novel = _cloudPublishModalNovel.value ?: return
+    viewModelScope.launch {
+      val res = repository.publishNovelDirectToCloud(novel.id, token, writeUrl)
+      if (res.isSuccess) {
+        _isAlreadyCloudPublished.value = true
+        _snackbarMessage.value = "✨ Global Archive: '${novel.title}' is now live for all APK readers worldwide!"
+        onDone(true, res.getOrNull() ?: "Successfully published to Global Cloud Archive!")
+        refreshCloudArchive(silent = true)
+      } else {
+        val err = res.exceptionOrNull()?.message ?: "Publication failed"
+        onDone(false, err)
+      }
+    }
+  }
+
+  fun refreshCloudArchive(silent: Boolean = false) {
+    viewModelScope.launch {
+      _isCloudSyncing.value = true
+      val res = repository.syncRemoteNovels()
+      _isCloudSyncing.value = false
+      _lastCloudSyncTime.value = System.currentTimeMillis()
+      if (res.isSuccess) {
+        val count = res.getOrNull() ?: 0
+        _cloudSyncedNovelsCount.value = count
+        _cloudSyncError.value = null
+        if (!silent) {
+          _snackbarMessage.value = "✨ Cloud Archive Synced: $count novels live across all APKs"
+        }
+      } else {
+        val err = res.exceptionOrNull()?.message ?: "Unable to sync cloud archive"
+        _cloudSyncError.value = err
+        if (!silent) {
+          _snackbarMessage.value = "Cloud Archive sync issue: $err"
+        }
+      }
+    }
+  }
+
+  fun getCloudReadUrl(): String = syncService.getReadUrl()
+  fun setCloudReadUrl(url: String) = syncService.setReadUrl(url)
+  fun getCloudWriteUrl(): String = syncService.getWriteUrl()
+  fun setCloudWriteUrl(url: String) = syncService.setWriteUrl(url)
+  fun getGitHubToken(): String = syncService.getGitHubToken()
+  fun setGitHubToken(token: String) = syncService.setGitHubToken(token)
 
   // Chapter Comments
   fun getCommentsForChapter(novelId: String, chapterTitle: String): Flow<List<ChapterCommentEntity>> {
