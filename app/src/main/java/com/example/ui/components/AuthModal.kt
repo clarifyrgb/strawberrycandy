@@ -861,15 +861,14 @@ fun AuthModal(
 
           Spacer(modifier = Modifier.height(8.dp))
 
-          // Sign In with Apple
+          // Apple Sign-In: Reserved for future iOS release (App Store license pending)
           Surface(
-            onClick = { validateAndSubmit("APPLE") },
             shape = RoundedCornerShape(12.dp),
-            color = Color(0xFF1E1815),
-            shadowElevation = 1.dp,
+            color = Color(0xFF1E1815).copy(alpha = 0.35f),
+            border = BorderStroke(0.8.dp, Color(0xFF1E1815).copy(alpha = 0.2f)),
             modifier = Modifier
               .fillMaxWidth()
-              .testTag("sign_in_apple_button")
+              .testTag("sign_in_apple_button_disabled")
           ) {
             Row(
               modifier = Modifier
@@ -880,18 +879,18 @@ fun AuthModal(
             ) {
               Text(
                 text = "",
-                color = Color.White,
+                color = CharcoalSecondary,
                 fontSize = 15.sp,
                 modifier = Modifier.padding(bottom = 1.dp)
               )
               Spacer(modifier = Modifier.width(8.dp))
               Text(
-                text = "Sign in with Apple",
+                text = "Sign in with Apple (Coming on iOS)",
                 style = MaterialTheme.typography.labelLarge.copy(
-                  fontWeight = FontWeight.SemiBold,
-                  fontSize = 13.sp
+                  fontWeight = FontWeight.Normal,
+                  fontSize = 12.5.sp
                 ),
-                color = Color.White
+                color = CharcoalSecondary
               )
             }
           }

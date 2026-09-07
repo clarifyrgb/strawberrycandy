@@ -77,6 +77,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -248,7 +249,8 @@ fun HomeScreen(
         // Guest mode: Novels are hidden until user logs in
         GuestArchiveLockedView(
           rememberedAccounts = uiState.rememberedAccounts,
-          onOpenAuth = { viewModel.openAuthDialog() }
+          onOpenAuth = { viewModel.openAuthDialog() },
+          onOpenAuthorRooms = { isAuthorRoomsModalOpen = true }
         )
       } else {
         // Logged-in mode
@@ -363,40 +365,80 @@ fun HomeScreen(
           }
         }
 
-        // Sort Dropdown Button
-        Box {
-          Surface(
-            onClick = { isSortMenuOpen = true },
-            shape = RoundedCornerShape(14.dp),
-            color = SoftCreamPaper,
-            border = BorderStroke(1.dp, SubtleBorder),
-            modifier = Modifier.height(28.dp)
-          ) {
-            Row(
-              verticalAlignment = Alignment.CenterVertically,
-              modifier = Modifier.padding(horizontal = 8.dp)
+        // Novel Actions: Upload Novel (for Owner/Translators) + Sort Menu
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+          if (canUploadNovel || isSoleOwner) {
+            Surface(
+              onClick = {
+                selectedUploadSlot = if (isSoleOwner) 0 else (activeUser?.authorSlot ?: 1)
+                viewModel.openUploadDialog()
+              },
+              shape = RoundedCornerShape(14.dp),
+              color = AntiqueGold,
+              modifier = Modifier
+                .height(28.dp)
+                .testTag("catalog_header_upload_novel_button")
             ) {
-              Icon(
-                imageVector = Icons.Outlined.Sort,
-                contentDescription = "Sort novels",
-                tint = AntiqueGold,
-                modifier = Modifier.size(13.dp)
-              )
-              Spacer(modifier = Modifier.width(4.dp))
-              Text(
-                text = uiState.activeSort.label,
-                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                color = CharcoalText
-              )
+              Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 9.dp)
+              ) {
+                Icon(
+                  imageVector = Icons.Outlined.Upload,
+                  contentDescription = "Upload Novel",
+                  tint = Color.White,
+                  modifier = Modifier.size(13.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                  text = "Upload Novel",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 10.5.sp
+                  ),
+                  color = Color.White
+                )
+              }
             }
           }
 
-          DropdownMenu(
-            expanded = isSortMenuOpen,
-            onDismissRequest = { isSortMenuOpen = false }
-          ) {
-            NovelSortOption.entries.forEach { option ->
-              DropdownMenuItem(
+          // Sort Dropdown Button
+          Box {
+            Surface(
+              onClick = { isSortMenuOpen = true },
+              shape = RoundedCornerShape(14.dp),
+              color = SoftCreamPaper,
+              border = BorderStroke(1.dp, SubtleBorder),
+              modifier = Modifier.height(28.dp)
+            ) {
+              Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 8.dp)
+              ) {
+                Icon(
+                  imageVector = Icons.Outlined.Sort,
+                  contentDescription = "Sort novels",
+                  tint = AntiqueGold,
+                  modifier = Modifier.size(13.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                  text = uiState.activeSort.label,
+                  style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                  color = CharcoalText
+                )
+              }
+            }
+
+            DropdownMenu(
+              expanded = isSortMenuOpen,
+              onDismissRequest = { isSortMenuOpen = false }
+            ) {
+              NovelSortOption.entries.forEach { option ->
+                DropdownMenuItem(
                 text = {
                   Text(
                     text = option.label,
@@ -415,6 +457,7 @@ fun HomeScreen(
           }
         }
       }
+    }
 
       Spacer(modifier = Modifier.height(10.dp))
 
@@ -923,10 +966,12 @@ fun HomeScreen(
         novels = allNovelsList,
         currentUser = activeUser,
         onDismiss = { isAuthorRoomsModalOpen = false },
-        onOpenUploadForSlot = if (canUploadNovel) { slot ->
+        onOpenUploadForSlot = { slot ->
           selectedUploadSlot = slot
+          isAuthorRoomsModalOpen = false
           viewModel.openUploadDialog()
-        } else { _ -> },
+        },
+        onOpenAuth = { viewModel.openAuthDialog() },
         onUpdateSlot = { slot, name, penName, bio ->
           if (isSoleOwner || (activeUser?.role == "TRANSLATOR" && activeUser.authorSlot == slot)) {
             viewModel.updateAuthorSlotWithPoint(slot, name, penName, bio)
@@ -1189,6 +1234,38 @@ fun HomeScreen(
         }
       )
     }
+
+    // Floating Action Button to Upload Novel for Owner & Authorized Translators
+    if (canUploadNovel || isSoleOwner) {
+      FloatingActionButton(
+        onClick = {
+          selectedUploadSlot = if (isSoleOwner) 0 else (activeUser?.authorSlot ?: 1)
+          viewModel.openUploadDialog()
+        },
+        containerColor = AntiqueGold,
+        contentColor = Color.White,
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier
+          .align(Alignment.BottomEnd)
+          .padding(end = 20.dp, bottom = 24.dp)
+          .testTag("fab_upload_novel")
+      ) {
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+        ) {
+          Icon(Icons.Filled.Add, contentDescription = "Upload Novel", modifier = Modifier.size(18.dp))
+          Spacer(modifier = Modifier.width(6.dp))
+          Text(
+            text = "Upload Novel",
+            style = MaterialTheme.typography.labelLarge.copy(
+              fontWeight = FontWeight.Bold,
+              fontSize = 13.sp
+            )
+          )
+        }
+      }
+    }
   }
 }
 
@@ -1270,42 +1347,43 @@ private fun TopUtilityBar(
       horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
       if (activeUser != null) {
-        // Writer's Rooms button for Owner & Translators
-        if (isSoleOwner) {
-          Surface(
-            onClick = onOpenAuthorRooms,
-            shape = RoundedCornerShape(14.dp),
-            color = AntiqueGoldLight.copy(alpha = 0.9f),
-            border = BorderStroke(1.dp, AntiqueGold),
-            modifier = Modifier.testTag("top_utility_author_rooms_button")
+        // 1. Writer's Room button (Always visible to all logged-in members)
+        Surface(
+          onClick = onOpenAuthorRooms,
+          shape = RoundedCornerShape(14.dp),
+          color = AntiqueGoldLight.copy(alpha = 0.9f),
+          border = BorderStroke(1.dp, AntiqueGold),
+          modifier = Modifier.testTag("top_utility_author_rooms_button")
+        ) {
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
           ) {
-            Row(
-              verticalAlignment = Alignment.CenterVertically,
-              modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
-            ) {
-              Icon(
-                imageVector = Icons.Outlined.MeetingRoom,
-                contentDescription = "Writer's Rooms",
-                tint = AntiqueGold,
-                modifier = Modifier.size(14.dp)
-              )
-              Spacer(modifier = Modifier.width(4.dp))
-              Text(
-                text = "Rooms",
-                style = MaterialTheme.typography.labelSmall.copy(
-                  fontWeight = FontWeight.Bold,
-                  fontSize = 11.sp
-                ),
-                color = CharcoalText
-              )
-            }
+            Icon(
+              imageVector = Icons.Outlined.MeetingRoom,
+              contentDescription = "Writer Room",
+              tint = AntiqueGold,
+              modifier = Modifier.size(14.dp)
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+              text = "Writer Room",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp
+              ),
+              color = CharcoalText
+            )
           }
-        } else if (canUpload) {
+        }
+
+        // 2. Upload Novel button (Prominently visible for Archive Owner & Authorized Translators)
+        if (isSoleOwner || canUpload) {
           Surface(
             onClick = onOpenUpload,
             shape = RoundedCornerShape(14.dp),
-            color = AntiqueGoldLight.copy(alpha = 0.9f),
-            border = BorderStroke(1.dp, AntiqueGold),
+            color = AntiqueGold,
+            shadowElevation = 2.dp,
             modifier = Modifier.testTag("owner_upload_button")
           ) {
             Row(
@@ -1314,18 +1392,18 @@ private fun TopUtilityBar(
             ) {
               Icon(
                 imageVector = Icons.Outlined.Upload,
-                contentDescription = "Publish Novel",
-                tint = AntiqueGold,
+                contentDescription = "Upload Novel",
+                tint = Color.White,
                 modifier = Modifier.size(14.dp)
               )
               Spacer(modifier = Modifier.width(4.dp))
               Text(
-                text = "Publish",
+                text = "Upload Novel",
                 style = MaterialTheme.typography.labelSmall.copy(
                   fontWeight = FontWeight.Bold,
                   fontSize = 11.sp
                 ),
-                color = CharcoalText
+                color = Color.White
               )
             }
           }
@@ -1391,7 +1469,36 @@ private fun TopUtilityBar(
           }
         }
       } else {
-        // Guest mode: About + Sign In
+        // Guest mode: Writer Room + About + Sign In
+        Surface(
+          onClick = onOpenAuthorRooms,
+          shape = RoundedCornerShape(16.dp),
+          color = SoftCreamPaper,
+          border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.5f)),
+          modifier = Modifier.testTag("top_utility_author_rooms_guest_button")
+        ) {
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+          ) {
+            Icon(
+              imageVector = Icons.Outlined.MeetingRoom,
+              contentDescription = "Writer Room",
+              tint = AntiqueGold,
+              modifier = Modifier.size(13.dp)
+            )
+            Spacer(modifier = Modifier.width(3.dp))
+            Text(
+              text = "Writer Room",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = FontWeight.Bold,
+                fontSize = 10.sp,
+                color = CharcoalText
+              )
+            )
+          }
+        }
+
         Surface(
           onClick = onOpenAbout,
           shape = RoundedCornerShape(16.dp),
@@ -3274,7 +3381,8 @@ private fun NewReleaseCard(
 @Composable
 private fun GuestArchiveLockedView(
   rememberedAccounts: List<ReaderProfileEntity>,
-  onOpenAuth: () -> Unit
+  onOpenAuth: () -> Unit,
+  onOpenAuthorRooms: () -> Unit = {}
 ) {
   Column(
     modifier = Modifier
@@ -3442,6 +3550,35 @@ private fun GuestArchiveLockedView(
               fontSize = 13.5.sp
             ),
             color = SoftCreamPaper
+          )
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Open Writer Room & Translator Collective Button
+        OutlinedButton(
+          onClick = onOpenAuthorRooms,
+          shape = RoundedCornerShape(14.dp),
+          border = BorderStroke(1.2.dp, AntiqueGold.copy(alpha = 0.7f)),
+          modifier = Modifier
+            .fillMaxWidth()
+            .height(46.dp)
+            .testTag("guest_open_writer_room_button")
+        ) {
+          Icon(
+            imageVector = Icons.Outlined.MeetingRoom,
+            contentDescription = null,
+            tint = AntiqueGold,
+            modifier = Modifier.size(17.dp)
+          )
+          Spacer(modifier = Modifier.width(8.dp))
+          Text(
+            text = "Writer's Room & Translator Collective",
+            style = MaterialTheme.typography.labelMedium.copy(
+              fontWeight = FontWeight.Bold,
+              fontSize = 12.5.sp
+            ),
+            color = AntiqueGold
           )
         }
       }

@@ -117,6 +117,7 @@ fun AuthorRoomsModal(
   onViewTranslatorArchive: (AuthorSlotEntity) -> Unit,
   onGrantPermissionByEmail: ((email: String, slotNumber: Int?) -> Unit)? = null,
   onUpdateSlotByOwner: ((slotNumber: Int, translatorEmail: String?, penName: String, bio: String, isPermissionGranted: Boolean) -> Unit)? = null,
+  onOpenAuth: (() -> Unit)? = null,
 ) {
   val context = LocalContext.current
   val isOwnerUser = currentUser != null && StrawberrycandyViewModel.isOwnerEmail(currentUser.email)
@@ -319,21 +320,79 @@ fun AuthorRoomsModal(
             border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.25f)),
             modifier = Modifier.fillMaxWidth().testTag("author_rooms_guest_banner")
           ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+              Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                  imageVector = Icons.Outlined.AdminPanelSettings,
+                  contentDescription = null,
+                  tint = AntiqueGold,
+                  modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                  text = "Viewing in Reader Mode. Archive Owner: Sign in with clarifymanga@gmail.com to assign translator Gmails, manage slots, and upload novels.",
+                  style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                  color = CharcoalText
+                )
+              }
+              if (onOpenAuth != null) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Button(
+                  onClick = {
+                    onDismiss()
+                    onOpenAuth()
+                  },
+                  shape = RoundedCornerShape(10.dp),
+                  colors = ButtonDefaults.buttonColors(containerColor = AntiqueGold),
+                  contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                  modifier = Modifier.height(34.dp).testTag("author_rooms_guest_sign_in_button")
+                ) {
+                  Icon(Icons.Outlined.Lock, contentDescription = null, tint = SoftCreamPaper, modifier = Modifier.size(13.dp))
+                  Spacer(modifier = Modifier.width(5.dp))
+                  Text("Sign In as Writer / Owner", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SoftCreamPaper)
+                }
+              }
+            }
+          }
+          Spacer(modifier = Modifier.height(14.dp))
+        }
+
+        // Dedicated Primary Upload Novel Action Button in Writer's Room
+        if (isOwnerUser || isTranslatorUser) {
+          Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = AntiqueGold,
+            shadowElevation = 2.dp,
+            modifier = Modifier
+              .fillMaxWidth()
+              .clickable {
+                val targetSlot = if (isOwnerUser) 0 else (currentUser?.authorSlot ?: 1)
+                onDismiss()
+                onOpenUploadForSlot(targetSlot)
+              }
+              .testTag("author_rooms_primary_upload_button")
+          ) {
             Row(
-              modifier = Modifier.padding(12.dp),
-              verticalAlignment = Alignment.CenterVertically
+              modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.Center
             ) {
               Icon(
-                imageVector = Icons.Outlined.AdminPanelSettings,
+                imageVector = Icons.Outlined.Upload,
                 contentDescription = null,
-                tint = AntiqueGold,
-                modifier = Modifier.size(20.dp)
+                tint = Color.White,
+                modifier = Modifier.size(18.dp)
               )
               Spacer(modifier = Modifier.width(8.dp))
               Text(
-                text = "Viewing in Reader Mode. Archive Owner: Sign in with clarifymanga@gmail.com to assign translator Gmails and toggle publishing permissions.",
-                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                color = CharcoalText
+                text = "Upload Novel Manuscript",
+                style = MaterialTheme.typography.labelLarge.copy(
+                  fontWeight = FontWeight.Bold,
+                  fontSize = 13.5.sp
+                ),
+                color = Color.White
               )
             }
           }

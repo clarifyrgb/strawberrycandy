@@ -1126,8 +1126,8 @@ private fun FeaturesShowcaseCard(novelsCount: Int) {
 
       FeatureItem(
         icon = Icons.Outlined.Storage,
-        title = "Unlimited Novels & Offline Persistence",
-        description = "Readers can read unlimited novels posted by translators. Currently holding $novelsCount live manuscripts, with infinite capacity for new novels, chapters, bookmarks, and reader marginalia in Room SQLite."
+        title = "Live Cloud Archive • Read Online In-App",
+        description = "Readers stream and read manuscripts online directly within Strawberrycandy. Novels are protected within the reader and cannot be downloaded or exported externally."
       )
 
       FeatureItem(
@@ -1345,7 +1345,8 @@ private fun SystemDiagnosticsCard(
       DiagnosticRow(label = "Local Storage Engine", value = "Room Database (SQLite 3.x)")
       DiagnosticRow(label = "Reading & Publishing Limit", value = "None • Infinite Novels Supported")
       DiagnosticRow(label = "UI Toolkit", value = "Jetpack Compose (Material 3)")
-      DiagnosticRow(label = "Security / Sandboxing", value = "App Sandboxed • Offline Safe")
+      DiagnosticRow(label = "Reading & Access Model", value = "Live Online In-App Reading")
+      DiagnosticRow(label = "Security & Protection", value = "App Sandboxed • Novel DRM Protected")
     }
   }
 }

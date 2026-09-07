@@ -804,7 +804,7 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
           refreshCloudArchive(silent = true)
         } else {
           // Saved locally in SQLite & synced
-          _snackbarMessage.value = "✨ Novel '$title' published to your library! Ready to read offline & queued for cloud sync."
+          _snackbarMessage.value = "✨ Novel '$title' published to the archive! Live online for readers to enjoy."
         }
         onResult?.invoke(true, "Published successfully!")
       } catch (e: Exception) {

@@ -114,6 +114,7 @@ import com.example.model.StoryContentItem
 import com.example.ui.components.AddChapterDialog
 import com.example.ui.components.BookmarksHighlightsModal
 import com.example.ui.components.ChapterCommentsSection
+import com.example.ui.components.ChapterDiscussionModal
 import com.example.ui.components.ChapterSelectionModal
 import com.example.ui.components.StoryPhotoItem
 import com.example.ui.components.StoryPhotoViewerModal
@@ -275,6 +276,7 @@ fun ReadingScreen(
   var isBookmarksModalOpen by remember { mutableStateOf(false) }
   var isChapterModalOpen by remember { mutableStateOf(false) }
   var isAddChapterModalOpen by remember { mutableStateOf(false) }
+  var viewingDiscussionChapterTitle by remember { mutableStateOf<String?>(null) }
   var isHudVisible by remember { mutableStateOf(true) }
 
   // Sentence / line highlighting selection state
@@ -773,6 +775,45 @@ fun ReadingScreen(
                     Spacer(modifier = Modifier.width(3.dp))
                     Text(
                       text = "${bookmarksList.size}",
+                      style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = AntiqueGold
+                      )
+                    )
+                  }
+                }
+              }
+
+              // 4b. Chapter Discussion Button (opens dedicated clean view without overlapping reading page)
+              val activeChapterName = currentChapter?.title ?: novel.chapterTitle
+              val activeChapterComments = remember(allNovelComments, activeChapterName) {
+                allNovelComments.filter { it.chapterTitle.equals(activeChapterName, ignoreCase = true) }
+              }
+              Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = if (activeChapterComments.isNotEmpty()) AntiqueGold.copy(alpha = 0.18f) else readerChipBgColor,
+                border = BorderStroke(1.dp, if (activeChapterComments.isNotEmpty()) AntiqueGold.copy(alpha = 0.6f) else Color.Transparent),
+                modifier = Modifier
+                  .clickable {
+                    viewingDiscussionChapterTitle = activeChapterName
+                  }
+                  .testTag("reading_chapter_discussion_hud_button")
+              ) {
+                Row(
+                  verticalAlignment = Alignment.CenterVertically,
+                  modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp)
+                ) {
+                  Icon(
+                    imageVector = Icons.Outlined.ChatBubbleOutline,
+                    contentDescription = "Chapter Discussion",
+                    tint = if (activeChapterComments.isNotEmpty()) AntiqueGold else readerSecondaryTextColor,
+                    modifier = Modifier.size(14.dp)
+                  )
+                  if (activeChapterComments.isNotEmpty()) {
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                      text = "${activeChapterComments.size}",
                       style = MaterialTheme.typography.labelSmall.copy(
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Bold,
@@ -1698,33 +1739,44 @@ fun ReadingScreen(
                     allNovelComments.filter { it.chapterTitle.equals(chapterEndingHere.title, ignoreCase = true) }
                   }
 
-                  ChapterCommentsSection(
-                    chapterTitle = chapterEndingHere.title,
-                    comments = thisChapterComments,
-                    activeReaderName = activeUser?.displayName,
-                    activeReaderEmail = activeUser?.email,
-                    isOwner = activeUser?.role == "OWNER" || activeUser?.authorSlot == 0,
-                    isDarkMode = isDarkMode,
-                    onPostComment = { text, penName, parentCommentId, replyToReaderName ->
-                      viewModel?.postComment(
-                        novelId = novel.id,
-                        chapterTitle = chapterEndingHere.title,
-                        text = text,
-                        penName = penName,
-                        parentCommentId = parentCommentId,
-                        replyToReaderName = replyToReaderName
+                  // Compact, elegant discussion button to view reflections without cluttering or spreading across novel text
+                  Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = if (isDarkMode) Color(0xFF221F1D) else AntiqueGold.copy(alpha = 0.10f),
+                    border = BorderStroke(1.dp, AntiqueGold.copy(alpha = if (isDarkMode) 0.55f else 0.45f)),
+                    modifier = Modifier
+                      .clip(RoundedCornerShape(20.dp))
+                      .clickable {
+                        viewingDiscussionChapterTitle = chapterEndingHere.title
+                      }
+                      .testTag("open_chapter_discussion_${chapterEndingHere.index}")
+                  ) {
+                    Row(
+                      modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                      verticalAlignment = Alignment.CenterVertically
+                    ) {
+                      Icon(
+                        imageVector = Icons.Outlined.ChatBubbleOutline,
+                        contentDescription = "Chapter Discussion",
+                        tint = AntiqueGold,
+                        modifier = Modifier.size(15.dp)
                       )
-                    },
-                    onLikeComment = { commentId ->
-                      viewModel?.likeComment(commentId)
-                    },
-                    onDeleteComment = { commentId ->
-                      viewModel?.deleteComment(commentId)
-                    },
-                    onSavePenName = { newName ->
-                      viewModel?.updateReaderName(newName)
+                      Spacer(modifier = Modifier.width(7.dp))
+                      Text(
+                        text = if (thisChapterComments.isEmpty()) {
+                          "Chapter Discussion • Be first to reflect →"
+                        } else {
+                          "Chapter Discussion • ${thisChapterComments.size} ${if (thisChapterComments.size == 1) "Reflection" else "Reflections"} →"
+                        },
+                        style = MaterialTheme.typography.labelSmall.copy(
+                          fontSize = 10.5.sp,
+                          fontWeight = FontWeight.SemiBold,
+                          letterSpacing = 0.3.sp
+                        ),
+                        color = readerTextColor
+                      )
                     }
-                  )
+                  }
 
                   Spacer(modifier = Modifier.height(28.dp))
                   Text(
@@ -1841,42 +1893,51 @@ fun ReadingScreen(
                 color = readerTertiaryTextColor
               )
 
-              Spacer(modifier = Modifier.height(36.dp))
+              Spacer(modifier = Modifier.height(28.dp))
 
-              // Final Chapter Comments Section
+              // Final Chapter Discussion Button (opens clean modal instead of spreading inline across novel footer)
               val lastChapterTitle = novel.chapters.lastOrNull()?.title ?: novel.chapterTitle
               val lastChapterComments = remember(allNovelComments, lastChapterTitle) {
                 allNovelComments.filter { it.chapterTitle.equals(lastChapterTitle, ignoreCase = true) }
               }
 
-              ChapterCommentsSection(
-                chapterTitle = lastChapterTitle,
-                comments = lastChapterComments,
-                activeReaderName = activeUser?.displayName,
-                activeReaderEmail = activeUser?.email,
-                isOwner = activeUser?.role == "OWNER" || activeUser?.authorSlot == 0,
-                isDarkMode = isDarkMode,
-                onPostComment = { text, penName, parentCommentId, replyToReaderName ->
-                  viewModel?.postComment(
-                    novelId = novel.id,
-                    chapterTitle = lastChapterTitle,
-                    text = text,
-                    penName = penName,
-                    parentCommentId = parentCommentId,
-                    replyToReaderName = replyToReaderName
+              Surface(
+                shape = RoundedCornerShape(22.dp),
+                color = if (isDarkMode) Color(0xFF221F1D) else AntiqueGold.copy(alpha = 0.10f),
+                border = BorderStroke(1.dp, AntiqueGold.copy(alpha = if (isDarkMode) 0.55f else 0.45f)),
+                modifier = Modifier
+                  .clip(RoundedCornerShape(22.dp))
+                  .clickable {
+                    viewingDiscussionChapterTitle = lastChapterTitle
+                  }
+                  .testTag("open_novel_footer_discussion")
+              ) {
+                Row(
+                  modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
+                  verticalAlignment = Alignment.CenterVertically
+                ) {
+                  Icon(
+                    imageVector = Icons.Outlined.ChatBubbleOutline,
+                    contentDescription = "Final Chapter Discussion",
+                    tint = AntiqueGold,
+                    modifier = Modifier.size(16.dp)
                   )
-                },
-                onLikeComment = { commentId ->
-                  viewModel?.likeComment(commentId)
-                },
-                onDeleteComment = { commentId ->
-                  viewModel?.deleteComment(commentId)
-                },
-                onSavePenName = { newName ->
-                  viewModel?.updateReaderName(newName)
-                },
-                modifier = Modifier.widthIn(max = 640.dp)
-              )
+                  Spacer(modifier = Modifier.width(8.dp))
+                  Text(
+                    text = if (lastChapterComments.isEmpty()) {
+                      "Chapter Discussion • Share finale reflections →"
+                    } else {
+                      "Chapter Discussion • ${lastChapterComments.size} ${if (lastChapterComments.size == 1) "Reflection" else "Reflections"} →"
+                    },
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontSize = 11.sp,
+                      fontWeight = FontWeight.SemiBold,
+                      letterSpacing = 0.3.sp
+                    ),
+                    color = readerTextColor
+                  )
+                }
+              }
 
               Spacer(modifier = Modifier.height(48.dp))
             }
@@ -2062,6 +2123,45 @@ fun ReadingScreen(
           viewModel?.addChapterToNovel(novelId, title, content)
         } else null,
         onEditNovel = null
+      )
+    }
+
+    // 6. Chapter Discussion Modal (Clean, non-intrusive discussion view so it does not overlap novel pages)
+    val activeDiscussionChTitle = viewingDiscussionChapterTitle
+    if (activeDiscussionChTitle != null) {
+      val discussionComments = remember(allNovelComments, activeDiscussionChTitle) {
+        allNovelComments.filter { it.chapterTitle.equals(activeDiscussionChTitle, ignoreCase = true) }
+      }
+      ChapterDiscussionModal(
+        bookTitle = novel.title,
+        chapterTitle = activeDiscussionChTitle,
+        comments = discussionComments,
+        activeReaderName = activeUser?.displayName,
+        activeReaderEmail = activeUser?.email,
+        isOwner = activeUser?.role == "OWNER" || activeUser?.authorSlot == 0,
+        isDarkMode = isDarkMode,
+        onPostComment = { text, penName, parentCommentId, replyToReaderName ->
+          viewModel?.postComment(
+            novelId = novel.id,
+            chapterTitle = activeDiscussionChTitle,
+            text = text,
+            penName = penName,
+            parentCommentId = parentCommentId,
+            replyToReaderName = replyToReaderName
+          )
+        },
+        onLikeComment = { commentId ->
+          viewModel?.likeComment(commentId)
+        },
+        onDeleteComment = { commentId ->
+          viewModel?.deleteComment(commentId)
+        },
+        onSavePenName = { newName ->
+          viewModel?.updateReaderName(newName)
+        },
+        onDismiss = {
+          viewingDiscussionChapterTitle = null
+        }
       )
     }
   }
