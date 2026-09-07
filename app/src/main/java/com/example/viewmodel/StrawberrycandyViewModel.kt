@@ -442,8 +442,14 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
   }
 
   fun canUploadNovel(user: ReaderProfileEntity? = activeUser.value, slots: List<AuthorSlotEntity> = authorSlots.value): Boolean {
-    // Available to all signed-in users (Owner, Translators, and Authors)
-    return user != null
+    if (user == null) return false
+    if (user.role.equals("READER", ignoreCase = true)) return false
+    if (user.role.equals("OWNER", ignoreCase = true) || isOwnerEmail(user.email)) return true
+    if (user.role.equals("TRANSLATOR", ignoreCase = true)) {
+      if (user.authorSlot != null && user.authorSlot > 0) return true
+      if (isPermittedTranslator(user, slots)) return true
+    }
+    return false
   }
 
   fun signInWithGoogle(
@@ -699,9 +705,8 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     releaseFormat: String = "CHAPTER",
   ) {
     val currentUser = activeUser.value
-    if (currentUser == null) {
-      _isAuthDialogOpen.value = true
-      _snackbarMessage.value = "Please sign in to publish novels to the Cloud Archive"
+    if (currentUser == null || !canUploadNovel(currentUser)) {
+      _snackbarMessage.value = "Publishing is restricted to Archive Translators and the Owner."
       return
     }
     val isOwnerUser = isOwner(currentUser)
@@ -741,11 +746,11 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
       val authorLabel = if (effectiveSlot == 0 && isOwnerUser) "Strawberrycandy" else "$effectiveAuthor (Translator Room $effectiveSlot)"
 
       if (uploadResult.isPublishedToCloud) {
-        _snackbarMessage.value = "✨ Novel '$title' by $authorLabel is now live on the Cloud Archive! All APK readers can now see it."
+        _snackbarMessage.value = "✨ Novel '$title' by $authorLabel is now live on the backend server & Cloud Archive!"
         refreshCloudArchive(silent = true)
       } else {
         // Saved locally in SQLite
-        _snackbarMessage.value = "Manuscript '$title' saved to your library. It will sync to Cloud Archive when connected."
+        _snackbarMessage.value = "✨ Novel '$title' published to your library! Ready to read offline & queued for cloud sync."
       }
     }
   }

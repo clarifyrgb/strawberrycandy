@@ -1,0 +1,17 @@
+{
+  "name": "strawberrycandy-backend",
+  "version": "1.0.0",
+  "description": "Strawberrycandy Novel Archive Backend Server",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [
+    "strawberrycandy",
+    "novels",
+    "archive",
+    "backend"
+  ],
+  "author": "Clarify",
+  "license": "ISC"
+}

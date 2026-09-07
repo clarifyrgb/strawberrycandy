@@ -1397,12 +1397,42 @@ private fun TopUtilityBar(
               )
             }
           }
+        } else {
+          // Direct Sign In Button when signed out
+          Surface(
+            onClick = onOpenAuth,
+            shape = RoundedCornerShape(16.dp),
+            color = AntiqueGold,
+            border = BorderStroke(1.dp, AntiqueGold),
+            modifier = Modifier.testTag("top_utility_sign_in_button")
+          ) {
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+            ) {
+              Icon(
+                imageVector = Icons.Outlined.Person,
+                contentDescription = "Sign In",
+                tint = Color.White,
+                modifier = Modifier.size(13.dp)
+              )
+              Spacer(modifier = Modifier.width(4.dp))
+              Text(
+                text = "Sign In",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontWeight = FontWeight.Bold,
+                  fontSize = 10.sp,
+                  color = Color.White
+                )
+              )
+            }
+          }
         }
       }
     }
 
-    // Secondary Row: Direct Publish Novel action (Clean & Minimized)
-    if (activeUser != null) {
+    // Secondary Row: Direct Publish Novel action (Clean & Minimized for Translators & Owner)
+    if (activeUser != null && canUpload) {
       Spacer(modifier = Modifier.height(6.dp))
       Row(
         modifier = Modifier.fillMaxWidth(),
