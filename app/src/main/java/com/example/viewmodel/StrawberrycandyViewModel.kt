@@ -110,6 +110,14 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
   val activeUser: StateFlow<ReaderProfileEntity?> = repository.activeUser
     .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+  init {
+    viewModelScope.launch {
+      repository.syncRemoteNovels()
+      repository.syncRemoteAuthorSlots()
+      repository.checkAndUpgradeProfilesAgainstSlots()
+    }
+  }
+
   val allNovels: StateFlow<List<NovelWithState>> = repository.allNovelsWithState
     .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -228,23 +236,32 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
         ).joinToString(" ").lowercase()
 
         textToSearch.contains(query) || (tokens.isNotEmpty() && tokens.all { textToSearch.contains(it) })
-      }
+      }.sortedWith(
+        compareByDescending<NovelWithState> { it.title.lowercase().contains(query) }
+          .thenByDescending { it.author.lowercase().contains(query) }
+          .thenByDescending { it.createdAt }
+      )
     }
 
-    val filteredNovels = searchFiltered
-      .filter { novel ->
-        when (searchParams.filter) {
-          ShelfFilter.ALL -> true
-          ShelfFilter.NEW_RELEASES -> novel.isNewRelease || (newestNovel != null && novel.id == newestNovel.id)
-          ShelfFilter.READING -> novel.isReading
-          ShelfFilter.FINISHED -> novel.isFinished
-          ShelfFilter.TO_BE_READ -> novel.isToBeRead
-          ShelfFilter.FAVORITES -> novel.isFavorite
+    val filteredNovels = if (query.isNotEmpty()) {
+      // When searching via search bar, search across the entire library so users can always find their novel
+      searchFiltered
+    } else {
+      searchFiltered
+        .filter { novel ->
+          when (searchParams.filter) {
+            ShelfFilter.ALL -> true
+            ShelfFilter.NEW_RELEASES -> novel.isNewRelease || (newestNovel != null && novel.id == newestNovel.id)
+            ShelfFilter.READING -> novel.isReading
+            ShelfFilter.FINISHED -> novel.isFinished
+            ShelfFilter.TO_BE_READ -> novel.isToBeRead
+            ShelfFilter.FAVORITES -> novel.isFavorite
+          }
         }
-      }
-      .filter { novel ->
-        if (searchParams.authorSlotFilter == null) true else novel.authorSlot == searchParams.authorSlotFilter
-      }
+        .filter { novel ->
+          if (searchParams.authorSlotFilter == null) true else novel.authorSlot == searchParams.authorSlotFilter
+        }
+    }
 
     val sortedNovels = when (searchParams.sort) {
       NovelSortOption.RECENTLY_READ -> filteredNovels.sortedWith(
@@ -374,16 +391,12 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     slots: List<AuthorSlotEntity> = authorSlots.value
   ): Boolean {
     if (user == null) return false
-    if (user.role != "TRANSLATOR") return false
-    val slot = if (user.authorSlot != null) {
-      slots.find { it.slotNumber == user.authorSlot }
-    } else {
-      slots.find {
-        it.penName.equals(user.displayName, ignoreCase = true) ||
-        it.authorName.equals(user.displayName, ignoreCase = true)
-      }
+    if (isOwner(user)) return true
+    if (user.role.equals("TRANSLATOR", ignoreCase = true)) return true
+    val matchedSlot = slots.find { slot ->
+      slot.isPermissionGranted && StrawberrycandyRepository.isUserMatchedToSlot(user.email, user.displayName, slot)
     }
-    return slot?.isPermissionGranted == true
+    return matchedSlot != null
   }
 
   fun canEditNovel(
@@ -552,7 +565,7 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
   fun grantPermissionByEmail(email: String, slotNumber: Int? = null) {
     viewModelScope.launch {
       repository.grantPermissionByEmail(email, slotNumber)
-      _snackbarMessage.value = "Granted translator permission to $email"
+      _snackbarMessage.value = "✨ Translator permission granted to $email! They can now sign in to post and edit novels."
     }
   }
 
@@ -617,17 +630,13 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
 
   fun markNovelAsFinished(novelId: String) {
     val user = activeUser.value
-    if (user == null) {
-      _isAuthDialogOpen.value = true
-      _snackbarMessage.value = "Please sign in to record finished novels and earn points"
-      return
-    }
+    val effectiveUserId = user?.userId ?: "guest_reader"
     viewModelScope.launch {
-      val earnedPoint = repository.markNovelAsFinished(user.userId, novelId)
-      if (earnedPoint) {
-        _snackbarMessage.value = "Novel Finished! +1 Pen Name Point earned! ⭐"
+      val earnedPoint = repository.markNovelAsFinished(effectiveUserId, novelId)
+      if (earnedPoint && user != null) {
+        _snackbarMessage.value = "🏆 Novel Finished! +1 Pen Name Point earned! ⭐"
       } else {
-        _snackbarMessage.value = "Novel marked as Finished ✓"
+        _snackbarMessage.value = "🏆 Novel Finished! Marked as Completed in your library ✓"
       }
     }
   }
@@ -661,7 +670,7 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
   fun changePenNameWithPoint(newPenName: String) {
     val user = activeUser.value
     if (user == null) {
-      _isAuthDialogOpen.value = true
+      _snackbarMessage.value = "Sign in to your account to redeem points for pen name updates."
       return
     }
     viewModelScope.launch {
@@ -677,15 +686,21 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
   }
 
   fun updateReaderName(newName: String) {
+    val cleanName = newName.trim()
+    if (cleanName.isBlank()) {
+      _snackbarMessage.value = "Please enter a valid display name."
+      return
+    }
     val user = activeUser.value
     if (user == null) {
-      _isAuthDialogOpen.value = true
+      // Guest reader updating their pen name: do not open auth modal, confirm directly
+      _snackbarMessage.value = "Reader pen name set to '$cleanName' ✓"
       return
     }
     viewModelScope.launch {
-      val success = repository.updateReaderDisplayName(user.userId, newName)
+      val success = repository.updateReaderDisplayName(user.userId, cleanName)
       if (success) {
-        _snackbarMessage.value = "Reader name updated to '$newName' ✨"
+        _snackbarMessage.value = "Reader name updated to '$cleanName' ✨"
       } else {
         _snackbarMessage.value = "Please enter a valid display name."
       }
@@ -711,6 +726,11 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     novelStatus: String = "ONGOING",
     releaseFormat: String = "CHAPTER",
   ) {
+    val currentUser = activeUser.value
+    if (!canUploadNovel(currentUser)) {
+      _snackbarMessage.value = "Posting novels is reserved for translators and the owner"
+      return
+    }
     viewModelScope.launch {
       val uploadResult = repository.uploadNovel(
         title = title,
@@ -771,6 +791,8 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     viewModelScope.launch {
       _isCloudSyncing.value = true
       val res = repository.syncRemoteNovels()
+      repository.syncRemoteAuthorSlots()
+      repository.checkAndUpgradeProfilesAgainstSlots()
       _isCloudSyncing.value = false
       _lastCloudSyncTime.value = System.currentTimeMillis()
       if (res.isSuccess) {
@@ -879,6 +901,20 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     return repository.getCommentsForChapter(novelId, chapterTitle)
   }
 
+  fun getAllCommentsForNovel(novelId: String): Flow<List<ChapterCommentEntity>> {
+    return repository.getAllCommentsForNovel(novelId)
+  }
+
+  fun listenToCloudComments(novelId: String) {
+    repository.listenToCloudComments(novelId)
+  }
+
+  fun syncRemoteComments(novelId: String? = null) {
+    viewModelScope.launch {
+      repository.syncRemoteComments(novelId)
+    }
+  }
+
   fun getCommentCountForChapter(novelId: String, chapterTitle: String): Flow<Int> {
     return repository.getCommentCountForChapter(novelId, chapterTitle)
   }
@@ -914,9 +950,9 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
         replyToReaderName = replyToReaderName,
       )
       _snackbarMessage.value = if (replyToReaderName != null) {
-        "Reply posted to @$replyToReaderName"
+        "☁️ Reply posted online to @$replyToReaderName"
       } else {
-        "Thought posted on $chapterTitle"
+        "☁️ Comment posted online to Cloud Archive"
       }
     }
   }

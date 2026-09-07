@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import com.example.R
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -478,7 +479,50 @@ fun HomeScreen(
         )
       }
 
-      // 5. Bookshelf: Displaying book cover cards in an elegant horizontal row
+      // 5. If actively searching, show a clear Search Results section so readers can find the novel immediately
+      if (uiState.novelSearchQuery.isNotBlank() && novels.isNotEmpty()) {
+        Column(
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 6.dp)
+            .testTag("search_results_list_section"),
+          verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Text(
+              text = "MATCHING MANUSCRIPTS (${novels.size})",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.5.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.2.sp
+              ),
+              color = AntiqueGold
+            )
+            Text(
+              text = "Tap to open and read",
+              style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+              color = CharcoalTertiary
+            )
+          }
+
+          novels.forEach { matchedNovel ->
+            SearchResultNovelCard(
+              novel = matchedNovel,
+              query = uiState.novelSearchQuery,
+              onSelect = { onSelectNovel(matchedNovel) },
+              onToggleFavorite = { viewModel.toggleFavorite(matchedNovel.id) }
+            )
+          }
+
+          Spacer(modifier = Modifier.height(10.dp))
+        }
+      }
+
+      // 6. Bookshelf: Displaying book cover cards in an elegant horizontal row
       if (novels.isNotEmpty()) {
         Column(
           modifier = Modifier
@@ -1202,28 +1246,53 @@ private fun TopUtilityBar(
       horizontalArrangement = Arrangement.SpaceBetween,
       verticalAlignment = Alignment.CenterVertically
     ) {
-      // Left: Brand Title STRAWBERRYCANDY
-      Column(modifier = Modifier.weight(1f, fill = false)) {
-        Text(
-          text = "STRAWBERRYCANDY",
-          style = MaterialTheme.typography.titleMedium.copy(
-            letterSpacing = 2.sp,
-            fontWeight = FontWeight.Medium,
-            fontFamily = FontFamily.Serif,
-            fontSize = 15.sp
-          ),
-          color = CharcoalText,
-          modifier = Modifier.testTag("app_brand_title")
-        )
-        Text(
-          text = "NOVEL ARCHIVE",
-          style = MaterialTheme.typography.labelSmall.copy(
-            letterSpacing = 1.sp,
-            fontSize = 7.5.sp,
-            fontWeight = FontWeight.Bold
-          ),
-          color = AntiqueGold
-        )
+      // Left: Strawberrycandy Novel Archive Logo Lockup
+      Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+          .weight(1f, fill = false)
+          .testTag("app_brand_logo_lockup")
+      ) {
+        Surface(
+          shape = RoundedCornerShape(10.dp),
+          color = SoftCreamPaper,
+          border = BorderStroke(1.2.dp, AntiqueGold.copy(alpha = 0.75f)),
+          shadowElevation = 2.dp,
+          modifier = Modifier.size(36.dp)
+        ) {
+          Image(
+            painter = painterResource(id = R.drawable.img_strawberrycandy_launcher),
+            contentDescription = "Strawberrycandy Logo",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+          )
+        }
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        Column {
+          Text(
+            text = "STRAWBERRYCANDY",
+            style = MaterialTheme.typography.titleMedium.copy(
+              letterSpacing = 1.5.sp,
+              fontWeight = FontWeight.Bold,
+              fontFamily = FontFamily.Serif,
+              fontSize = 14.sp
+            ),
+            color = CharcoalText,
+            maxLines = 1,
+            modifier = Modifier.testTag("app_brand_title")
+          )
+          Text(
+            text = "NOVEL ARCHIVE",
+            style = MaterialTheme.typography.labelSmall.copy(
+              letterSpacing = 1.2.sp,
+              fontSize = 8.sp,
+              fontWeight = FontWeight.Bold
+            ),
+            color = AntiqueGold
+          )
+        }
       }
 
       // Right: About + User Profile + Sign Out (or Sign In)
@@ -2150,6 +2219,169 @@ private fun HorizontalNovelCard(
             isStatusMenuOpen = false
             onMarkToBeRead()
           }
+        )
+      }
+    }
+  }
+}
+
+@Composable
+private fun SearchResultNovelCard(
+  novel: NovelWithState,
+  query: String,
+  onSelect: () -> Unit,
+  onToggleFavorite: () -> Unit,
+  modifier: Modifier = Modifier
+) {
+  Card(
+    shape = RoundedCornerShape(14.dp),
+    colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
+    border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.5f)),
+    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+    modifier = modifier
+      .fillMaxWidth()
+      .clickable { onSelect() }
+      .testTag("search_result_novel_${novel.id}")
+  ) {
+    Row(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(12.dp),
+      verticalAlignment = Alignment.CenterVertically
+    ) {
+      // Cover Thumbnail
+      Card(
+        shape = RoundedCornerShape(topStart = 2.dp, bottomStart = 2.dp, topEnd = 6.dp, bottomEnd = 6.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(novel.coverColorHex)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+        modifier = Modifier
+          .width(54.dp)
+          .height(76.dp)
+      ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+          if (novel.coverImageUri != null) {
+            AsyncImage(
+              model = File(novel.coverImageUri!!).takeIf { it.exists() } ?: novel.coverImageUri,
+              contentDescription = novel.title,
+              contentScale = ContentScale.Crop,
+              modifier = Modifier.fillMaxSize()
+            )
+          } else {
+            Column(
+              modifier = Modifier
+                .fillMaxSize()
+                .padding(4.dp),
+              verticalArrangement = Arrangement.Center,
+              horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+              Text(
+                text = novel.title.take(12),
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 7.5.sp,
+                  fontWeight = FontWeight.Bold
+                ),
+                color = Color.White,
+                textAlign = TextAlign.Center,
+                maxLines = 2
+              )
+            }
+          }
+        }
+      }
+
+      Spacer(modifier = Modifier.width(12.dp))
+
+      // Novel Info & Match Details
+      Column(modifier = Modifier.weight(1f)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Text(
+            text = novel.title,
+            style = MaterialTheme.typography.titleSmall.copy(
+              fontFamily = FontFamily.Serif,
+              fontWeight = FontWeight.Bold,
+              fontSize = 14.sp
+            ),
+            color = CharcoalText,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false)
+          )
+          if (novel.isNewRelease) {
+            Spacer(modifier = Modifier.width(4.dp))
+            Surface(
+              shape = RoundedCornerShape(4.dp),
+              color = AntiqueGold.copy(alpha = 0.2f)
+            ) {
+              Text(
+                text = "NEW",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 7.5.sp,
+                  fontWeight = FontWeight.Bold
+                ),
+                color = AntiqueGold,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+              )
+            }
+          }
+        }
+
+        Spacer(modifier = Modifier.height(2.dp))
+
+        Text(
+          text = buildString {
+            if (novel.author.isNotBlank()) append(novel.author) else append("Strawberrycandy")
+            if (novel.chapterTitle.isNotBlank()) {
+              append(" • ")
+              append(novel.chapterTitle)
+            }
+          },
+          style = MaterialTheme.typography.bodySmall.copy(
+            fontSize = 10.5.sp,
+            color = AntiqueGold
+          ),
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis
+        )
+
+        if (novel.excerpt.isNotBlank()) {
+          Spacer(modifier = Modifier.height(3.dp))
+          Text(
+            text = novel.excerpt,
+            style = MaterialTheme.typography.bodySmall.copy(
+              fontSize = 10.sp,
+              color = CharcoalSecondary,
+              fontStyle = FontStyle.Italic
+            ),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+          )
+        }
+      }
+
+      Spacer(modifier = Modifier.width(8.dp))
+
+      // Action Button
+      Button(
+        onClick = onSelect,
+        shape = RoundedCornerShape(10.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = CharcoalText),
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+        modifier = Modifier.height(32.dp)
+      ) {
+        Icon(
+          imageVector = Icons.AutoMirrored.Outlined.MenuBook,
+          contentDescription = null,
+          tint = AntiqueGold,
+          modifier = Modifier.size(12.dp)
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+          text = "Read",
+          style = MaterialTheme.typography.labelSmall.copy(
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold
+          ),
+          color = SoftCreamPaper
         )
       }
     }
@@ -3110,64 +3342,31 @@ private fun TranslatorAndOwnerRoomCard(
 
       Spacer(modifier = Modifier.height(12.dp))
 
-      Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+      // Single minimized, clean action button
+      Button(
+        onClick = onOpenAuthorRooms,
+        shape = RoundedCornerShape(12.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = AntiqueGold),
+        modifier = Modifier
+          .fillMaxWidth()
+          .height(40.dp)
+          .testTag("enter_translator_owner_room_button")
       ) {
-        // Enter Room Button
-        Button(
-          onClick = onOpenAuthorRooms,
-          shape = RoundedCornerShape(10.dp),
-          colors = ButtonDefaults.buttonColors(containerColor = SoftCreamPaper),
-          border = BorderStroke(1.dp, AntiqueGold),
-          modifier = Modifier
-            .weight(1.2f)
-            .height(38.dp)
-            .testTag("enter_translator_owner_room_button")
-        ) {
-          Icon(
-            imageVector = Icons.Outlined.MeetingRoom,
-            contentDescription = null,
-            tint = AntiqueGold,
-            modifier = Modifier.size(15.dp)
-          )
-          Spacer(modifier = Modifier.width(6.dp))
-          Text(
-            text = "Enter Room",
-            style = MaterialTheme.typography.labelSmall.copy(
-              fontWeight = FontWeight.Bold,
-              fontSize = 11.5.sp
-            ),
-            color = AntiqueGold
-          )
-        }
-
-        // Post Novel Button
-        Button(
-          onClick = onOpenUpload,
-          shape = RoundedCornerShape(10.dp),
-          colors = ButtonDefaults.buttonColors(containerColor = AntiqueGold),
-          modifier = Modifier
-            .weight(1f)
-            .height(38.dp)
-            .testTag("room_post_novel_button")
-        ) {
-          Icon(
-            imageVector = Icons.Filled.Add,
-            contentDescription = null,
-            tint = SoftCreamPaper,
-            modifier = Modifier.size(15.dp)
-          )
-          Spacer(modifier = Modifier.width(4.dp))
-          Text(
-            text = "Post Novel",
-            style = MaterialTheme.typography.labelSmall.copy(
-              fontWeight = FontWeight.Bold,
-              fontSize = 11.5.sp
-            ),
-            color = SoftCreamPaper
-          )
-        }
+        Icon(
+          imageVector = Icons.Outlined.MeetingRoom,
+          contentDescription = null,
+          tint = SoftCreamPaper,
+          modifier = Modifier.size(16.dp)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+          text = if (isSoleOwner) "Enter Owner Room & Publish" else "Enter Author Room & Publish",
+          style = MaterialTheme.typography.labelSmall.copy(
+            fontWeight = FontWeight.Bold,
+            fontSize = 12.sp
+          ),
+          color = SoftCreamPaper
+        )
       }
     }
   }

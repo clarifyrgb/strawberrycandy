@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Reply
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Close
@@ -80,6 +81,7 @@ fun ChapterCommentsSection(
   onPostComment: (text: String, penName: String?, parentCommentId: String?, replyToReaderName: String?) -> Unit,
   onLikeComment: (commentId: String) -> Unit,
   onDeleteComment: ((commentId: String) -> Unit)? = null,
+  onSavePenName: ((String) -> Unit)? = null,
   modifier: Modifier = Modifier,
 ) {
   var newCommentText by remember { mutableStateOf("") }
@@ -87,6 +89,7 @@ fun ChapterCommentsSection(
     mutableStateOf(activeReaderName ?: "")
   }
   var isEditingPenName by remember { mutableStateOf(false) }
+  var isPenNameSavedJustNow by remember { mutableStateOf(false) }
   var replyingToComment by remember { mutableStateOf<ChapterCommentEntity?>(null) }
 
   var liveTickerMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -186,20 +189,43 @@ fun ChapterCommentsSection(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
       ) {
-        Text(
-          text = if (customPenName.isNotBlank()) "Posting as: $customPenName" else "Posting as: Literary Reader",
-          style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-          color = CharcoalSecondary
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Text(
+            text = if (customPenName.isNotBlank()) "Posting as: $customPenName" else "Posting as: Literary Reader",
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+            color = CharcoalSecondary
+          )
+          if (isPenNameSavedJustNow) {
+            Spacer(modifier = Modifier.width(6.dp))
+            Surface(
+              shape = RoundedCornerShape(6.dp),
+              color = Color(0xFF2E7D32).copy(alpha = 0.12f),
+              border = BorderStroke(0.5.dp, Color(0xFF2E7D32).copy(alpha = 0.4f))
+            ) {
+              Text(
+                text = "Saved ✓",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 8.5.sp,
+                  fontWeight = FontWeight.Bold,
+                  color = Color(0xFF2E7D32)
+                ),
+                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+              )
+            }
+          }
+        }
 
         Text(
-          text = if (isEditingPenName) "Done" else "Change Pen Name",
+          text = if (isEditingPenName) "Close" else "Change Pen Name",
           style = MaterialTheme.typography.labelSmall.copy(
             fontSize = 10.sp,
             color = AntiqueGold,
             fontWeight = FontWeight.SemiBold
           ),
-          modifier = Modifier.clickable { isEditingPenName = !isEditingPenName }
+          modifier = Modifier.clickable {
+            isEditingPenName = !isEditingPenName
+            isPenNameSavedJustNow = false
+          }
         )
       }
 
@@ -207,15 +233,59 @@ fun ChapterCommentsSection(
         Spacer(modifier = Modifier.height(6.dp))
         OutlinedTextField(
           value = customPenName,
-          onValueChange = { customPenName = it },
+          onValueChange = {
+            customPenName = it
+            isPenNameSavedJustNow = false
+          },
           label = { Text("Your Pen Name") },
           singleLine = true,
           colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = AntiqueGold,
             unfocusedBorderColor = SubtleBorder
           ),
-          modifier = Modifier.fillMaxWidth()
+          modifier = Modifier.fillMaxWidth().testTag("input_custom_pen_name")
         )
+
+        Spacer(modifier = Modifier.height(6.dp))
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.End,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Button(
+            onClick = {
+              val cleanName = customPenName.trim()
+              if (cleanName.isNotBlank()) {
+                onSavePenName?.invoke(cleanName)
+                isPenNameSavedJustNow = true
+                isEditingPenName = false
+              }
+            },
+            enabled = customPenName.trim().isNotBlank(),
+            shape = RoundedCornerShape(8.dp),
+            colors = ButtonDefaults.buttonColors(
+              containerColor = AntiqueGold,
+              disabledContainerColor = AntiqueGold.copy(alpha = 0.35f)
+            ),
+            modifier = Modifier
+              .height(34.dp)
+              .testTag("save_comment_pen_name_button")
+          ) {
+            Icon(
+              imageVector = Icons.Filled.Check,
+              contentDescription = null,
+              tint = SoftCreamPaper,
+              modifier = Modifier.size(13.dp)
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+              text = "Save Pen Name",
+              fontSize = 11.sp,
+              fontWeight = FontWeight.Bold,
+              color = SoftCreamPaper
+            )
+          }
+        }
       }
 
       Spacer(modifier = Modifier.height(10.dp))
@@ -250,7 +320,8 @@ fun ChapterCommentsSection(
       Spacer(modifier = Modifier.height(12.dp))
 
       // Replying to banner if active
-      if (replyingToComment != null) {
+      val activeReply = replyingToComment
+      if (activeReply != null) {
         Surface(
           shape = RoundedCornerShape(10.dp),
           color = AntiqueGold.copy(alpha = 0.12f),
@@ -279,7 +350,7 @@ fun ChapterCommentsSection(
               Spacer(modifier = Modifier.width(6.dp))
               Column {
                 Text(
-                  text = "Replying to ${replyingToComment!!.readerName}",
+                  text = "Replying to ${activeReply.readerName}",
                   style = MaterialTheme.typography.labelSmall.copy(
                     fontSize = 10.5.sp,
                     fontWeight = FontWeight.Bold,
@@ -287,7 +358,7 @@ fun ChapterCommentsSection(
                   )
                 )
                 Text(
-                  text = "“${replyingToComment!!.commentText.take(45)}${if (replyingToComment!!.commentText.length > 45) "…" else ""}”",
+                  text = "“${activeReply.commentText.take(45)}${if (activeReply.commentText.length > 45) "…" else ""}”",
                   style = MaterialTheme.typography.bodySmall.copy(
                     fontSize = 10.sp,
                     fontFamily = FontFamily.Serif,
@@ -319,8 +390,8 @@ fun ChapterCommentsSection(
         onValueChange = { newCommentText = it },
         placeholder = {
           Text(
-            text = if (replyingToComment != null)
-              "Write your reply to ${replyingToComment!!.readerName}..."
+            text = if (activeReply != null)
+              "Write your reply to ${activeReply.readerName}..."
             else
               "Share your thoughts or critique on this chapter...",
             style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.5.sp)
@@ -561,7 +632,7 @@ private fun CommentCardItem(
     ),
     border = BorderStroke(
       width = if (isNestedReply) 0.8.dp else 1.dp,
-      color = if (isRealtimeRecent) AntiqueGold.copy(alpha = 0.5f) else if (isNestedReply) AntiqueGold.copy(alpha = 0.25f) else SubtleBorder
+      color = if (isNestedReply) AntiqueGold.copy(alpha = 0.25f) else SubtleBorder
     ),
     modifier = Modifier.fillMaxWidth()
   ) {
@@ -637,43 +708,14 @@ private fun CommentCardItem(
                   )
                 }
               }
-              if (isRealtimeRecent) {
-                Spacer(modifier = Modifier.width(5.dp))
-                Surface(
-                  shape = RoundedCornerShape(4.dp),
-                  color = Color(0xFF2E7D32).copy(alpha = 0.12f),
-                  border = BorderStroke(0.5.dp, Color(0xFF2E7D32).copy(alpha = 0.4f))
-                ) {
-                  Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                  ) {
-                    Box(
-                      modifier = Modifier
-                        .size(4.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF2E7D32))
-                    )
-                    Spacer(modifier = Modifier.width(2.5.dp))
-                    Text(
-                      text = "REALTIME",
-                      style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 7.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2E7D32)
-                      )
-                    )
-                  }
-                }
-              }
             }
             Text(
               text = dateFormatted,
               style = MaterialTheme.typography.labelSmall.copy(
                 fontSize = 8.5.sp,
-                fontWeight = if (isRealtimeRecent) FontWeight.Medium else FontWeight.Normal
+                fontWeight = FontWeight.Normal
               ),
-              color = if (isRealtimeRecent) AntiqueGold else CharcoalTertiary
+              color = CharcoalTertiary
             )
           }
         }

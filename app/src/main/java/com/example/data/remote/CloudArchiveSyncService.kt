@@ -2,6 +2,8 @@ package com.example.data.remote
 
 import android.content.Context
 import android.util.Base64
+import com.example.data.local.AuthorSlotEntity
+import com.example.data.local.ChapterCommentEntity
 import com.example.data.local.NovelEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -221,6 +223,14 @@ class CloudArchiveSyncService(private val context: Context) {
       val item = jsonArray.optJSONObject(i) ?: continue
       val id = item.optString("id").ifBlank { "nov_cloud_$i" }
       val title = item.optString("title").ifBlank { "Untitled Manuscript" }
+      
+      // Strict filter: Never load sample novels
+      val isSample = id in listOf("nov_1", "nov_2", "nov_3", "nov_cloud_1", "nov_cloud_2", "nov_schema", "nov_crimson", "nov_celestial", "nov_whispering_pines", "nov_moonlight") ||
+        title.equals("The Starlight Chronicles", ignoreCase = true) ||
+        title.equals("Dawn on the Canal", ignoreCase = true) ||
+        title.equals("The Count of Monte Cristo", ignoreCase = true) ||
+        title.equals("No Longer Human", ignoreCase = true)
+      if (isSample) continue
       val subtitle = item.optString("subtitle", "")
       val author = item.optString("author", "Strawberrycandy")
       val originalAuthor = item.optString("originalAuthor", "")
@@ -355,10 +365,40 @@ class CloudArchiveSyncService(private val context: Context) {
       val array = JSONArray()
       mergedList.forEach { array.put(novelToJson(it)) }
 
+      // Also preserve online comments and author slots stored in the cloud object
+      var existingCommentsArray = JSONArray()
+      var existingAuthorSlotsArray = JSONArray()
+      try {
+        val checkUrl = URL(DEFAULT_CLOUD_ARCHIVE_URL)
+        val checkConn = (checkUrl.openConnection() as HttpURLConnection).apply {
+          requestMethod = "GET"
+          connectTimeout = 8000
+          readTimeout = 8000
+          setRequestProperty("Accept", "application/json")
+          setRequestProperty("User-Agent", "Strawberrycandy-Android-APK")
+        }
+        if (checkConn.responseCode in 200..299) {
+          val resText = checkConn.inputStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
+          val root = JSONObject(resText)
+          val dataObj = root.optJSONObject("data")
+          if (dataObj != null) {
+            if (dataObj.has("comments")) {
+              existingCommentsArray = dataObj.optJSONArray("comments") ?: JSONArray()
+            }
+            if (dataObj.has("authorSlots")) {
+              existingAuthorSlotsArray = dataObj.optJSONArray("authorSlots") ?: JSONArray()
+            }
+          }
+        }
+        checkConn.disconnect()
+      } catch (_: Exception) {}
+
       val payload = JSONObject().apply {
         put("name", "Strawberrycandy Global Cloud Archive")
         put("data", JSONObject().apply {
           put("novels", array)
+          put("comments", existingCommentsArray)
+          put("authorSlots", existingAuthorSlotsArray)
         })
       }.toString()
 
@@ -703,6 +743,364 @@ class CloudArchiveSyncService(private val context: Context) {
       }
     } catch (e: Exception) {
       return@withContext Result.failure(e)
+    } finally {
+      connection?.disconnect()
+    }
+  }
+
+  /**
+   * Online Comments Synchronization:
+   * Enables all readers across different devices and APK installs to interact, post, reply, and like comments in real-time.
+   */
+  suspend fun fetchRemoteComments(novelId: String? = null): Result<List<ChapterCommentEntity>> = withContext(Dispatchers.IO) {
+    var connection: HttpURLConnection? = null
+    try {
+      val url = URL(DEFAULT_CLOUD_ARCHIVE_URL)
+      connection = (url.openConnection() as HttpURLConnection).apply {
+        requestMethod = "GET"
+        connectTimeout = 8000
+        readTimeout = 8000
+        setRequestProperty("Accept", "application/json")
+        setRequestProperty("User-Agent", "Strawberrycandy-Android-APK")
+      }
+      val code = connection.responseCode
+      if (code !in 200..299) {
+        return@withContext Result.failure(Exception("Cloud archive returned HTTP $code"))
+      }
+      val responseText = connection.inputStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
+      val rootJson = JSONObject(responseText)
+      val dataObj = rootJson.optJSONObject("data") ?: return@withContext Result.success(emptyList())
+      val commentsArray = dataObj.optJSONArray("comments") ?: return@withContext Result.success(emptyList())
+      val commentsList = mutableListOf<ChapterCommentEntity>()
+      for (i in 0 until commentsArray.length()) {
+        val item = commentsArray.optJSONObject(i) ?: continue
+        val cNovelId = item.optString("novelId")
+        if (novelId != null && cNovelId != novelId) continue
+        val cId = item.optString("id")
+        if (cId.isBlank()) continue
+        commentsList.add(
+          ChapterCommentEntity(
+            id = cId,
+            novelId = cNovelId,
+            chapterTitle = item.optString("chapterTitle", "Chapter I"),
+            readerName = item.optString("readerName", "Reader • Literary Guest"),
+            readerEmail = item.optString("readerEmail", ""),
+            commentText = item.optString("commentText", ""),
+            timestamp = item.optLong("timestamp", System.currentTimeMillis()),
+            avatarColorHex = item.optLong("avatarColorHex", 0xFF5C2D3B),
+            likesCount = item.optInt("likesCount", 0),
+            isLikedByMe = false,
+            parentCommentId = item.optString("parentCommentId").takeIf { it.isNotBlank() && it != "null" },
+            replyToReaderName = item.optString("replyToReaderName").takeIf { it.isNotBlank() && it != "null" }
+          )
+        )
+      }
+      Result.success(commentsList)
+    } catch (e: Exception) {
+      Result.failure(e)
+    } finally {
+      connection?.disconnect()
+    }
+  }
+
+  suspend fun pushCommentToCloud(comment: ChapterCommentEntity): Result<Unit> = withContext(Dispatchers.IO) {
+    var connection: HttpURLConnection? = null
+    try {
+      // 1. Fetch current cloud state
+      val fetchUrl = URL(DEFAULT_CLOUD_ARCHIVE_URL)
+      val getConn = (fetchUrl.openConnection() as HttpURLConnection).apply {
+        requestMethod = "GET"
+        connectTimeout = 8000
+        readTimeout = 8000
+        setRequestProperty("Accept", "application/json")
+        setRequestProperty("User-Agent", "Strawberrycandy-Android-APK")
+      }
+      val getCode = getConn.responseCode
+      val currentRoot = if (getCode in 200..299) {
+        val text = getConn.inputStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
+        JSONObject(text)
+      } else {
+        JSONObject()
+      }
+      getConn.disconnect()
+
+      val dataObj = currentRoot.optJSONObject("data") ?: JSONObject()
+      val novelsArr = dataObj.optJSONArray("novels") ?: JSONArray()
+      val existingCommentsArr = dataObj.optJSONArray("comments") ?: JSONArray()
+      val existingAuthorSlotsArr = dataObj.optJSONArray("authorSlots") ?: JSONArray()
+
+      // Merge comments by ID (update or append)
+      val commentsMap = LinkedHashMap<String, JSONObject>()
+      for (i in 0 until existingCommentsArr.length()) {
+        val item = existingCommentsArr.optJSONObject(i) ?: continue
+        val cId = item.optString("id")
+        if (cId.isNotBlank()) commentsMap[cId] = item
+      }
+
+      val newObj = JSONObject().apply {
+        put("id", comment.id)
+        put("novelId", comment.novelId)
+        put("chapterTitle", comment.chapterTitle)
+        put("readerName", comment.readerName)
+        put("readerEmail", comment.readerEmail)
+        put("commentText", comment.commentText)
+        put("timestamp", comment.timestamp)
+        put("avatarColorHex", comment.avatarColorHex)
+        put("likesCount", comment.likesCount)
+        put("parentCommentId", comment.parentCommentId ?: JSONObject.NULL)
+        put("replyToReaderName", comment.replyToReaderName ?: JSONObject.NULL)
+      }
+      commentsMap[comment.id] = newObj
+
+      val updatedCommentsArr = JSONArray()
+      commentsMap.values.forEach { updatedCommentsArr.put(it) }
+
+      val payload = JSONObject().apply {
+        put("name", "Strawberrycandy Global Cloud Archive")
+        put("data", JSONObject().apply {
+          put("novels", novelsArr)
+          put("comments", updatedCommentsArr)
+          put("authorSlots", existingAuthorSlotsArr)
+        })
+      }.toString()
+
+      val putUrl = URL(DEFAULT_CLOUD_ARCHIVE_URL)
+      connection = (putUrl.openConnection() as HttpURLConnection).apply {
+        requestMethod = "PUT"
+        connectTimeout = 10000
+        readTimeout = 10000
+        doOutput = true
+        setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        setRequestProperty("Accept", "application/json")
+        setRequestProperty("User-Agent", "Strawberrycandy-Android-APK")
+      }
+      OutputStreamWriter(connection.outputStream, StandardCharsets.UTF_8).use {
+        it.write(payload)
+        it.flush()
+      }
+      val putCode = connection.responseCode
+      if (putCode in 200..299) {
+        Result.success(Unit)
+      } else {
+        Result.failure(Exception("Failed to push comment online (HTTP $putCode)"))
+      }
+    } catch (e: Exception) {
+      Result.failure(e)
+    } finally {
+      connection?.disconnect()
+    }
+  }
+
+  suspend fun likeCommentInCloud(commentId: String): Result<Unit> = withContext(Dispatchers.IO) {
+    var connection: HttpURLConnection? = null
+    try {
+      val fetchUrl = URL(DEFAULT_CLOUD_ARCHIVE_URL)
+      val getConn = (fetchUrl.openConnection() as HttpURLConnection).apply {
+        requestMethod = "GET"
+        connectTimeout = 8000
+        readTimeout = 8000
+        setRequestProperty("Accept", "application/json")
+        setRequestProperty("User-Agent", "Strawberrycandy-Android-APK")
+      }
+      val getCode = getConn.responseCode
+      val currentRoot = if (getCode in 200..299) {
+        val text = getConn.inputStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
+        JSONObject(text)
+      } else {
+        JSONObject()
+      }
+      getConn.disconnect()
+
+      val dataObj = currentRoot.optJSONObject("data") ?: return@withContext Result.failure(Exception("No data"))
+      val novelsArr = dataObj.optJSONArray("novels") ?: JSONArray()
+      val existingCommentsArr = dataObj.optJSONArray("comments") ?: JSONArray()
+      val existingAuthorSlotsArr = dataObj.optJSONArray("authorSlots") ?: JSONArray()
+
+      for (i in 0 until existingCommentsArr.length()) {
+        val item = existingCommentsArr.optJSONObject(i) ?: continue
+        if (item.optString("id") == commentId) {
+          val currentLikes = item.optInt("likesCount", 0)
+          item.put("likesCount", currentLikes + 1)
+          break
+        }
+      }
+
+      val payload = JSONObject().apply {
+        put("name", "Strawberrycandy Global Cloud Archive")
+        put("data", JSONObject().apply {
+          put("novels", novelsArr)
+          put("comments", existingCommentsArr)
+          put("authorSlots", existingAuthorSlotsArr)
+        })
+      }.toString()
+
+      val putUrl = URL(DEFAULT_CLOUD_ARCHIVE_URL)
+      connection = (putUrl.openConnection() as HttpURLConnection).apply {
+        requestMethod = "PUT"
+        connectTimeout = 10000
+        readTimeout = 10000
+        doOutput = true
+        setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        setRequestProperty("Accept", "application/json")
+        setRequestProperty("User-Agent", "Strawberrycandy-Android-APK")
+      }
+      OutputStreamWriter(connection.outputStream, StandardCharsets.UTF_8).use {
+        it.write(payload)
+        it.flush()
+      }
+      val putCode = connection.responseCode
+      if (putCode in 200..299) {
+        Result.success(Unit)
+      } else {
+        Result.failure(Exception("HTTP $putCode"))
+      }
+    } catch (e: Exception) {
+      Result.failure(e)
+    } finally {
+      connection?.disconnect()
+    }
+  }
+
+  /**
+   * Author Slots & Permissions Synchronization:
+   * Enables owner to grant permissions to translators across different devices and APK installs.
+   */
+  fun authorSlotToJson(slot: AuthorSlotEntity): JSONObject {
+    return JSONObject().apply {
+      put("slotNumber", slot.slotNumber)
+      put("authorName", slot.authorName)
+      put("penName", slot.penName)
+      put("bio", slot.bio)
+      put("coverImageUri", slot.coverImageUri ?: JSONObject.NULL)
+      put("translatorEmail", slot.translatorEmail ?: JSONObject.NULL)
+      put("accessCode", slot.accessCode)
+      put("isClaimed", slot.isClaimed)
+      put("isPermissionGranted", slot.isPermissionGranted)
+      put("lastActiveTimestamp", slot.lastActiveTimestamp)
+    }
+  }
+
+  fun jsonToAuthorSlot(obj: JSONObject): AuthorSlotEntity {
+    val slotNumber = obj.optInt("slotNumber", 1)
+    val authorName = obj.optString("authorName", "Translator $slotNumber")
+    val penName = obj.optString("penName", "Translator $slotNumber")
+    val bio = obj.optString("bio", "Contributing Translator at Strawberrycandy Archive")
+    val coverImageUri = obj.optString("coverImageUri").takeIf { it.isNotBlank() && it != "null" }
+    val translatorEmail = obj.optString("translatorEmail").takeIf { it.isNotBlank() && it != "null" }
+    val accessCode = obj.optString("accessCode", "AUTH-ROOM-$slotNumber")
+    val isClaimed = obj.optBoolean("isClaimed", false)
+    val isPermissionGranted = obj.optBoolean("isPermissionGranted", false)
+    val lastActiveTimestamp = obj.optLong("lastActiveTimestamp", System.currentTimeMillis())
+    return AuthorSlotEntity(
+      slotNumber = slotNumber,
+      authorName = authorName,
+      penName = penName,
+      bio = bio,
+      coverImageUri = coverImageUri,
+      accessCode = accessCode,
+      translatorEmail = translatorEmail,
+      isClaimed = isClaimed,
+      isPermissionGranted = isPermissionGranted,
+      lastActiveTimestamp = lastActiveTimestamp
+    )
+  }
+
+  suspend fun fetchRemoteAuthorSlots(): Result<List<AuthorSlotEntity>> = withContext(Dispatchers.IO) {
+    var connection: HttpURLConnection? = null
+    try {
+      val url = URL(DEFAULT_CLOUD_ARCHIVE_URL)
+      connection = (url.openConnection() as HttpURLConnection).apply {
+        requestMethod = "GET"
+        connectTimeout = 8000
+        readTimeout = 8000
+        setRequestProperty("Accept", "application/json")
+        setRequestProperty("User-Agent", "Strawberrycandy-Android-APK")
+      }
+      val code = connection.responseCode
+      if (code !in 200..299) {
+        return@withContext Result.failure(Exception("Cloud archive returned HTTP $code"))
+      }
+      val responseText = connection.inputStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
+      val rootJson = JSONObject(responseText)
+      val dataObj = rootJson.optJSONObject("data") ?: return@withContext Result.success(emptyList())
+      val slotsArray = dataObj.optJSONArray("authorSlots") ?: return@withContext Result.success(emptyList())
+      val slotsList = mutableListOf<AuthorSlotEntity>()
+      for (i in 0 until slotsArray.length()) {
+        val item = slotsArray.optJSONObject(i) ?: continue
+        slotsList.add(jsonToAuthorSlot(item))
+      }
+      Result.success(slotsList)
+    } catch (e: Exception) {
+      Result.failure(e)
+    } finally {
+      connection?.disconnect()
+    }
+  }
+
+  suspend fun publishAuthorSlotsToRemote(slots: List<AuthorSlotEntity>): Result<String> = withContext(Dispatchers.IO) {
+    var connection: HttpURLConnection? = null
+    try {
+      var existingNovelsArr = JSONArray()
+      var existingCommentsArr = JSONArray()
+      try {
+        val checkUrl = URL(DEFAULT_CLOUD_ARCHIVE_URL)
+        val checkConn = (checkUrl.openConnection() as HttpURLConnection).apply {
+          requestMethod = "GET"
+          connectTimeout = 8000
+          readTimeout = 8000
+          setRequestProperty("Accept", "application/json")
+          setRequestProperty("User-Agent", "Strawberrycandy-Android-APK")
+        }
+        if (checkConn.responseCode in 200..299) {
+          val resText = checkConn.inputStream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
+          val root = JSONObject(resText)
+          val dataObj = root.optJSONObject("data")
+          if (dataObj != null) {
+            existingNovelsArr = dataObj.optJSONArray("novels") ?: JSONArray()
+            existingCommentsArr = dataObj.optJSONArray("comments") ?: JSONArray()
+          }
+        }
+        checkConn.disconnect()
+      } catch (_: Exception) {}
+
+      val slotsArr = JSONArray()
+      slots.forEach { slot ->
+        slotsArr.put(authorSlotToJson(slot))
+      }
+
+      val payload = JSONObject().apply {
+        put("name", "Strawberrycandy Global Cloud Archive")
+        put("data", JSONObject().apply {
+          put("novels", existingNovelsArr)
+          put("comments", existingCommentsArr)
+          put("authorSlots", slotsArr)
+        })
+      }.toString()
+
+      val url = URL(DEFAULT_CLOUD_ARCHIVE_URL)
+      connection = (url.openConnection() as HttpURLConnection).apply {
+        requestMethod = "PUT"
+        connectTimeout = 12000
+        readTimeout = 12000
+        doOutput = true
+        setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        setRequestProperty("Accept", "application/json")
+        setRequestProperty("User-Agent", "Strawberrycandy-Android-APK")
+      }
+
+      OutputStreamWriter(connection.outputStream, StandardCharsets.UTF_8).use {
+        it.write(payload)
+        it.flush()
+      }
+
+      val code = connection.responseCode
+      if (code in 200..299) {
+        Result.success("Author slots synchronized to Global Cloud Archive")
+      } else {
+        Result.failure(Exception("Cloud archive returned HTTP $code"))
+      }
+    } catch (e: Exception) {
+      Result.failure(e)
     } finally {
       connection?.disconnect()
     }

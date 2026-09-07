@@ -219,12 +219,22 @@ fun ReadingScreen(
   var currentSearchMatchIndex by remember { mutableIntStateOf(0) }
   var isSearchResultsListOpen by remember { mutableStateOf(false) }
 
-  // Reactive comments & bookmarks
-  val commentsFlow = remember(novel.id, novel.chapterTitle, viewModel) {
-    viewModel?.getCommentsForChapter(novel.id, novel.chapterTitle)
+  // Reactive comments across all chapters & online sync
+  val commentsFlow = remember(novel.id, viewModel) {
+    viewModel?.getAllCommentsForNovel(novel.id)
   }
-  val commentsList by (commentsFlow?.collectAsState(initial = emptyList())
+  val allNovelComments by (commentsFlow?.collectAsState(initial = emptyList())
     ?: remember { mutableStateOf(emptyList()) })
+
+  // Auto-sync comments from online cloud archive in real-time
+  LaunchedEffect(novel.id) {
+    viewModel?.listenToCloudComments(novel.id)
+    viewModel?.syncRemoteComments(novel.id)
+    while (true) {
+      delay(12000L)
+      viewModel?.syncRemoteComments(novel.id)
+    }
+  }
 
   val bookmarksFlow = remember(novel.id, viewModel) {
     viewModel?.getBookmarksForNovel(novel.id)
@@ -300,6 +310,24 @@ fun ReadingScreen(
     if (hasInitialSynced && estimatedCurrentPage != novel.currentPage) {
       delay(800L)
       onSaveProgress(estimatedCurrentPage)
+    }
+  }
+
+  // Automatic completion detection: mark finished when reaching the end of the last chapter
+  var hasMarkedFinished by remember(novel.id) { mutableStateOf(novel.isFinished) }
+  val isAtEndPosition by remember(lazyListState) {
+    derivedStateOf {
+      val total = lazyListState.layoutInfo.totalItemsCount
+      val lastVis = lazyListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+      total > 1 && lastVis >= total - 2
+    }
+  }
+
+  LaunchedEffect(isAtEndPosition, hasMarkedFinished) {
+    if (isAtEndPosition && !hasMarkedFinished) {
+      hasMarkedFinished = true
+      viewModel?.markNovelAsFinished(novel.id)
+      onSaveProgress(novel.totalPages)
     }
   }
 
@@ -1054,14 +1082,14 @@ fun ReadingScreen(
                         .clip(RoundedCornerShape(12.dp))
                         .background(
                           if (isSelectionActive) Color(0x0E000000)
-                          else if (hasHighlights) Color(matchingHighlights.first().colorHex).copy(alpha = 0.08f)
+                          else if (hasHighlights) Color(matchingHighlights.firstOrNull()?.colorHex ?: 0xFFD4AF37).copy(alpha = 0.08f)
                           else Color.Transparent
                         )
                         .border(
                           border = if (isSelectionActive) {
                             BorderStroke(1.2.dp, AntiqueGold)
                           } else if (hasHighlights) {
-                            BorderStroke(1.dp, Color(matchingHighlights.first().colorHex).copy(alpha = 0.45f))
+                            BorderStroke(1.dp, Color(matchingHighlights.firstOrNull()?.colorHex ?: 0xFFD4AF37).copy(alpha = 0.45f))
                           } else {
                             BorderStroke(0.dp, Color.Transparent)
                           },
@@ -1101,12 +1129,13 @@ fun ReadingScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.padding(bottom = 6.dp)
                           ) {
-                            val firstHl = matchingHighlights.first()
+                            val firstHl = matchingHighlights.firstOrNull()
+                            val hlColor = Color(firstHl?.colorHex ?: 0xFFD4AF37)
                             Box(
                               modifier = Modifier
                                 .size(8.dp)
                                 .clip(CircleShape)
-                                .background(Color(firstHl.colorHex))
+                                .background(hlColor)
                             )
                             Spacer(modifier = Modifier.width(5.dp))
                             Text(
@@ -1116,7 +1145,7 @@ fun ReadingScreen(
                                 letterSpacing = 1.sp,
                                 fontWeight = FontWeight.Bold
                               ),
-                              color = Color(firstHl.colorHex)
+                              color = hlColor
                             )
                           }
                         }
@@ -1185,7 +1214,7 @@ fun ReadingScreen(
                       enter = fadeIn() + expandVertically(),
                       exit = fadeOut() + shrinkVertically()
                     ) {
-                      val selection = activeParagraphSelection!!
+                      val selection = activeParagraphSelection ?: return@AnimatedVisibility
                       val targetQuoteText = if (selection.selectedSentenceIndex in selection.sentences.indices) {
                         selection.sentences[selection.selectedSentenceIndex]
                       } else {
@@ -1460,9 +1489,15 @@ fun ReadingScreen(
 
                             OutlinedButton(
                               onClick = {
+                                val targetEnd = currentChapter?.endParagraphIndex ?: index
                                 activeParagraphSelection = null
                                 coroutineScope.launch {
-                                  lazyListState.animateScrollToItem(novel.storyItems.size + 1)
+                                  try {
+                                    val count = lazyListState.layoutInfo.totalItemsCount
+                                    if (count > 0) {
+                                      lazyListState.animateScrollToItem((targetEnd + 1).coerceIn(0, count - 1))
+                                    }
+                                  } catch (_: Exception) {}
                                 }
                               },
                               shape = RoundedCornerShape(10.dp),
@@ -1489,6 +1524,68 @@ fun ReadingScreen(
                   }
                 }
               }
+
+              // Check if a chapter ends at this paragraph index (for multi-chapter novels)
+              val chapterEndingHere = novel.chapters.find {
+                it.endParagraphIndex == index && it.index < novel.chapters.lastIndex
+              }
+              if (chapterEndingHere != null) {
+                Column(
+                  modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 28.dp, bottom = 16.dp),
+                  horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                  Text(
+                    text = "— END OF ${chapterEndingHere.title.uppercase()} —",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontSize = 10.sp,
+                      letterSpacing = 1.4.sp,
+                      fontWeight = FontWeight.Bold
+                    ),
+                    color = AntiqueGold
+                  )
+                  Spacer(modifier = Modifier.height(16.dp))
+
+                  val thisChapterComments = remember(allNovelComments, chapterEndingHere.title) {
+                    allNovelComments.filter { it.chapterTitle.equals(chapterEndingHere.title, ignoreCase = true) }
+                  }
+
+                  ChapterCommentsSection(
+                    chapterTitle = chapterEndingHere.title,
+                    comments = thisChapterComments,
+                    activeReaderName = activeUser?.displayName,
+                    activeReaderEmail = activeUser?.email,
+                    isOwner = activeUser?.role == "OWNER" || activeUser?.authorSlot == 0,
+                    onPostComment = { text, penName, parentCommentId, replyToReaderName ->
+                      viewModel?.postComment(
+                        novelId = novel.id,
+                        chapterTitle = chapterEndingHere.title,
+                        text = text,
+                        penName = penName,
+                        parentCommentId = parentCommentId,
+                        replyToReaderName = replyToReaderName
+                      )
+                    },
+                    onLikeComment = { commentId ->
+                      viewModel?.likeComment(commentId)
+                    },
+                    onDeleteComment = { commentId ->
+                      viewModel?.deleteComment(commentId)
+                    },
+                    onSavePenName = { newName ->
+                      viewModel?.updateReaderName(newName)
+                    }
+                  )
+
+                  Spacer(modifier = Modifier.height(28.dp))
+                  Text(
+                    text = "— ❦ —",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = AntiqueGold.copy(alpha = 0.5f)
+                  )
+                }
+              }
             }
           }
 
@@ -1499,7 +1596,84 @@ fun ReadingScreen(
                 .fillMaxWidth(),
               horizontalAlignment = Alignment.CenterHorizontally
             ) {
-              Spacer(modifier = Modifier.height(44.dp))
+              Spacer(modifier = Modifier.height(32.dp))
+
+              // Celebratory Finished Novel Card
+              Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = Color(0x1AD4AF37),
+                border = BorderStroke(1.2.dp, AntiqueGold.copy(alpha = 0.7f)),
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .testTag("novel_finished_celebration_card")
+              ) {
+                Row(
+                  modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                  verticalAlignment = Alignment.CenterVertically
+                ) {
+                  Box(
+                    modifier = Modifier
+                      .size(44.dp)
+                      .clip(CircleShape)
+                      .background(AntiqueGold.copy(alpha = 0.2f)),
+                    contentAlignment = Alignment.Center
+                  ) {
+                    Icon(
+                      imageVector = Icons.Outlined.Check,
+                      contentDescription = "Finished",
+                      tint = AntiqueGold,
+                      modifier = Modifier.size(24.dp)
+                    )
+                  }
+                  Spacer(modifier = Modifier.width(14.dp))
+                  Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                      Text(
+                        text = "MANUSCRIPT FINISHED",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                          fontSize = 9.sp,
+                          letterSpacing = 1.4.sp,
+                          fontWeight = FontWeight.Bold
+                        ),
+                        color = AntiqueGold
+                      )
+                      Spacer(modifier = Modifier.width(6.dp))
+                      Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = Color(0xFF2E7D32).copy(alpha = 0.15f)
+                      ) {
+                        Text(
+                          text = "✓ Finished",
+                          style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF2E7D32)
+                          ),
+                          modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                      }
+                    }
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                      text = "You reached the end of ${novel.title}",
+                      style = MaterialTheme.typography.titleSmall.copy(
+                        fontFamily = FontFamily.Serif,
+                        fontWeight = FontWeight.SemiBold
+                      ),
+                      color = CharcoalText
+                    )
+                    Text(
+                      text = if (activeUser != null) "Recorded in your library • +1 Pen Name Point earned" else "Recorded as Finished in your library",
+                      style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                      color = CharcoalSecondary
+                    )
+                  }
+                }
+              }
+
+              Spacer(modifier = Modifier.height(32.dp))
 
               // Colophon
               Text(
@@ -1521,17 +1695,22 @@ fun ReadingScreen(
 
               Spacer(modifier = Modifier.height(36.dp))
 
-              // Comments Section
+              // Final Chapter Comments Section
+              val lastChapterTitle = novel.chapters.lastOrNull()?.title ?: novel.chapterTitle
+              val lastChapterComments = remember(allNovelComments, lastChapterTitle) {
+                allNovelComments.filter { it.chapterTitle.equals(lastChapterTitle, ignoreCase = true) }
+              }
+
               ChapterCommentsSection(
-                chapterTitle = novel.chapterTitle,
-                comments = commentsList,
+                chapterTitle = lastChapterTitle,
+                comments = lastChapterComments,
                 activeReaderName = activeUser?.displayName,
                 activeReaderEmail = activeUser?.email,
                 isOwner = activeUser?.role == "OWNER" || activeUser?.authorSlot == 0,
                 onPostComment = { text, penName, parentCommentId, replyToReaderName ->
                   viewModel?.postComment(
                     novelId = novel.id,
-                    chapterTitle = novel.chapterTitle,
+                    chapterTitle = lastChapterTitle,
                     text = text,
                     penName = penName,
                     parentCommentId = parentCommentId,
@@ -1771,7 +1950,11 @@ private fun buildReadingParagraphAnnotatedString(
   val annotated = buildAnnotatedString {
     append(plainText)
     for ((start, end, style) in styleSpans) {
-      addStyle(style, start, end)
+      if (start in 0..plainText.length && end in 0..plainText.length && start < end) {
+        try {
+          addStyle(style, start, end)
+        } catch (_: Exception) {}
+      }
     }
 
     // Apply color highlights from bookmarks / favorite lines
@@ -1783,15 +1966,21 @@ private fun buildReadingParagraphAnnotatedString(
           val found = plainText.indexOf(quote, hIdx, ignoreCase = true)
           if (found == -1) break
           val hlColor = Color(hl.colorHex)
-          addStyle(
-            SpanStyle(
-              background = hlColor.copy(alpha = 0.35f),
-              fontWeight = FontWeight.Medium
-            ),
-            found,
-            found + quote.length
-          )
-          hIdx = found + quote.length
+          val safeStart = found.coerceIn(0, plainText.length)
+          val safeEnd = (found + quote.length).coerceIn(0, plainText.length)
+          if (safeStart < safeEnd) {
+            try {
+              addStyle(
+                SpanStyle(
+                  background = hlColor.copy(alpha = 0.35f),
+                  fontWeight = FontWeight.Medium
+                ),
+                safeStart,
+                safeEnd
+              )
+            } catch (_: Exception) {}
+          }
+          hIdx = found + maxOf(1, quote.length)
         }
       }
     }
@@ -1803,16 +1992,22 @@ private fun buildReadingParagraphAnnotatedString(
       while (sIdx < plainText.length) {
         val found = plainText.indexOf(q, sIdx, ignoreCase = true)
         if (found == -1) break
-        addStyle(
-          SpanStyle(
-            background = if (isParagraphActive) AntiqueGold else Color(0x66D4AF37),
-            color = if (isParagraphActive) Color.White else CharcoalText,
-            fontWeight = FontWeight.Bold
-          ),
-          found,
-          found + q.length
-        )
-        sIdx = found + q.length
+        val safeStart = found.coerceIn(0, plainText.length)
+        val safeEnd = (found + q.length).coerceIn(0, plainText.length)
+        if (safeStart < safeEnd) {
+          try {
+            addStyle(
+              SpanStyle(
+                background = if (isParagraphActive) AntiqueGold else Color(0x66D4AF37),
+                color = if (isParagraphActive) Color.White else CharcoalText,
+                fontWeight = FontWeight.Bold
+              ),
+              safeStart,
+              safeEnd
+            )
+          } catch (_: Exception) {}
+        }
+        sIdx = found + maxOf(1, q.length)
       }
     }
   }

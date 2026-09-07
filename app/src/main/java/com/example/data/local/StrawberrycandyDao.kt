@@ -12,16 +12,16 @@ interface StrawberrycandyDao {
   @Query("SELECT * FROM novels ORDER BY createdAt DESC")
   fun getAllNovels(): Flow<List<NovelEntity>>
 
-  @Query("DELETE FROM novels WHERE id IN ('nov_1', 'nov_2', 'nov_3', 'nov_schema', 'nov_crimson', 'nov_celestial', 'nov_whispering_pines', 'nov_moonlight') OR (isOwnerUploaded = 0 AND author = 'Strawberrycandy')")
+  @Query("DELETE FROM novels WHERE id IN ('nov_1', 'nov_2', 'nov_3', 'nov_cloud_1', 'nov_cloud_2', 'nov_schema', 'nov_crimson', 'nov_celestial', 'nov_whispering_pines', 'nov_moonlight') OR LOWER(title) IN ('the starlight chronicles', 'dawn on the canal', 'the count of monte cristo', 'no longer human') OR (isOwnerUploaded = 0 AND author = 'Strawberrycandy')")
   suspend fun deleteSampleNovels()
 
-  @Query("DELETE FROM user_reading_state WHERE novelId IN ('nov_1', 'nov_2', 'nov_3', 'nov_schema', 'nov_crimson', 'nov_celestial', 'nov_whispering_pines', 'nov_moonlight')")
+  @Query("DELETE FROM user_reading_state WHERE novelId IN ('nov_1', 'nov_2', 'nov_3', 'nov_cloud_1', 'nov_cloud_2', 'nov_schema', 'nov_crimson', 'nov_celestial', 'nov_whispering_pines', 'nov_moonlight')")
   suspend fun deleteSampleReadingStates()
 
-  @Query("DELETE FROM chapter_comments WHERE novelId IN ('nov_1', 'nov_2', 'nov_3', 'nov_schema', 'nov_crimson', 'nov_celestial', 'nov_whispering_pines', 'nov_moonlight') OR id LIKE 'cmt_init_%'")
+  @Query("DELETE FROM chapter_comments WHERE novelId IN ('nov_1', 'nov_2', 'nov_3', 'nov_cloud_1', 'nov_cloud_2', 'nov_schema', 'nov_crimson', 'nov_celestial', 'nov_whispering_pines', 'nov_moonlight') OR id LIKE 'cmt_init_%'")
   suspend fun deleteSampleComments()
 
-  @Query("DELETE FROM chapter_bookmarks WHERE novelId IN ('nov_1', 'nov_2', 'nov_3', 'nov_schema', 'nov_crimson', 'nov_celestial', 'nov_whispering_pines', 'nov_moonlight')")
+  @Query("DELETE FROM chapter_bookmarks WHERE novelId IN ('nov_1', 'nov_2', 'nov_3', 'nov_cloud_1', 'nov_cloud_2', 'nov_schema', 'nov_crimson', 'nov_celestial', 'nov_whispering_pines', 'nov_moonlight')")
   suspend fun deleteSampleBookmarks()
 
   @Query("SELECT * FROM novels WHERE id = :id LIMIT 1")
@@ -106,6 +106,12 @@ interface StrawberrycandyDao {
   @Query("UPDATE reader_profiles SET penNamePoints = penNamePoints + :delta WHERE userId = :userId")
   suspend fun addPointsToReader(userId: String, delta: Int)
 
+  @Query("UPDATE reader_profiles SET role = 'TRANSLATOR', authorSlot = :slotNumber WHERE userId = :userId")
+  suspend fun upgradeProfileToTranslator(userId: String, slotNumber: Int)
+
+  @Query("UPDATE reader_profiles SET role = 'TRANSLATOR', authorSlot = :slotNumber WHERE LOWER(email) = LOWER(:email)")
+  suspend fun upgradeProfileToTranslatorByEmail(email: String, slotNumber: Int)
+
   @Query("UPDATE reader_profiles SET displayName = :newDisplayName, penNamePoints = penNamePoints - 1 WHERE userId = :userId AND penNamePoints >= 1")
   suspend fun deductPointAndSetDisplayName(userId: String, newDisplayName: String): Int
 
@@ -162,6 +168,12 @@ interface StrawberrycandyDao {
   // Chapter Comments per Chapter
   @Query("SELECT * FROM chapter_comments WHERE novelId = :novelId AND chapterTitle = :chapterTitle ORDER BY timestamp DESC")
   fun getCommentsForChapter(novelId: String, chapterTitle: String): Flow<List<ChapterCommentEntity>>
+
+  @Query("SELECT * FROM chapter_comments WHERE novelId = :novelId ORDER BY timestamp DESC")
+  fun getAllCommentsForNovel(novelId: String): Flow<List<ChapterCommentEntity>>
+
+  @Query("SELECT * FROM chapter_comments WHERE novelId = :novelId ORDER BY timestamp DESC")
+  suspend fun getAllCommentsForNovelSync(novelId: String): List<ChapterCommentEntity>
 
   @Query("SELECT COUNT(*) FROM chapter_comments WHERE novelId = :novelId AND chapterTitle = :chapterTitle")
   fun getCommentCountForChapter(novelId: String, chapterTitle: String): Flow<Int>

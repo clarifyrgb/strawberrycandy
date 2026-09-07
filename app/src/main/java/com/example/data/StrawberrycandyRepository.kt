@@ -10,6 +10,10 @@ import com.example.data.local.StrawberrycandyDao
 import com.example.data.local.UserReadingStateEntity
 import com.example.data.remote.CloudArchiveSyncService
 import com.example.model.NovelWithState
+import android.util.Log
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -49,6 +53,69 @@ class StrawberrycandyRepository(
              normalized == "clarifymanga@gmail.com" ||
              normalized == "clarissamendoza241@gmail.com"
     }
+
+    fun normalizeEmailOrName(input: String?): String {
+      if (input.isNullOrBlank()) return ""
+      return input.trim().lowercase()
+    }
+
+    fun extractEmailPrefix(input: String?): String {
+      if (input.isNullOrBlank()) return ""
+      val clean = input.trim().lowercase()
+      return if (clean.contains("@")) clean.substringBefore("@") else clean
+    }
+
+    fun isUserMatchedToSlot(
+      userEmail: String?,
+      userDisplayName: String?,
+      slot: AuthorSlotEntity
+    ): Boolean {
+      val cleanUserEmail = normalizeEmailOrName(userEmail)
+      val userPrefix = extractEmailPrefix(userEmail)
+      val userSimplifiedPrefix = userPrefix.replace(".", "").replace("_", "").replace("-", "")
+      val cleanDisplayName = normalizeEmailOrName(userDisplayName)
+      val simplifiedDisplayName = cleanDisplayName.replace(" ", "").replace(".", "").replace("_", "").replace("-", "")
+
+      val slotEmail = normalizeEmailOrName(slot.translatorEmail)
+      val slotPrefix = extractEmailPrefix(slot.translatorEmail)
+      val slotSimplifiedPrefix = slotPrefix.replace(".", "").replace("_", "").replace("-", "")
+
+      val slotPen = normalizeEmailOrName(slot.penName)
+      val slotSimplifiedPen = slotPen.replace(" ", "").replace(".", "").replace("_", "").replace("-", "")
+
+      val slotAuthor = normalizeEmailOrName(slot.authorName)
+      val slotSimplifiedAuthor = slotAuthor.replace(" ", "").replace(".", "").replace("_", "").replace("-", "")
+
+      // 1. Direct email and prefix matches
+      if (slotEmail.isNotBlank()) {
+        if (slotEmail == cleanUserEmail) return true
+        val strippedSlot = slotEmail.removeSuffix("@gmail.com").removeSuffix("@googlemail.com")
+        val strippedUser = cleanUserEmail.removeSuffix("@gmail.com").removeSuffix("@googlemail.com")
+        if (strippedSlot == strippedUser) return true
+
+        if (slotPrefix.isNotBlank() && slotPrefix == userPrefix) return true
+        if (slotSimplifiedPrefix.isNotBlank() && slotSimplifiedPrefix == userSimplifiedPrefix) return true
+
+        if (cleanDisplayName.isNotBlank()) {
+          if (slotEmail == cleanDisplayName || slotPrefix == cleanDisplayName) return true
+          if (slotSimplifiedPrefix.isNotBlank() && slotSimplifiedPrefix == simplifiedDisplayName) return true
+        }
+      }
+
+      // 2. Pen name match (e.g. Owner set pen name as translator's Gmail name or display name)
+      if (slotPen.isNotBlank() && !slotPen.startsWith("translator ", ignoreCase = true)) {
+        if (slotPen == cleanUserEmail || slotPen == userPrefix || slotSimplifiedPen == userSimplifiedPrefix) return true
+        if (cleanDisplayName.isNotBlank() && (slotPen == cleanDisplayName || slotSimplifiedPen == simplifiedDisplayName)) return true
+      }
+
+      // 3. Author name match
+      if (slotAuthor.isNotBlank() && !slotAuthor.startsWith("translator ", ignoreCase = true)) {
+        if (slotAuthor == cleanUserEmail || slotAuthor == userPrefix || slotSimplifiedAuthor == userSimplifiedPrefix) return true
+        if (cleanDisplayName.isNotBlank() && (slotAuthor == cleanDisplayName || slotSimplifiedAuthor == simplifiedDisplayName)) return true
+      }
+
+      return false
+    }
   }
 
   init {
@@ -68,6 +135,7 @@ class StrawberrycandyRepository(
       syncOwnerConfiguration()
       eraseExampleTranslators()
       syncRemoteNovels()
+      syncRemoteAuthorSlots()
     }
   }
 
@@ -86,6 +154,51 @@ class StrawberrycandyRepository(
       }
     } catch (e: Exception) {
       Result.failure(e)
+    }
+  }
+
+  suspend fun syncRemoteAuthorSlots(): Result<Int> {
+    if (syncService == null) return Result.success(0)
+    return try {
+      val remoteResult = syncService.fetchRemoteAuthorSlots()
+      if (remoteResult.isSuccess) {
+        val remoteSlots = remoteResult.getOrNull() ?: emptyList()
+        if (remoteSlots.isNotEmpty()) {
+          for (remoteSlot in remoteSlots) {
+            val localSlot = dao.getAuthorSlot(remoteSlot.slotNumber)
+            // If remote has permission or translator email assigned, merge it locally
+            if (remoteSlot.isPermissionGranted || !remoteSlot.translatorEmail.isNullOrBlank()) {
+              dao.updateAuthorSlot(
+                remoteSlot.copy(
+                  coverImageUri = localSlot?.coverImageUri ?: remoteSlot.coverImageUri
+                )
+              )
+            }
+          }
+          checkAndUpgradeProfilesAgainstSlots()
+        }
+        Result.success(remoteSlots.size)
+      } else {
+        Result.failure(remoteResult.exceptionOrNull() ?: Exception("Failed to sync remote author slots"))
+      }
+    } catch (e: Exception) {
+      Result.failure(e)
+    }
+  }
+
+  suspend fun checkAndUpgradeProfilesAgainstSlots() {
+    val allSlots = dao.getAllAuthorSlotsSync()
+    val profiles = dao.getAllProfilesList()
+    for (profile in profiles) {
+      if (isOwnerEmail(profile.email)) continue
+      val matchedSlot = allSlots.find { slot ->
+        slot.isPermissionGranted && isUserMatchedToSlot(profile.email, profile.displayName, slot)
+      }
+      if (matchedSlot != null) {
+        if (profile.role != "TRANSLATOR" || profile.authorSlot != matchedSlot.slotNumber) {
+          dao.upgradeProfileToTranslator(profile.userId, matchedSlot.slotNumber)
+        }
+      }
     }
   }
 
@@ -251,6 +364,23 @@ class StrawberrycandyRepository(
   suspend fun setSlotPermission(slotNumber: Int, isGranted: Boolean) {
     if (slotNumber != 0) { // Slot 0 is Strawberrycandy (Owner), always granted
       dao.updateAuthorSlotPermission(slotNumber, isGranted)
+      val slot = dao.getAuthorSlot(slotNumber)
+      if (slot != null) {
+        val profiles = dao.getAllProfilesList()
+        for (profile in profiles) {
+          if (isOwnerEmail(profile.email)) continue
+          if (profile.authorSlot == slotNumber || isUserMatchedToSlot(profile.email, profile.displayName, slot)) {
+            val newRole = if (isGranted) "TRANSLATOR" else "READER"
+            val newSlot = if (isGranted) slotNumber else null
+            dao.insertReaderProfile(profile.copy(role = newRole, authorSlot = newSlot))
+          }
+        }
+      }
+      if (syncService != null) {
+        try {
+          syncService.publishAuthorSlotsToRemote(dao.getAllAuthorSlotsSync())
+        } catch (_: Exception) {}
+      }
     }
   }
 
@@ -326,8 +456,11 @@ class StrawberrycandyRepository(
       }
     }
 
-    // Check if owner has pre-granted this email to an author slot
-    val preGrantedSlot = dao.getAuthorSlotByEmail(cleanEmail)
+    // Check if owner has pre-granted this email or name to an author slot
+    val allSlots = dao.getAllAuthorSlotsSync()
+    val preGrantedSlot = allSlots.find { slot ->
+      slot.isPermissionGranted && isUserMatchedToSlot(cleanEmail, displayName, slot)
+    } ?: dao.getAuthorSlotByEmail(cleanEmail)
 
     val finalRole = if (isOwner) {
       "OWNER"
@@ -393,7 +526,13 @@ class StrawberrycandyRepository(
     if (finalRole == "TRANSLATOR" && finalSlot != null && finalSlot != 0) {
       val slot = dao.getAuthorSlot(finalSlot)
       if (slot != null) {
-        dao.updateAuthorSlotEmail(finalSlot, cleanEmail)
+        dao.updateAuthorSlot(
+          slot.copy(
+            translatorEmail = cleanEmail,
+            isClaimed = true,
+            isPermissionGranted = true
+          )
+        )
       }
     }
 
@@ -401,21 +540,66 @@ class StrawberrycandyRepository(
   }
 
   suspend fun grantPermissionByEmail(email: String, slotNumber: Int? = null) {
-    val cleanEmail = email.trim().lowercase()
-    val existingSlot = dao.getAuthorSlotByEmail(cleanEmail)
-    if (existingSlot != null) {
-      dao.updateAuthorSlotPermission(existingSlot.slotNumber, true)
+    val cleanInput = email.trim()
+    val cleanEmail = if (cleanInput.contains("@")) cleanInput.lowercase() else "${cleanInput.lowercase()}@gmail.com"
+    val allSlots = dao.getAllAuthorSlotsSync()
+    val existingSlot = allSlots.find { isUserMatchedToSlot(cleanEmail, cleanInput, it) }
+
+    val targetSlotNumber = if (existingSlot != null) {
+      existingSlot.slotNumber
     } else {
-      val target = slotNumber ?: (1..10).firstOrNull { slotNum ->
+      slotNumber ?: (1..10).firstOrNull { slotNum ->
         val s = dao.getAuthorSlot(slotNum)
         s == null || !s.isPermissionGranted
-      } ?: 5
-      dao.updateAuthorSlotPermissionAndEmail(target, true, cleanEmail)
+      } ?: 1
+    }
+
+    val currentSlot = dao.getAuthorSlot(targetSlotNumber)
+    val defaultPen = run {
+      val prefix = cleanEmail.substringBefore("@").replace(".", " ")
+      prefix.split(" ").joinToString(" ") { it.replaceFirstChar { c -> c.titlecase() } }
+    }
+    val updatedSlot = (currentSlot ?: AuthorSlotEntity(
+      slotNumber = targetSlotNumber,
+      authorName = defaultPen,
+      penName = defaultPen,
+      accessCode = "AUTH-ROOM-$targetSlotNumber"
+    )).copy(
+      isPermissionGranted = true,
+      translatorEmail = cleanEmail,
+      isClaimed = true,
+      lastActiveTimestamp = System.currentTimeMillis(),
+      penName = if (currentSlot == null || currentSlot.penName.isBlank() || currentSlot.penName.startsWith("Translator ", ignoreCase = true)) {
+        defaultPen
+      } else {
+        currentSlot.penName
+      },
+      authorName = if (currentSlot == null || currentSlot.authorName.isBlank() || currentSlot.authorName.startsWith("Translator ", ignoreCase = true)) {
+        defaultPen
+      } else {
+        currentSlot.authorName
+      }
+    )
+    dao.updateAuthorSlot(updatedSlot)
+
+    // Upgrade existing reader profile if one already exists
+    val profiles = dao.getAllProfilesList()
+    for (p in profiles) {
+      if (!isOwnerEmail(p.email) && isUserMatchedToSlot(p.email, p.displayName, updatedSlot)) {
+        dao.upgradeProfileToTranslator(p.userId, targetSlotNumber)
+      }
+    }
+
+    // Sync author slots to Cloud Archive so other devices receive permission immediately!
+    if (syncService != null) {
+      try {
+        syncService.publishAuthorSlotsToRemote(dao.getAllAuthorSlotsSync())
+      } catch (_: Exception) {}
     }
   }
 
-  // Active recovery sessions in memory (email -> RecoverySession)
-  private data class RecoverySession(val email: String, val code: String, val timestamp: Long)
+  // Active recovery sessions in memory (email -> RecoverySession) with firewall protection
+  private data class RecoverySession(val email: String, val code: String, val timestamp: Long, var failedAttempts: Int = 0)
   private val activeRecoverySessions = java.util.concurrent.ConcurrentHashMap<String, RecoverySession>()
 
   suspend fun sendPasswordRecoveryCode(email: String): Result<String> {
@@ -430,9 +614,19 @@ class StrawberrycandyRepository(
         IllegalArgumentException("No account found for $cleanEmail on this device. Please sign in or register with your Gmail address.")
       )
     }
-    // Generate secure 6-digit recovery code
+    // 1. Generate secure 6-digit recovery code for in-app verification
     val code = (100000..999999).random().toString()
-    activeRecoverySessions[cleanEmail] = RecoverySession(cleanEmail, code, System.currentTimeMillis())
+    activeRecoverySessions[cleanEmail] = RecoverySession(cleanEmail, code, System.currentTimeMillis(), 0)
+
+    // 2. Dispatch official password reset email directly via Firebase Authentication
+    try {
+      val auth = FirebaseAuth.getInstance()
+      auth.sendPasswordResetEmail(cleanEmail)
+      Log.d("StrawberrycandyAuth", "Firebase Authentication password reset email requested for $cleanEmail")
+    } catch (e: Exception) {
+      Log.w("StrawberrycandyAuth", "Firebase Auth reset dispatch error: ${e.message}")
+    }
+
     return Result.success(code)
   }
 
@@ -447,8 +641,15 @@ class StrawberrycandyRepository(
       activeRecoverySessions.remove(cleanEmail)
       return Result.failure(IllegalArgumentException("The verification code has expired. Please request a new code."))
     }
+    // Firewall protection against brute-force
+    if (session.failedAttempts >= 5) {
+      activeRecoverySessions.remove(cleanEmail)
+      return Result.failure(IllegalArgumentException("Security Firewall: Maximum verification attempts exceeded. Please request a new 2FA code."))
+    }
     if (session.code != code.trim()) {
-      return Result.failure(IllegalArgumentException("Invalid verification code. Please check the 6-digit code sent to $cleanEmail."))
+      session.failedAttempts++
+      val remaining = 5 - session.failedAttempts
+      return Result.failure(IllegalArgumentException("Invalid verification code. Firewall: $remaining attempt${if (remaining == 1) "" else "s"} remaining."))
     }
     val trimmedPass = newPassword.trim()
     if (trimmedPass.length < 4) {
@@ -795,7 +996,10 @@ class StrawberrycandyRepository(
     isPermissionGranted: Boolean
   ) {
     val existing = dao.getAuthorSlot(slotNumber) ?: return
-    val cleanEmail = translatorEmail?.trim()?.lowercase()?.ifBlank { null }
+    val rawEmail = translatorEmail?.trim()?.ifBlank { null }
+    val cleanEmail = if (rawEmail != null) {
+      if (rawEmail.contains("@")) rawEmail.lowercase() else "${rawEmail.lowercase()}@gmail.com"
+    } else null
     val cleanPenName = penName.trim()
     val cleanBio = bio.trim()
     val updated = existing.copy(
@@ -808,19 +1012,26 @@ class StrawberrycandyRepository(
     )
     dao.updateAuthorSlot(updated)
 
-    if (cleanEmail != null) {
-      val existingProfile = dao.getReaderProfileByEmail(cleanEmail)
-      if (existingProfile != null && existingProfile.role != "OWNER") {
+    val profiles = dao.getAllProfilesList()
+    for (profile in profiles) {
+      if (isOwnerEmail(profile.email)) continue
+      if (profile.authorSlot == slotNumber || (cleanEmail != null && isUserMatchedToSlot(profile.email, profile.displayName, updated))) {
         val updatedRole = if (isPermissionGranted) "TRANSLATOR" else "READER"
         val updatedSlot = if (isPermissionGranted) slotNumber else null
         dao.insertReaderProfile(
-          existingProfile.copy(
+          profile.copy(
             role = updatedRole,
             authorSlot = updatedSlot,
-            displayName = if (cleanPenName.isNotBlank()) cleanPenName else existingProfile.displayName
+            displayName = if (cleanPenName.isNotBlank() && !cleanPenName.startsWith("Translator ", ignoreCase = true)) cleanPenName else profile.displayName
           )
         )
       }
+    }
+
+    if (syncService != null) {
+      try {
+        syncService.publishAuthorSlotsToRemote(dao.getAllAuthorSlotsSync())
+      } catch (_: Exception) {}
     }
   }
 
@@ -843,8 +1054,107 @@ class StrawberrycandyRepository(
     return dao.getCommentsForChapter(novelId, chapterTitle)
   }
 
+  fun getAllCommentsForNovel(novelId: String): Flow<List<ChapterCommentEntity>> {
+    return dao.getAllCommentsForNovel(novelId)
+  }
+
   fun getCommentCountForChapter(novelId: String, chapterTitle: String): Flow<Int> {
     return dao.getCommentCountForChapter(novelId, chapterTitle)
+  }
+
+  fun listenToCloudComments(novelId: String) {
+    try {
+      val firestore = FirebaseFirestore.getInstance()
+      firestore.collection("chapter_comments")
+        .whereEqualTo("novelId", novelId)
+        .addSnapshotListener { snapshot, error ->
+          if (error != null || snapshot == null) return@addSnapshotListener
+          val cloudComments = snapshot.documents.mapNotNull { doc ->
+            try {
+              val cId = doc.getString("id") ?: doc.id
+              val cNovelId = doc.getString("novelId") ?: novelId
+              if (cId.isBlank()) null
+              else ChapterCommentEntity(
+                id = cId,
+                novelId = cNovelId,
+                chapterTitle = doc.getString("chapterTitle") ?: "Chapter I",
+                readerName = doc.getString("readerName") ?: "Literary Reader",
+                readerEmail = doc.getString("readerEmail") ?: "",
+                commentText = doc.getString("commentText") ?: "",
+                timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis(),
+                avatarColorHex = doc.getLong("avatarColorHex") ?: 0xFF5C2D3B,
+                likesCount = (doc.getLong("likesCount") ?: 0L).toInt(),
+                isLikedByMe = false,
+                parentCommentId = doc.getString("parentCommentId").takeIf { !it.isNullOrBlank() },
+                replyToReaderName = doc.getString("replyToReaderName").takeIf { !it.isNullOrBlank() }
+              )
+            } catch (_: Exception) { null }
+          }
+          if (cloudComments.isNotEmpty()) {
+            externalScope.launch {
+              dao.insertComments(cloudComments)
+            }
+          }
+        }
+    } catch (e: Exception) {
+      Log.w("StrawberrycandyComments", "Firestore listenToCloudComments error: ${e.message}")
+    }
+  }
+
+  suspend fun syncRemoteComments(novelId: String? = null) {
+    // 1. Fetch from Firebase Firestore Cloud
+    try {
+      val firestore = FirebaseFirestore.getInstance()
+      val query = if (novelId != null) {
+        firestore.collection("chapter_comments").whereEqualTo("novelId", novelId)
+      } else {
+        firestore.collection("chapter_comments")
+      }
+      query.get().addOnSuccessListener { snapshot ->
+        if (snapshot != null && !snapshot.isEmpty) {
+          val cloudComments = snapshot.documents.mapNotNull { doc ->
+            try {
+              val cId = doc.getString("id") ?: doc.id
+              val cNovelId = doc.getString("novelId") ?: ""
+              if (cId.isBlank() || cNovelId.isBlank()) null
+              else ChapterCommentEntity(
+                id = cId,
+                novelId = cNovelId,
+                chapterTitle = doc.getString("chapterTitle") ?: "Chapter I",
+                readerName = doc.getString("readerName") ?: "Literary Reader",
+                readerEmail = doc.getString("readerEmail") ?: "",
+                commentText = doc.getString("commentText") ?: "",
+                timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis(),
+                avatarColorHex = doc.getLong("avatarColorHex") ?: 0xFF5C2D3B,
+                likesCount = (doc.getLong("likesCount") ?: 0L).toInt(),
+                isLikedByMe = false,
+                parentCommentId = doc.getString("parentCommentId").takeIf { !it.isNullOrBlank() },
+                replyToReaderName = doc.getString("replyToReaderName").takeIf { !it.isNullOrBlank() }
+              )
+            } catch (_: Exception) { null }
+          }
+          if (cloudComments.isNotEmpty()) {
+            externalScope.launch {
+              dao.insertComments(cloudComments)
+            }
+          }
+        }
+      }
+    } catch (e: Exception) {
+      Log.w("StrawberrycandyComments", "Firestore syncRemoteComments error: ${e.message}")
+    }
+
+    // 2. Fetch from Cloud Archive REST
+    val service = syncService ?: return
+    try {
+      val remoteResult = service.fetchRemoteComments(novelId)
+      if (remoteResult.isSuccess) {
+        val comments = remoteResult.getOrNull() ?: emptyList()
+        if (comments.isNotEmpty()) {
+          dao.insertComments(comments)
+        }
+      }
+    } catch (_: Exception) {}
   }
 
   suspend fun addComment(
@@ -878,10 +1188,51 @@ class StrawberrycandyRepository(
       replyToReaderName = replyToReaderName,
     )
     dao.insertComment(comment)
+    
+    // Post to Cloud: Firebase Firestore & Cloud Archive REST
+    externalScope.launch {
+      try {
+        val firestore = FirebaseFirestore.getInstance()
+        val docData = hashMapOf(
+          "id" to comment.id,
+          "novelId" to comment.novelId,
+          "chapterTitle" to comment.chapterTitle,
+          "readerName" to comment.readerName,
+          "readerEmail" to comment.readerEmail,
+          "commentText" to comment.commentText,
+          "timestamp" to comment.timestamp,
+          "avatarColorHex" to comment.avatarColorHex,
+          "likesCount" to comment.likesCount,
+          "parentCommentId" to (comment.parentCommentId ?: ""),
+          "replyToReaderName" to (comment.replyToReaderName ?: "")
+        )
+        firestore.collection("chapter_comments").document(comment.id).set(docData)
+        Log.d("StrawberrycandyComments", "Comment ${comment.id} posted directly to Firebase Firestore Cloud")
+      } catch (e: Exception) {
+        Log.w("StrawberrycandyComments", "Firebase Firestore comment upload: ${e.message}")
+      }
+
+      try {
+        syncService?.pushCommentToCloud(comment)
+      } catch (_: Exception) {}
+    }
   }
 
   suspend fun likeComment(commentId: String) {
     dao.likeComment(commentId)
+    externalScope.launch {
+      try {
+        val firestore = FirebaseFirestore.getInstance()
+        firestore.collection("chapter_comments").document(commentId)
+          .update("likesCount", FieldValue.increment(1))
+      } catch (e: Exception) {
+        Log.w("StrawberrycandyComments", "Firebase Firestore likeComment error: ${e.message}")
+      }
+
+      try {
+        syncService?.likeCommentInCloud(commentId)
+      } catch (_: Exception) {}
+    }
   }
 
   fun getCommentsForReader(email: String, name: String): Flow<List<ChapterCommentEntity>> {

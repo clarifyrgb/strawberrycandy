@@ -9,6 +9,7 @@ import com.example.data.local.NovelEntity
 import com.example.data.local.ReaderProfileEntity
 import com.example.data.local.StrawberrycandyDatabase
 import com.example.data.local.UserReadingStateEntity
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -17,6 +18,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.Before
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
@@ -25,6 +27,13 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
 class ExampleRobolectricTest {
+
+  @Before
+  fun setUp() = runBlocking(Dispatchers.IO) {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val db = StrawberrycandyDatabase.getInstance(context)
+    db.clearAllTables()
+  }
 
   @Test
   fun `read string from context`() {
@@ -250,7 +259,7 @@ class ExampleRobolectricTest {
     repo.signOut()
     repo.signIn(
       provider = "GOOGLE",
-      email = "translator1@gmail.com",
+      email = "author.translator@gmail.com",
       password = "newsecretpassword123",
       displayName = "Translator One",
       role = "TRANSLATOR",

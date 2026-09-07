@@ -1102,27 +1102,8 @@ fun ReaderProfileModal(
                           )
                         }
 
-                        // Realtime Date badge & Delete button
+                        // Date & Delete button
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                          if (isRecent) {
-                            Surface(
-                              shape = RoundedCornerShape(4.dp),
-                              color = Color(0xFF2E7D32).copy(alpha = 0.12f),
-                              border = BorderStroke(0.5.dp, Color(0xFF2E7D32).copy(alpha = 0.4f)),
-                              modifier = Modifier.padding(end = 6.dp)
-                            ) {
-                              Text(
-                                text = "REALTIME",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                  fontSize = 7.sp,
-                                  fontWeight = FontWeight.Bold,
-                                  color = Color(0xFF2E7D32)
-                                ),
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                              )
-                            }
-                          }
-
                           Text(
                             text = formattedDate,
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
