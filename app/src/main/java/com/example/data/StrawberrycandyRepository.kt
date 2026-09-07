@@ -754,42 +754,38 @@ class StrawberrycandyRepository(
     val userId = "usr_" + provider.lowercase() + "_" + cleanEmail.replace(Regex("[^a-z0-9]"), "_")
     val isOwner = isOwnerEmail(cleanEmail)
 
-    // Password verification via Firebase Authentication (Email / Password)
-    val fbResult = firebaseAuthManager.signInOrRegister(cleanEmail, cleanPass)
     val existingProfile = dao.getReaderProfileByEmail(cleanEmail) ?: dao.getReaderProfile(userId)
-    if (fbResult is com.example.data.auth.FirebaseAuthResult.Error) {
-      if (fbResult.isWrongPassword) {
-        // If owner is signing in and doesn't have a saved password locally yet, allow initial registration
-        if (isOwner && (existingProfile == null || existingProfile.passwordHash.isNullOrBlank() || existingProfile.passwordHash == "clarify123")) {
-          // Allow owner to set their password on first login
-        } else {
-          return Result.failure(IllegalArgumentException(fbResult.message))
-        }
-      } else {
-        // Offline / Local environment fallback:
-        if (existingProfile != null && !existingProfile.passwordHash.isNullOrBlank() && existingProfile.passwordHash != "clarify123") {
-          if (existingProfile.passwordHash != cleanPass) {
-            return Result.failure(
-              IllegalArgumentException(
-                "Incorrect password for $cleanEmail. If you forgot your password, tap 'Forgot Password?' to retrieve it."
-              )
+    val rememberedPass = com.example.data.auth.AuthMemoryStore.getPassword(cleanEmail)
+      ?: existingProfile?.passwordHash?.takeIf { it.isNotBlank() }
+
+    val isFirstLoginForEmail = (existingProfile == null || existingProfile.passwordHash.isNullOrBlank()) &&
+      (rememberedPass.isNullOrBlank() || rememberedPass == "clarify123")
+
+    if (!isFirstLoginForEmail && !rememberedPass.isNullOrBlank() && rememberedPass != "clarify123") {
+      // If we have a saved password in memory or local DB, verify against it
+      if (cleanPass != rememberedPass) {
+        // Double check with Firebase in case password was updated elsewhere
+        val fbResult = firebaseAuthManager.signInOrRegister(cleanEmail, cleanPass)
+        if (fbResult is com.example.data.auth.FirebaseAuthResult.Error) {
+          return Result.failure(
+            IllegalArgumentException(
+              "Incorrect password for $cleanEmail. If you forgot your password, tap 'Forgot Password?' to retrieve it."
             )
-          }
-        } else if (existingProfile != null && (existingProfile.passwordHash.isNullOrBlank() || existingProfile.passwordHash == "clarify123")) {
-          // First login or upgrading placeholder password -> allow and update
-        } else {
-          // If Firebase is unavailable, offline, or CONFIGURATION_NOT_FOUND, allow local registration
-          val isConfigOrNetworkIssue = fbResult.message.contains("CONFIGURATION_NOT_FOUND", ignoreCase = true) ||
-            fbResult.message.contains("network", ignoreCase = true) ||
-            fbResult.message.contains("unavailable", ignoreCase = true) ||
-            fbResult.message.contains("internal error", ignoreCase = true) ||
-            fbResult.message.contains("FirebaseApp", ignoreCase = true)
-          if (!isConfigOrNetworkIssue && !isOwner) {
-            return Result.failure(IllegalArgumentException(fbResult.message))
-          }
+          )
         }
       }
+    } else {
+      // First login! Immediately remember password in memory and device store
+      com.example.data.auth.AuthMemoryStore.rememberCredential(cleanEmail, cleanPass)
+      // Attempt Firebase register or sign-in in background/fallback
+      val fbResult = firebaseAuthManager.signInOrRegister(cleanEmail, cleanPass)
+      if (fbResult is com.example.data.auth.FirebaseAuthResult.Error && fbResult.isWrongPassword && !isOwner) {
+        return Result.failure(IllegalArgumentException(fbResult.message))
+      }
     }
+
+    // Always ensure memory store has this credential saved
+    com.example.data.auth.AuthMemoryStore.rememberCredential(cleanEmail, cleanPass)
 
     // Check if owner has pre-granted this email or name to an author slot
     val allSlots = dao.getAllAuthorSlotsSync()
@@ -857,6 +853,7 @@ class StrawberrycandyRepository(
       isLoggedIn = true
     )
     dao.insertReaderProfile(profile)
+    com.example.data.auth.AuthMemoryStore.rememberCredential(cleanEmail, cleanPass)
 
     // Sync profile to Cloud Firestore and sync reading states & bookmarks
     syncUserProfileToFirestore(profile)
@@ -1014,6 +1011,7 @@ class StrawberrycandyRepository(
     } catch (_: Exception) {}
 
     activeRecoverySessions.remove(cleanEmail)
+    com.example.data.auth.AuthMemoryStore.rememberCredential(cleanEmail, trimmedPass)
     return Result.success(Unit)
   }
 
@@ -1429,17 +1427,18 @@ class StrawberrycandyRepository(
           authorSlot = if (isOwner) 0 else null,
           penNamePoints = if (isOwner) 100 else 0,
           lastLoginTimestamp = System.currentTimeMillis(),
-          passwordHash = "",
+          passwordHash = com.example.data.auth.AuthMemoryStore.getPassword(cleanEmail) ?: "",
           isLoggedIn = true
         )
         dao.insertReaderProfile(newProfile)
       }
     } else {
-      // Clear legacy clarify123 placeholder so it never blocks the real owner password
+      // Sync memory store with existing profiles if present
       for (ownerEmail in OWNER_EMAILS) {
         val ownerProfile = dao.getReaderProfileByEmail(ownerEmail)
-        if (ownerProfile != null && ownerProfile.passwordHash == "clarify123") {
-          dao.insertReaderProfile(ownerProfile.copy(passwordHash = ""))
+        val pass = ownerProfile?.passwordHash?.takeIf { it.isNotBlank() && it != "clarify123" }
+        if (pass != null) {
+          com.example.data.auth.AuthMemoryStore.rememberCredential(ownerEmail, pass)
         }
       }
     }
@@ -1765,7 +1764,7 @@ class StrawberrycandyRepository(
               authorSlot = slotNum,
               penNamePoints = points,
               lastLoginTimestamp = System.currentTimeMillis(),
-              passwordHash = null,
+              passwordHash = local?.passwordHash ?: com.example.data.auth.AuthMemoryStore.getPassword(email),
               isLoggedIn = true
             )).copy(
               displayName = displayName,
@@ -2046,7 +2045,7 @@ class StrawberrycandyRepository(
       authorSlot = finalSlot,
       penNamePoints = existingProfile?.penNamePoints ?: 0,
       lastLoginTimestamp = System.currentTimeMillis(),
-      passwordHash = null,
+      passwordHash = existingProfile?.passwordHash ?: com.example.data.auth.AuthMemoryStore.getPassword(cleanEmail),
       isLoggedIn = true
     )
     dao.insertReaderProfile(profile)

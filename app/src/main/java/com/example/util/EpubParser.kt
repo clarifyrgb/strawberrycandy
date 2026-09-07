@@ -166,6 +166,17 @@ object EpubParser {
         return EpubParseResult.Error("No readable text chapters found in this EPUB file.")
       }
 
+      // Collect CSS files and parse global styling rules
+      val globalCssRules = mutableMapOf<String, CssStyleRule>()
+      val cssFiles = tempDir.walkTopDown()
+        .filter { it.isFile && it.extension.equals("css", ignoreCase = true) }
+        .toList()
+      for (cssFile in cssFiles) {
+        try {
+          parseCssTextIntoRules(cssFile.readText(), globalCssRules)
+        } catch (_: Exception) {}
+      }
+
       // 3. Process each chapter: extract text and embedded images
       val storyImages = mutableListOf<ExtractedStoryImage>()
       val storyDir = File(context.filesDir, "story_images").apply { mkdirs() }
@@ -257,8 +268,8 @@ object EpubParser {
           }
         }
 
-        // Convert HTML elements to paragraphs
-        val formattedText = htmlToParagraphs(transformedHtml)
+        // Convert HTML elements to paragraphs preserving built-in CSS and styling
+        val formattedText = htmlToParagraphs(transformedHtml, globalCssRules)
         if (formattedText.isNotBlank()) {
           val finalChapterTitle = if (!candidateHeader.isNullOrBlank()) {
             candidateHeader
@@ -395,50 +406,204 @@ object EpubParser {
     return result
   }
 
-  private fun htmlToParagraphs(html: String): String {
+  data class CssStyleRule(
+    val textAlign: String? = null, // "center", "right", "justify"
+    val isBold: Boolean = false,
+    val isItalic: Boolean = false,
+    val isUnderline: Boolean = false,
+    val isLineThrough: Boolean = false,
+    val isQuote: Boolean = false,
+    val isSceneBreak: Boolean = false,
+    val isHidden: Boolean = false
+  )
+
+  private fun parseCssTextIntoRules(cssText: String, rulesMap: MutableMap<String, CssStyleRule>) {
+    // Matches: selector { properties }
+    val blockRegex = Regex("""([^{]+)\{([^}]+)\}""", RegexOption.DOT_MATCHES_ALL)
+    for (match in blockRegex.findAll(cssText)) {
+      val rawSelectors = match.groupValues[1]
+      val rawProps = match.groupValues[2]
+
+      var align: String? = null
+      var bold = false
+      var italic = false
+      var underline = false
+      var lineThrough = false
+      var quote = false
+      var sceneBreak = false
+      var hidden = false
+
+      val lowerProps = rawProps.lowercase()
+      if (lowerProps.contains("text-align") || lowerProps.contains("text-align:")) {
+        if (Regex("""text-align\s*:\s*center""").containsMatchIn(lowerProps)) align = "center"
+        else if (Regex("""text-align\s*:\s*right""").containsMatchIn(lowerProps)) align = "right"
+        else if (Regex("""text-align\s*:\s*justify""").containsMatchIn(lowerProps)) align = "justify"
+      }
+
+      if (Regex("""font-weight\s*:\s*(bold|bolder|[6-9]00)""").containsMatchIn(lowerProps)) bold = true
+      if (Regex("""font-style\s*:\s*(italic|oblique)""").containsMatchIn(lowerProps)) italic = true
+      if (Regex("""text-decoration\s*:[^;]*underline""").containsMatchIn(lowerProps)) underline = true
+      if (Regex("""text-decoration\s*:[^;]*line-through""").containsMatchIn(lowerProps)) lineThrough = true
+      if (Regex("""display\s*:\s*none""").containsMatchIn(lowerProps)) hidden = true
+      if (lowerProps.contains("border-left") || lowerProps.contains("margin-left: 2") || lowerProps.contains("margin-left: 3")) quote = true
+
+      val selectors = rawSelectors.split(",")
+      for (sel in selectors) {
+        val trimmed = sel.trim()
+        val classMatches = Regex("""\.([a-zA-Z0-9_-]+)""").findAll(trimmed)
+        for (cm in classMatches) {
+          val className = cm.groupValues[1].lowercase()
+          val current = rulesMap[className] ?: CssStyleRule()
+          rulesMap[className] = current.copy(
+            textAlign = align ?: current.textAlign,
+            isBold = bold || current.isBold,
+            isItalic = italic || current.isItalic,
+            isUnderline = underline || current.isUnderline,
+            isLineThrough = lineThrough || current.isLineThrough,
+            isQuote = quote || current.isQuote,
+            isSceneBreak = sceneBreak || current.isSceneBreak,
+            isHidden = hidden || current.isHidden
+          )
+        }
+      }
+    }
+  }
+
+  private fun htmlToParagraphs(html: String, globalCssRules: Map<String, CssStyleRule> = emptyMap()): String {
+    val activeRules = globalCssRules.toMutableMap()
     var text = html
-    // Strip styles, scripts, head
-    text = text.replace(Regex("""<style[^>]*>.*?</style>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+
+    // Parse any inline <style> blocks before stripping them
+    val styleBlockRegex = Regex("""<style[^>]*>(.*?)</style>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+    for (match in styleBlockRegex.findAll(text)) {
+      try {
+        parseCssTextIntoRules(match.groupValues[1], activeRules)
+      } catch (_: Exception) {}
+    }
+
+    // Strip styles, scripts, head, and HTML comments
+    text = text.replace(styleBlockRegex, "")
+    text = text.replace(Regex("""<!--.*?-->""", RegexOption.DOT_MATCHES_ALL), "")
     text = text.replace(Regex("""<script[^>]*>.*?</script>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
     text = text.replace(Regex("""<head[^>]*>.*?</head>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
 
-    // Preserve CSS text alignment
-    text = text.replace(Regex("""<(?:p|div)[^>]*style=["'][^"']*text-align:\s*center[^"']*["'][^>]*>(.*?)</(?:p|div)>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))) {
-      "\n\n[align:center]${it.groupValues[1].trim()}[/align]\n\n"
-    }
-    text = text.replace(Regex("""<center[^>]*>(.*?)</center>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))) {
-      "\n\n[align:center]${it.groupValues[1].trim()}[/align]\n\n"
-    }
-    text = text.replace(Regex("""<(?:p|div)[^>]*style=["'][^"']*text-align:\s*right[^"']*["'][^>]*>(.*?)</(?:p|div)>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))) {
-      "\n\n[align:right]${it.groupValues[1].trim()}[/align]\n\n"
-    }
+    // Strip elements marked with display: none
+    text = text.replace(Regex("""<(?:p|div|span)[^>]*style=["'][^"']*display\s*:\s*none[^"']*["'][^>]*>.*?</(?:p|div|span)>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
 
-    // Preserve blockquotes
+    // Convert decorative horizontal rules and scene breaks
+    text = text.replace(Regex("""<hr\s*/?>""", RegexOption.IGNORE_CASE), "\n\n❦\n\n")
+
+    // Preserve blockquotes and quote classes
     text = text.replace(Regex("""<blockquote[^>]*>(.*?)</blockquote>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))) {
       "\n\n[quote]${it.groupValues[1].trim()}[/quote]\n\n"
     }
 
-    // Preserve decorative horizontal rules and breaks
-    text = text.replace(Regex("""<hr\s*/?>""", RegexOption.IGNORE_CASE), "\n\n❦\n\n")
+    // Preserve headings h1-h6 as bold section breaks
+    text = text.replace(Regex("""<h[1-6][^>]*>(.*?)</h[1-6]>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))) {
+      val content = it.groupValues[1].trim()
+      "\n\n<b>$content</b>\n\n"
+    }
 
-    // Normalize inline tags to standard bold and italic
+    // Preserve CSS text alignment and formatting from class attributes and style attributes
+    val blockPattern = Regex("""<(p|div|center)[^>]*>(.*?)</\1>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+    text = blockPattern.replace(text) { match ->
+      val tagContent = match.value
+      val innerContent = match.groupValues[2].trim()
+
+      val isCenter = tagContent.contains("text-align: center", ignoreCase = true) ||
+          tagContent.contains("text-align:center", ignoreCase = true) ||
+          tagContent.startsWith("<center", ignoreCase = true) ||
+          Regex("""class=["'][^"']*(?:center|align-center|aligncenter|caption|centered)[^"']*["']""", RegexOption.IGNORE_CASE).containsMatchIn(tagContent) ||
+          hasMatchingRule(tagContent, activeRules) { it.textAlign == "center" }
+
+      val isRight = tagContent.contains("text-align: right", ignoreCase = true) ||
+          tagContent.contains("text-align:right", ignoreCase = true) ||
+          Regex("""class=["'][^"']*(?:right|align-right|alignright)[^"']*["']""", RegexOption.IGNORE_CASE).containsMatchIn(tagContent) ||
+          hasMatchingRule(tagContent, activeRules) { it.textAlign == "right" }
+
+      val isQuote = Regex("""class=["'][^"']*(?:quote|epigraph|verse|stanza|poem|letter|telegram)[^"']*["']""", RegexOption.IGNORE_CASE).containsMatchIn(tagContent) ||
+          hasMatchingRule(tagContent, activeRules) { it.isQuote }
+
+      val isSceneBreak = Regex("""class=["'][^"']*(?:scene-break|separator|fleuron|divider|ornament|asterisk)[^"']*["']""", RegexOption.IGNORE_CASE).containsMatchIn(tagContent) ||
+          hasMatchingRule(tagContent, activeRules) { it.isSceneBreak }
+
+      if (isSceneBreak) {
+        "\n\n❦\n\n"
+      } else if (isQuote) {
+        "\n\n[quote]$innerContent[/quote]\n\n"
+      } else if (isCenter) {
+        "\n\n[align:center]$innerContent[/align]\n\n"
+      } else if (isRight) {
+        "\n\n[align:right]$innerContent[/align]\n\n"
+      } else {
+        "\n\n$innerContent\n\n"
+      }
+    }
+
+    // Handle spans with bold, italic, underline, or strikethrough classes and styles
+    val spanPattern = Regex("""<span[^>]*>(.*?)</span>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+    text = spanPattern.replace(text) { match ->
+      val fullTag = match.value
+      var inner = match.groupValues[1]
+
+      val isBold = fullTag.contains("font-weight: bold", ignoreCase = true) ||
+          fullTag.contains("font-weight:bold", ignoreCase = true) ||
+          Regex("""class=["'][^"']*(?:bold|strong|heavy)[^"']*["']""", RegexOption.IGNORE_CASE).containsMatchIn(fullTag) ||
+          hasMatchingRule(fullTag, activeRules) { it.isBold }
+
+      val isItalic = fullTag.contains("font-style: italic", ignoreCase = true) ||
+          fullTag.contains("font-style:italic", ignoreCase = true) ||
+          fullTag.contains("font-style: oblique", ignoreCase = true) ||
+          Regex("""class=["'][^"']*(?:italic|italics|emphasis|emph)[^"']*["']""", RegexOption.IGNORE_CASE).containsMatchIn(fullTag) ||
+          hasMatchingRule(fullTag, activeRules) { it.isItalic }
+
+      val isUnderline = fullTag.contains("text-decoration: underline", ignoreCase = true) ||
+          hasMatchingRule(fullTag, activeRules) { it.isUnderline }
+
+      val isLineThrough = fullTag.contains("text-decoration: line-through", ignoreCase = true) ||
+          hasMatchingRule(fullTag, activeRules) { it.isLineThrough }
+
+      if (isBold) inner = "<b>$inner</b>"
+      if (isItalic) inner = "<i>$inner</i>"
+      if (isUnderline) inner = "<u>$inner</u>"
+      if (isLineThrough) inner = "<s>$inner</s>"
+      inner
+    }
+
+    // Normalize semantic tags
     text = text.replace(Regex("""<strong[^>]*>(.*?)</strong>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "<b>$1</b>")
     text = text.replace(Regex("""<em[^>]*>(.*?)</em>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "<i>$1</i>")
+    text = text.replace(Regex("""<ins[^>]*>(.*?)</ins>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "<u>$1</u>")
+    text = text.replace(Regex("""<(?:del|strike)[^>]*>(.*?)</(?:del|strike)>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "<s>$1</s>")
 
-    // Line breaks
+    // Line breaks inside stanzas or paragraphs
     text = text.replace(Regex("""<br\s*/?>""", RegexOption.IGNORE_CASE), "\n")
-    text = text.replace(Regex("""</?(?:p|div|h[1-6]|li|tr)[^>]*>""", RegexOption.IGNORE_CASE), "\n\n")
+    text = text.replace(Regex("""</?(?:p|div|li|tr|ul|ol|table)[^>]*>""", RegexOption.IGNORE_CASE), "\n\n")
 
-    // Strip remaining tags except our preserved tags: <b>, </b>, <i>, </i>
-    text = text.replace(Regex("""<(?!/?(?:b|i)\b)[^>]+>""", RegexOption.IGNORE_CASE), "")
+    // Strip remaining tags except our preserved formatting tags: <b>, </b>, <i>, </i>, <u>, </u>, <s>, </s>
+    text = text.replace(Regex("""<(?!/?(?:b|i|u|s)\b)[^>]+>""", RegexOption.IGNORE_CASE), "")
 
     text = cleanHtmlEntities(text)
 
     // Normalize multiple consecutive blank lines into double newline
-    val paragraphs = text.split("\n")
-      .map { it.trim() }
-      .filter { it.isNotEmpty() }
+    val rawParagraphs = text.split("\n\n")
+    val resultList = mutableListOf<String>()
+    for (p in rawParagraphs) {
+      val trimmed = p.trim()
+      if (trimmed.isNotEmpty()) {
+        resultList.add(trimmed)
+      }
+    }
 
-    return paragraphs.joinToString("\n\n")
+    return resultList.joinToString("\n\n")
+  }
+
+  private fun hasMatchingRule(tagSnippet: String, rules: Map<String, CssStyleRule>, predicate: (CssStyleRule) -> Boolean): Boolean {
+    val classAttr = Regex("""class=["']([^"']+)["']""", RegexOption.IGNORE_CASE).find(tagSnippet)?.groupValues?.get(1) ?: return false
+    val classes = classAttr.split(Regex("""\s+"""))
+    return classes.any { c ->
+      val rule = rules[c.lowercase()]
+      rule != null && predicate(rule)
+    }
   }
 }

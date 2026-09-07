@@ -36,6 +36,7 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Key
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.FormatSize
@@ -213,7 +214,7 @@ fun OwnerUploadDialog(
               coverImageUri = parseResult.coverImageUri
             }
             extractedPhotosCount = parseResult.storyImages.size
-            epubStatusMessage = "EPUB Loaded: ${parseResult.totalChapters} chapters • ${parseResult.storyImages.size} story illustrations"
+            epubStatusMessage = "EPUB Loaded: ${parseResult.totalChapters} chapters • ${parseResult.storyImages.size} illustrations • CSS & Typography preserved"
           }
           is com.example.util.EpubParseResult.Error -> {
             errorText = parseResult.message
@@ -386,22 +387,33 @@ fun OwnerUploadDialog(
                 ),
                 RoundedCornerShape(12.dp)
               )
-              .clickable {
+              .clickable(enabled = isOwner) {
                 selectedSlot = 0
                 isEditingSlotProfile = false
               }
               .padding(horizontal = 12.dp, vertical = 8.dp)
           ) {
             Column {
-              Text(
-                text = "OWNER",
-                style = MaterialTheme.typography.labelSmall.copy(
-                  fontSize = 8.sp,
-                  fontWeight = FontWeight.Bold,
-                  letterSpacing = 1.sp
-                ),
-                color = if (isOwnerSelected) AntiqueGold else CharcoalTertiary
-              )
+              Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                  text = "OWNER",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp
+                  ),
+                  color = if (isOwnerSelected) AntiqueGold else CharcoalTertiary
+                )
+                if (!isOwner) {
+                  Spacer(modifier = Modifier.width(4.dp))
+                  Icon(
+                    imageVector = Icons.Outlined.Lock,
+                    contentDescription = null,
+                    tint = CharcoalTertiary,
+                    modifier = Modifier.size(9.dp)
+                  )
+                }
+              }
               Text(
                 text = "Strawberrycandy",
                 style = MaterialTheme.typography.labelMedium.copy(
@@ -412,11 +424,14 @@ fun OwnerUploadDialog(
             }
           }
 
-          // 10 Contributor Author Rooms
-          (1..10).forEach { slotNum ->
-            val slot = authorSlots.find { it.slotNumber == slotNum }
+          // Contributor Author Rooms: Only show active ones permitted by owner
+          val activeContributorSlots = authorSlots.filter { it.slotNumber in 1..10 && it.isPermissionGranted }
+          activeContributorSlots.forEach { slot ->
+            val slotNum = slot.slotNumber
+            val isMyAssignedSlot = isOwner || (activeUser?.authorSlot == slotNum) ||
+              (activeUser?.email != null && slot.translatorEmail?.equals(activeUser.email, ignoreCase = true) == true)
             val isSlotSelected = selectedSlot == slotNum
-            val slotName = slot?.penName ?: "Author $slotNum"
+            val slotName = slot.penName.ifBlank { "Translator $slotNum" }
 
             Box(
               modifier = Modifier
@@ -429,7 +444,7 @@ fun OwnerUploadDialog(
                   ),
                   RoundedCornerShape(12.dp)
                 )
-                .clickable {
+                .clickable(enabled = isOwner || isMyAssignedSlot) {
                   selectedSlot = slotNum
                   isEditingSlotProfile = false
                 }
@@ -448,7 +463,7 @@ fun OwnerUploadDialog(
                   )
                   Spacer(modifier = Modifier.width(4.dp))
                   Icon(
-                    imageVector = Icons.Outlined.Key,
+                    imageVector = if (isMyAssignedSlot) Icons.Outlined.Key else Icons.Outlined.Lock,
                     contentDescription = null,
                     tint = if (isSlotSelected) AntiqueGold else CharcoalTertiary,
                     modifier = Modifier.size(9.dp)
@@ -697,12 +712,12 @@ fun OwnerUploadDialog(
                 )
               }
             } else {
-              Spacer(modifier = Modifier.height(4.dp))
+              Spacer(modifier = Modifier.height(6.dp))
               Text(
-                text = "Translators can upload a whole .epub book instead of per-chapter. All chapters, internal photos, and cover art are automatically unpacked.",
+                text = "Upload a whole .epub book. Built-in book CSS and styling are preserved: chapter breaks, text alignments, poetry/epigraph quotes, scene fleuron breaks, bold, italic, and internal illustrations are styled automatically.",
                 style = MaterialTheme.typography.bodySmall.copy(
-                  fontSize = 10.5.sp,
-                  lineHeight = 14.sp
+                  fontSize = 11.sp,
+                  lineHeight = 15.sp
                 ),
                 color = CharcoalSecondary
               )

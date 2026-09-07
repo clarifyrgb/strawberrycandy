@@ -57,12 +57,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
+import com.example.data.auth.AuthMemoryStore
 import com.example.data.auth.GoogleSignInHandler
 import com.example.data.auth.GoogleSignInOutcome
 import androidx.compose.ui.Alignment
@@ -113,10 +115,17 @@ fun AuthModal(
   var isForgotPasswordMode by remember { mutableStateOf(false) }
 
   // Sign In state
-  var emailInput by remember { mutableStateOf(initialEmail.ifBlank { rememberedAccounts.firstOrNull()?.email ?: "" }) }
-  val initialSavedPass = remember(rememberedAccounts, initialEmail) {
-    val clean = (initialEmail.ifBlank { rememberedAccounts.firstOrNull()?.email ?: "" }).trim().lowercase()
-    rememberedAccounts.firstOrNull { it.email.lowercase() == clean }?.passwordHash?.takeIf { it != "clarify123" } ?: ""
+  val resolvedInitialEmail = remember(initialEmail, rememberedAccounts) {
+    if (initialEmail.isNotBlank()) initialEmail
+    else rememberedAccounts.firstOrNull()?.email ?: AuthMemoryStore.getLastEmail() ?: ""
+  }
+  var emailInput by remember { mutableStateOf(resolvedInitialEmail) }
+  val initialSavedPass = remember(rememberedAccounts, resolvedInitialEmail) {
+    val clean = resolvedInitialEmail.trim().lowercase()
+    rememberedAccounts.firstOrNull { it.email.lowercase() == clean }?.passwordHash?.takeIf { it.isNotBlank() }
+      ?: AuthMemoryStore.getPassword(clean)
+      ?: AuthMemoryStore.getLastPassword()
+      ?: ""
   }
   var passwordInput by remember { mutableStateOf(initialSavedPass) }
   var isPasswordVisible by remember { mutableStateOf(false) }
@@ -124,6 +133,47 @@ fun AuthModal(
   var rememberAccountOnDevice by remember { mutableStateOf(true) }
   var localError by remember { mutableStateOf<String?>(null) }
   val displayErrorMessage = localError ?: externalErrorMessage
+
+  LaunchedEffect(rememberedAccounts, initialEmail) {
+    if (initialEmail.isNotBlank()) {
+      emailInput = initialEmail
+      val clean = initialEmail.trim().lowercase()
+      val saved = rememberedAccounts.firstOrNull { it.email.lowercase() == clean }?.passwordHash?.takeIf { it.isNotBlank() }
+        ?: AuthMemoryStore.getPassword(clean)
+      if (!saved.isNullOrBlank()) {
+        passwordInput = saved
+      }
+    } else if (emailInput.isBlank()) {
+      val defaultEmail = rememberedAccounts.firstOrNull()?.email ?: AuthMemoryStore.getLastEmail() ?: ""
+      if (defaultEmail.isNotBlank()) {
+        emailInput = defaultEmail
+        val clean = defaultEmail.trim().lowercase()
+        val saved = rememberedAccounts.firstOrNull { it.email.lowercase() == clean }?.passwordHash?.takeIf { it.isNotBlank() }
+          ?: AuthMemoryStore.getPassword(clean)
+        if (!saved.isNullOrBlank()) {
+          passwordInput = saved
+        }
+      }
+    } else if (passwordInput.isBlank()) {
+      val clean = emailInput.trim().lowercase()
+      val saved = rememberedAccounts.firstOrNull { it.email.lowercase() == clean }?.passwordHash?.takeIf { it.isNotBlank() }
+        ?: AuthMemoryStore.getPassword(clean)
+      if (!saved.isNullOrBlank()) {
+        passwordInput = saved
+      }
+    }
+  }
+
+  LaunchedEffect(emailInput) {
+    val clean = emailInput.trim().lowercase()
+    if (clean.isNotBlank()) {
+      val saved = rememberedAccounts.firstOrNull { it.email.lowercase() == clean }?.passwordHash?.takeIf { it.isNotBlank() }
+        ?: AuthMemoryStore.getPassword(clean)
+      if (!saved.isNullOrBlank()) {
+        passwordInput = saved
+      }
+    }
+  }
 
   // Check if current typed email matches a remembered account
   val matchedAccount = remember(emailInput, rememberedAccounts) {
@@ -206,6 +256,8 @@ fun AuthModal(
     }
 
     val assignedSlot: Int? = if (isOwner) 0 else null
+
+    AuthMemoryStore.rememberCredential(trimmedEmail, passwordInput)
 
     if (provider == "GOOGLE") {
       onSignInWithGoogle(trimmedEmail, passwordInput, finalName, effectiveRole, assignedSlot)
@@ -350,8 +402,10 @@ fun AuthModal(
                     onClick = {
                       emailInput = acc.email
                       recoveryEmailInput = acc.email
-                      if (!acc.passwordHash.isNullOrBlank() && acc.passwordHash != "clarify123") {
-                        passwordInput = acc.passwordHash
+                      val saved = acc.passwordHash?.takeIf { it.isNotBlank() }
+                        ?: AuthMemoryStore.getPassword(acc.email)
+                      if (!saved.isNullOrBlank()) {
+                        passwordInput = saved
                       }
                       localError = null
                       onClearError()
@@ -481,8 +535,9 @@ fun AuthModal(
                 localError = null
                 onClearError()
                 val clean = it.trim().lowercase()
-                val saved = rememberedAccounts.firstOrNull { acc -> acc.email.lowercase() == clean }?.passwordHash
-                if (!saved.isNullOrBlank() && saved != "clarify123" && passwordInput.isBlank()) {
+                val saved = rememberedAccounts.firstOrNull { acc -> acc.email.lowercase() == clean }?.passwordHash?.takeIf { p -> p.isNotBlank() }
+                  ?: AuthMemoryStore.getPassword(clean)
+                if (!saved.isNullOrBlank()) {
                   passwordInput = saved
                 }
               },
@@ -515,9 +570,16 @@ fun AuthModal(
               Spacer(modifier = Modifier.height(4.dp))
               Surface(
                 onClick = {
-                  emailInput = "${emailInput.trim()}@gmail.com"
-                  recoveryEmailInput = emailInput
+                  val completeEmail = "${emailInput.trim()}@gmail.com"
+                  emailInput = completeEmail
+                  recoveryEmailInput = completeEmail
                   localError = null
+                  val clean = completeEmail.trim().lowercase()
+                  val saved = rememberedAccounts.firstOrNull { acc -> acc.email.lowercase() == clean }?.passwordHash?.takeIf { p -> p.isNotBlank() }
+                    ?: AuthMemoryStore.getPassword(clean)
+                  if (!saved.isNullOrBlank()) {
+                    passwordInput = saved
+                  }
                 },
                 shape = RoundedCornerShape(8.dp),
                 color = AntiqueGold.copy(alpha = 0.12f),
@@ -556,7 +618,11 @@ fun AuthModal(
                 color = CharcoalText
               )
 
-              if (matchedAccount?.passwordHash?.isNotBlank() == true && matchedAccount.passwordHash != "clarify123" && passwordInput == matchedAccount.passwordHash) {
+              val knownPassword = matchedAccount?.passwordHash?.takeIf { it.isNotBlank() }
+                ?: AuthMemoryStore.getPassword(emailInput)
+              val isSavedLoaded = !knownPassword.isNullOrBlank() && passwordInput == knownPassword
+
+              if (isSavedLoaded) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                   Icon(
                     imageVector = Icons.Outlined.Check,

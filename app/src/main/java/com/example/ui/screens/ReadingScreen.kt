@@ -102,6 +102,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -1127,7 +1128,7 @@ fun ReadingScreen(
             items = novel.storyItems,
             key = { index, _ -> "story_item_$index" }
           ) { index, item ->
-            Box(
+            Column(
               modifier = Modifier
                 .widthIn(max = 640.dp)
                 .fillMaxWidth()
@@ -1367,29 +1368,51 @@ fun ReadingScreen(
                             TextAlign.Start
                           }
 
-                          val finalFontStyle = if (formatRes.isQuote) FontStyle.Italic else readerFontStyle
-
-                          Text(
-                            text = formatRes.annotatedString,
-                            style = MaterialTheme.typography.bodyLarge.copy(
-                              fontFamily = readerFontFamily,
-                              fontWeight = readerFontWeight,
-                              fontStyle = finalFontStyle,
-                              color = readerTextColor,
-                              lineHeight = baseLineHeight.sp,
-                              fontSize = baseFontSize.sp,
-                              textAlign = finalAlign,
-                              textIndent = TextIndent(
-                                firstLine = if (isFirstLineIndent && !formatRes.isQuote && formatRes.alignment == TextAlign.Start) 22.sp else 0.sp
+                          if (formatRes.isQuote) {
+                            Row(
+                              modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 6.dp, horizontal = 6.dp)
+                            ) {
+                              Box(
+                                modifier = Modifier
+                                  .width(3.5.dp)
+                                  .background(AntiqueGold.copy(alpha = 0.65f), RoundedCornerShape(2.dp))
+                                  .padding(vertical = 2.dp)
                               )
-                            ),
-                            modifier = Modifier
-                              .fillMaxWidth()
-                              .padding(
-                                start = if (formatRes.isQuote) 14.dp else 0.dp,
-                                end = if (formatRes.isQuote) 10.dp else 0.dp
+                              Spacer(modifier = Modifier.width(12.dp))
+                              Text(
+                                text = formatRes.annotatedString,
+                                style = MaterialTheme.typography.bodyLarge.copy(
+                                  fontFamily = readerFontFamily,
+                                  fontWeight = readerFontWeight,
+                                  fontStyle = FontStyle.Italic,
+                                  color = readerTextColor.copy(alpha = 0.92f),
+                                  lineHeight = baseLineHeight.sp,
+                                  fontSize = baseFontSize.sp,
+                                  textAlign = finalAlign
+                                ),
+                                modifier = Modifier.fillMaxWidth()
                               )
-                          )
+                            }
+                          } else {
+                            Text(
+                              text = formatRes.annotatedString,
+                              style = MaterialTheme.typography.bodyLarge.copy(
+                                fontFamily = readerFontFamily,
+                                fontWeight = readerFontWeight,
+                                fontStyle = readerFontStyle,
+                                color = readerTextColor,
+                                lineHeight = baseLineHeight.sp,
+                                fontSize = baseFontSize.sp,
+                                textAlign = finalAlign,
+                                textIndent = TextIndent(
+                                  firstLine = if (isFirstLineIndent && formatRes.alignment == TextAlign.Start) 22.sp else 0.sp
+                                )
+                              ),
+                              modifier = Modifier.fillMaxWidth()
+                            )
+                          }
                         }
                       }
                     }
@@ -1718,10 +1741,11 @@ fun ReadingScreen(
                 it.endParagraphIndex == index && it.index < novel.chapters.lastIndex
               }
               if (chapterEndingHere != null) {
+                Spacer(modifier = Modifier.height(32.dp))
                 Column(
                   modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 28.dp, bottom = 16.dp),
+                    .padding(top = 16.dp, bottom = 24.dp),
                   horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                   Text(
@@ -2216,10 +2240,10 @@ private fun buildReadingParagraphAnnotatedString(
     cleanText = cleanText.removePrefix("[quote]").removeSuffix("[/quote]").trim()
   }
 
-  // Parse inline tags <b>, <strong>, <i>, <em>
+  // Parse inline tags <b>, <strong>, <i>, <em>, <u>, <ins>, <s>, <del>, <strike>
   val styleSpans = mutableListOf<Triple<Int, Int, SpanStyle>>()
   val plainBuilder = StringBuilder()
-  val tagRegex = Regex("""<(b|strong|i|em)>(.*?)</\1>""", RegexOption.IGNORE_CASE)
+  val tagRegex = Regex("""<(b|strong|i|em|u|ins|s|del|strike)>(.*?)</\1>""", RegexOption.IGNORE_CASE)
   var cursor = 0
   for (match in tagRegex.findAll(cleanText)) {
     if (match.range.first > cursor) {
@@ -2230,10 +2254,11 @@ private fun buildReadingParagraphAnnotatedString(
     val start = plainBuilder.length
     plainBuilder.append(inner)
     val end = plainBuilder.length
-    if (tag == "b" || tag == "strong") {
-      styleSpans.add(Triple(start, end, SpanStyle(fontWeight = FontWeight.Bold)))
-    } else if (tag == "i" || tag == "em") {
-      styleSpans.add(Triple(start, end, SpanStyle(fontStyle = FontStyle.Italic)))
+    when (tag) {
+      "b", "strong" -> styleSpans.add(Triple(start, end, SpanStyle(fontWeight = FontWeight.Bold)))
+      "i", "em" -> styleSpans.add(Triple(start, end, SpanStyle(fontStyle = FontStyle.Italic)))
+      "u", "ins" -> styleSpans.add(Triple(start, end, SpanStyle(textDecoration = TextDecoration.Underline)))
+      "s", "del", "strike" -> styleSpans.add(Triple(start, end, SpanStyle(textDecoration = TextDecoration.LineThrough)))
     }
     cursor = match.range.last + 1
   }

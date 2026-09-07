@@ -245,12 +245,17 @@ fun HomeScreen(
         activeTranslatorsCount = activeTranslators.size
       )
 
+      // 2. Literary Hero Masthead (Enriches the top of the homepage with warm salon ambiance)
+      HomeHeroMasthead(
+        novelCount = allNovelsList.size,
+        modifier = Modifier.padding(top = 2.dp, bottom = 4.dp)
+      )
+
       if (activeUser == null) {
         // Guest mode: Novels are hidden until user logs in
         GuestArchiveLockedView(
           rememberedAccounts = uiState.rememberedAccounts,
-          onOpenAuth = { viewModel.openAuthDialog() },
-          onOpenAuthorRooms = { isAuthorRoomsModalOpen = true }
+          onOpenAuth = { email -> viewModel.openAuthDialog(email) }
         )
       } else {
         // Logged-in mode
@@ -365,46 +370,11 @@ fun HomeScreen(
           }
         }
 
-        // Novel Actions: Upload Novel (for Owner/Translators) + Sort Menu
+        // Novel Actions: Sort Menu
         Row(
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-          if (canUploadNovel || isSoleOwner) {
-            Surface(
-              onClick = {
-                selectedUploadSlot = if (isSoleOwner) 0 else (activeUser?.authorSlot ?: 1)
-                viewModel.openUploadDialog()
-              },
-              shape = RoundedCornerShape(14.dp),
-              color = AntiqueGold,
-              modifier = Modifier
-                .height(28.dp)
-                .testTag("catalog_header_upload_novel_button")
-            ) {
-              Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(horizontal = 9.dp)
-              ) {
-                Icon(
-                  imageVector = Icons.Outlined.Upload,
-                  contentDescription = "Upload Novel",
-                  tint = Color.White,
-                  modifier = Modifier.size(13.dp)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                  text = "Upload Novel",
-                  style = MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 10.5.sp
-                  ),
-                  color = Color.White
-                )
-              }
-            }
-          }
-
           // Sort Dropdown Button
           Box {
             Surface(
@@ -876,6 +846,7 @@ fun HomeScreen(
     if (uiState.isAuthDialogOpen) {
       AuthModal(
         onDismiss = { viewModel.closeAuthDialog() },
+        initialEmail = uiState.authInitialEmail ?: "",
         onSignInWithGoogle = { email, password, name, role, authorSlot ->
           viewModel.signInWithGoogle(email = email, password = password, displayName = name, role = role, authorSlot = authorSlot)
         },
@@ -1234,38 +1205,6 @@ fun HomeScreen(
         }
       )
     }
-
-    // Floating Action Button to Upload Novel for Owner & Authorized Translators
-    if (canUploadNovel || isSoleOwner) {
-      FloatingActionButton(
-        onClick = {
-          selectedUploadSlot = if (isSoleOwner) 0 else (activeUser?.authorSlot ?: 1)
-          viewModel.openUploadDialog()
-        },
-        containerColor = AntiqueGold,
-        contentColor = Color.White,
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier
-          .align(Alignment.BottomEnd)
-          .padding(end = 20.dp, bottom = 24.dp)
-          .testTag("fab_upload_novel")
-      ) {
-        Row(
-          verticalAlignment = Alignment.CenterVertically,
-          modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
-        ) {
-          Icon(Icons.Filled.Add, contentDescription = "Upload Novel", modifier = Modifier.size(18.dp))
-          Spacer(modifier = Modifier.width(6.dp))
-          Text(
-            text = "Upload Novel",
-            style = MaterialTheme.typography.labelLarge.copy(
-              fontWeight = FontWeight.Bold,
-              fontSize = 13.sp
-            )
-          )
-        }
-      }
-    }
   }
 }
 
@@ -1295,9 +1234,7 @@ private fun TopUtilityBar(
     // Left: Strawberrycandy Novel Archive Logo Lockup
     Row(
       verticalAlignment = Alignment.CenterVertically,
-      modifier = Modifier
-        .weight(1f, fill = false)
-        .testTag("app_brand_logo_lockup")
+      modifier = Modifier.testTag("app_brand_logo_lockup")
     ) {
       Surface(
         shape = RoundedCornerShape(10.dp),
@@ -1469,36 +1406,7 @@ private fun TopUtilityBar(
           }
         }
       } else {
-        // Guest mode: Writer Room + About + Sign In
-        Surface(
-          onClick = onOpenAuthorRooms,
-          shape = RoundedCornerShape(16.dp),
-          color = SoftCreamPaper,
-          border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.5f)),
-          modifier = Modifier.testTag("top_utility_author_rooms_guest_button")
-        ) {
-          Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
-          ) {
-            Icon(
-              imageVector = Icons.Outlined.MeetingRoom,
-              contentDescription = "Writer Room",
-              tint = AntiqueGold,
-              modifier = Modifier.size(13.dp)
-            )
-            Spacer(modifier = Modifier.width(3.dp))
-            Text(
-              text = "Writer Room",
-              style = MaterialTheme.typography.labelSmall.copy(
-                fontWeight = FontWeight.Bold,
-                fontSize = 10.sp,
-                color = CharcoalText
-              )
-            )
-          }
-        }
-
+        // Guest mode: About + Sign In (Translators room hidden when not signed in)
         Surface(
           onClick = onOpenAbout,
           shape = RoundedCornerShape(16.dp),
@@ -2647,21 +2555,36 @@ private fun SelectedNovelSpotlight(
               authorSlots.find { it.penName.equals(novel.author, ignoreCase = true) }
             } ?: authorSlots.find { it.slotNumber == 0 }
 
-            Text(
-              text = "By $authorDisplay • Profile →",
-              style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 8.5.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = AntiqueGold
-              ),
-              maxLines = 1,
-              overflow = TextOverflow.Ellipsis,
-              modifier = Modifier
-                .clip(RoundedCornerShape(4.dp))
-                .clickable(enabled = targetSlot != null && onViewTranslator != null) {
-                  targetSlot?.let { onViewTranslator?.invoke(it) }
-                }
-            )
+            val isTargetSlotPermitted = targetSlot?.slotNumber == 0 || targetSlot?.isPermissionGranted == true
+
+            if (isTargetSlotPermitted) {
+              Text(
+                text = "By $authorDisplay • Profile →",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 8.5.sp,
+                  fontWeight = FontWeight.SemiBold,
+                  color = AntiqueGold
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                  .clip(RoundedCornerShape(4.dp))
+                  .clickable(enabled = targetSlot != null && onViewTranslator != null) {
+                    targetSlot?.let { onViewTranslator?.invoke(it) }
+                  }
+              )
+            } else {
+              Text(
+                text = "By $authorDisplay",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 8.5.sp,
+                  fontWeight = FontWeight.Normal,
+                  color = CharcoalSecondary
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+              )
+            }
           }
 
           // Progress indicator if reader started it
@@ -3340,18 +3263,20 @@ private fun NewReleaseCard(
         authorSlots.find { it.penName.equals(novel.author, ignoreCase = true) }
       } ?: authorSlots.find { it.slotNumber == 0 }
 
+      val isTargetSlotPermitted = targetSlot?.slotNumber == 0 || targetSlot?.isPermissionGranted == true
+
       Text(
         text = authorText,
         style = MaterialTheme.typography.labelSmall.copy(
           fontSize = 9.sp,
-          color = AntiqueGold,
+          color = if (isTargetSlotPermitted) AntiqueGold else CharcoalSecondary,
           fontWeight = FontWeight.Medium
         ),
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = Modifier
           .clip(RoundedCornerShape(4.dp))
-          .clickable(enabled = targetSlot != null && onViewTranslator != null) {
+          .clickable(enabled = isTargetSlotPermitted && targetSlot != null && onViewTranslator != null) {
             targetSlot?.let { onViewTranslator?.invoke(it) }
           }
       )
@@ -3381,8 +3306,7 @@ private fun NewReleaseCard(
 @Composable
 private fun GuestArchiveLockedView(
   rememberedAccounts: List<ReaderProfileEntity>,
-  onOpenAuth: () -> Unit,
-  onOpenAuthorRooms: () -> Unit = {}
+  onOpenAuth: (String?) -> Unit
 ) {
   Column(
     modifier = Modifier
@@ -3484,7 +3408,7 @@ private fun GuestArchiveLockedView(
           ) {
             rememberedAccounts.forEach { acc ->
               Surface(
-                onClick = onOpenAuth,
+                onClick = { onOpenAuth(acc.email) },
                 shape = RoundedCornerShape(14.dp),
                 color = SoftCreamPaper,
                 border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.5f)),
@@ -3527,7 +3451,7 @@ private fun GuestArchiveLockedView(
 
         // Large Sign In Button
         Button(
-          onClick = onOpenAuth,
+          onClick = { onOpenAuth(null) },
           shape = RoundedCornerShape(14.dp),
           colors = ButtonDefaults.buttonColors(containerColor = AntiqueGold),
           elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp),
@@ -3552,37 +3476,117 @@ private fun GuestArchiveLockedView(
             color = SoftCreamPaper
           )
         }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // Open Writer Room & Translator Collective Button
-        OutlinedButton(
-          onClick = onOpenAuthorRooms,
-          shape = RoundedCornerShape(14.dp),
-          border = BorderStroke(1.2.dp, AntiqueGold.copy(alpha = 0.7f)),
-          modifier = Modifier
-            .fillMaxWidth()
-            .height(46.dp)
-            .testTag("guest_open_writer_room_button")
-        ) {
-          Icon(
-            imageVector = Icons.Outlined.MeetingRoom,
-            contentDescription = null,
-            tint = AntiqueGold,
-            modifier = Modifier.size(17.dp)
-          )
-          Spacer(modifier = Modifier.width(8.dp))
-          Text(
-            text = "Writer's Room & Translator Collective",
-            style = MaterialTheme.typography.labelMedium.copy(
-              fontWeight = FontWeight.Bold,
-              fontSize = 12.5.sp
-            ),
-            color = AntiqueGold
-          )
-        }
       }
     }
+  }
+}
+
+@Composable
+private fun HomeHeroMasthead(
+  novelCount: Int,
+  modifier: Modifier = Modifier
+) {
+  Card(
+    shape = RoundedCornerShape(20.dp),
+    colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
+    border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.45f)),
+    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+    modifier = modifier
+      .fillMaxWidth()
+      .padding(horizontal = 16.dp, vertical = 6.dp)
+      .testTag("home_hero_masthead")
+  ) {
+    Column(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(horizontal = 16.dp, vertical = 14.dp),
+      horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+      // Decorative fleuron ribbon
+      Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+        modifier = Modifier.padding(bottom = 4.dp)
+      ) {
+        Box(
+          modifier = Modifier
+            .width(22.dp)
+            .height(1.dp)
+            .background(AntiqueGold.copy(alpha = 0.5f))
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+          text = "❦  PRIVATE LITERARY SALON  ❦",
+          style = MaterialTheme.typography.labelSmall.copy(
+            letterSpacing = 1.8.sp,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Bold
+          ),
+          color = AntiqueGold
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Box(
+          modifier = Modifier
+            .width(22.dp)
+            .height(1.dp)
+            .background(AntiqueGold.copy(alpha = 0.5f))
+        )
+      }
+
+      Text(
+        text = "Curated Web & Light Novels",
+        style = MaterialTheme.typography.titleLarge.copy(
+          fontFamily = FontFamily.Serif,
+          fontWeight = FontWeight.Bold,
+          fontSize = 19.sp,
+          letterSpacing = 0.2.sp
+        ),
+        color = CharcoalText,
+        textAlign = TextAlign.Center
+      )
+
+      Spacer(modifier = Modifier.height(2.dp))
+
+      Text(
+        text = "Quiet literary archive, handcrafted translations & chapter reflections",
+        style = MaterialTheme.typography.bodySmall.copy(
+          fontStyle = FontStyle.Italic,
+          fontSize = 11.5.sp
+        ),
+        color = CharcoalText.copy(alpha = 0.7f),
+        textAlign = TextAlign.Center
+      )
+
+      Spacer(modifier = Modifier.height(10.dp))
+
+      // Refined literary badge pills
+      Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        LiteraryFeaturePill(text = "✦ Cloud Synchronized")
+        LiteraryFeaturePill(text = "✦ Reader Discussions")
+      }
+    }
+  }
+}
+
+@Composable
+private fun LiteraryFeaturePill(text: String) {
+  Surface(
+    shape = RoundedCornerShape(10.dp),
+    color = Color.White.copy(alpha = 0.75f),
+    border = BorderStroke(0.8.dp, AntiqueGold.copy(alpha = 0.35f))
+  ) {
+    Text(
+      text = text,
+      style = MaterialTheme.typography.labelSmall.copy(
+        fontSize = 9.5.sp,
+        fontWeight = FontWeight.Medium
+      ),
+      color = AntiqueGold,
+      modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp)
+    )
   }
 }
 

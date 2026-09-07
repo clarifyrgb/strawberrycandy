@@ -78,6 +78,7 @@ data class StrawberrycandyUiState(
   val cloudPublishModalCatalogJson: String? = null,
   val isAlreadyCloudPublished: Boolean = false,
   val rememberedAccounts: List<ReaderProfileEntity> = emptyList(),
+  val authInitialEmail: String? = null,
 )
 
 class StrawberrycandyViewModel(application: Application) : AndroidViewModel(application) {
@@ -98,6 +99,7 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
 
   private val _isAuthDialogOpen = MutableStateFlow(false)
   private val _authErrorMessage = MutableStateFlow<String?>(null)
+  private val _authInitialEmail = MutableStateFlow<String?>(null)
   private val _isUploadDialogOpen = MutableStateFlow(false)
   private val _isProfileDialogOpen = MutableStateFlow(false)
   private val _snackbarMessage = MutableStateFlow<String?>(null)
@@ -116,6 +118,7 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
   init {
+    com.example.data.auth.AuthMemoryStore.init(application)
     viewModelScope.launch {
       repository.syncRemoteNovels()
       repository.syncRemoteAuthorSlots()
@@ -164,11 +167,11 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     _isUploadDialogOpen,
     _isProfileDialogOpen,
     _snackbarMessage,
-    combine(_authErrorMessage, _dismissedAlertNovelId) { authErr, dismissedId ->
-      Pair(authErr, dismissedId)
+    combine(_authErrorMessage, _dismissedAlertNovelId, _authInitialEmail) { authErr, dismissedId, initEmail ->
+      Triple(authErr, dismissedId, initEmail)
     }
   ) { isAuth, isUpload, isProfile, msg, extra ->
-    listOf(isAuth, isUpload, isProfile, msg, extra.first, extra.second)
+    listOf(isAuth, isUpload, isProfile, msg, extra.first, extra.second, extra.third)
   }
 
   private val _cloudState = combine(
@@ -213,6 +216,7 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     val msg = dialogList[3] as String?
     val authErr = dialogList[4] as String?
     val dismissedId = dialogList[5] as String?
+    val initialAuthEmail = dialogList[6] as String?
 
     val isCloudSyncing = cloudList[0] as Boolean
     val lastCloudSyncTime = cloudList[1] as Long
@@ -321,6 +325,7 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
       cloudPublishModalCatalogJson = cloudModalCatalogJson,
       isAlreadyCloudPublished = isAlreadyPublished,
       rememberedAccounts = remembered,
+      authInitialEmail = initialAuthEmail,
     )
   }.stateIn(
     viewModelScope,
@@ -367,13 +372,15 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     _selectedAuthorFilter.value = slot
   }
 
-  fun openAuthDialog() {
+  fun openAuthDialog(initialEmail: String? = null) {
     _authErrorMessage.value = null
+    _authInitialEmail.value = initialEmail
     _isAuthDialogOpen.value = true
   }
 
   fun closeAuthDialog() {
     _authErrorMessage.value = null
+    _authInitialEmail.value = null
     _isAuthDialogOpen.value = false
   }
 

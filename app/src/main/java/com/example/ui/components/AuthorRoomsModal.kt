@@ -244,7 +244,7 @@ fun AuthorRoomsModal(
         val totalCurators = permittedTranslators.size + 1 // +1 for strawberrycandy (Founder)
 
         Text(
-          text = if (activeRoleView == UserRoleView.READER) {
+          text = if (activeRoleView == UserRoleView.READER || !isOwnerUser) {
             "Curatorial Collective of $totalCurators"
           } else {
             "Translator Administration (10 Slots)"
@@ -259,10 +259,10 @@ fun AuthorRoomsModal(
         Spacer(modifier = Modifier.height(4.dp))
 
         Text(
-          text = if (activeRoleView == UserRoleView.READER) {
+          text = if (activeRoleView == UserRoleView.READER || !isOwnerUser) {
             "An exclusive archive featuring $totalCurators curators: strawberrycandy (Founder) and ${permittedTranslators.size} permitted translators who publish translated manuscripts."
           } else {
-            "Founder (strawberrycandy) plus 10 configurable translator slots. Readers currently view the $totalCurators active curators."
+            "Founder (strawberrycandy) plus 10 configurable translator slots. Readers and translators only view the $totalCurators active curators."
           },
           style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 16.sp),
           color = CharcoalSecondary
@@ -357,8 +357,16 @@ fun AuthorRoomsModal(
           Spacer(modifier = Modifier.height(14.dp))
         }
 
-        // Dedicated Primary Upload Novel Action Button in Writer's Room
-        if (isOwnerUser || isTranslatorUser) {
+        // Dedicated Primary Upload Novel Action Button in Writer's Room (Only shown if Owner or permitted Translator)
+        val isUserUploadPermitted = isOwnerUser || (isTranslatorUser && currentUser?.let { user ->
+          authorSlots.any {
+            it.isPermissionGranted && (
+              it.slotNumber == user.authorSlot ||
+              (user.email.isNotBlank() && it.translatorEmail?.equals(user.email, ignoreCase = true) == true)
+            )
+          }
+        } == true)
+        if (isUserUploadPermitted) {
           Surface(
             shape = RoundedCornerShape(14.dp),
             color = AntiqueGold,
@@ -631,8 +639,8 @@ fun AuthorRoomsModal(
           verticalAlignment = Alignment.CenterVertically
         ) {
           Text(
-            text = if (activeRoleView == UserRoleView.READER) {
-              "PERMITTED TRANSLATORS (${permittedTranslators.size})"
+            text = if (activeRoleView == UserRoleView.READER || !isOwnerUser) {
+              "ACTIVE TRANSLATORS (${permittedTranslators.size})"
             } else {
               "ALL TRANSLATOR SLOTS (${permittedTranslators.size} / 10 ACTIVE)"
             },
@@ -679,7 +687,7 @@ fun AuthorRoomsModal(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        val slotsToDisplay = if (activeRoleView == UserRoleView.READER) {
+        val slotsToDisplay = if (activeRoleView == UserRoleView.READER || !isOwnerUser) {
           permittedTranslators
         } else {
           (1..10).map { slotNum ->
