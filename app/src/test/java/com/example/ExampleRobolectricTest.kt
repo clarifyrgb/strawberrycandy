@@ -244,16 +244,20 @@ class ExampleRobolectricTest {
 
     // Sign in as Owner
     repo.signOut()
-    repo.signIn(
+    val ownerSignInResult = repo.signIn(
       provider = "GOOGLE",
       email = "clarifymanga@gmail.com",
-      password = "ownerpassword123",
+      password = "clarify123",
       displayName = "Clarify"
     )
+    assertTrue(ownerSignInResult.isSuccess)
     val ownerUser = repo.activeUser.first()
     assertNotNull(ownerUser)
     assertTrue(vm.canUploadNovel(ownerUser))
     assertTrue(vm.isOwner(ownerUser))
+
+    // Owner grants access permission to Translator
+    repo.grantPermissionByEmail("author.translator@gmail.com", 1)
 
     // Sign in as Translator
     repo.signOut()

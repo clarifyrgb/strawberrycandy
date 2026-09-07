@@ -84,6 +84,10 @@ import coil.compose.AsyncImage
 import com.example.data.local.AuthorSlotEntity
 import com.example.data.local.ReaderProfileEntity
 import com.example.model.NovelWithState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.layout.widthIn
+import android.widget.Toast
+import com.example.ui.theme.AntiqueGoldLight
 import com.example.ui.theme.AntiqueGold
 import com.example.viewmodel.StrawberrycandyViewModel
 import com.example.ui.theme.CharcoalSecondary
@@ -307,6 +311,215 @@ fun AuthorRoomsModal(
           Spacer(modifier = Modifier.height(16.dp))
         }
 
+        // Guest / Reader Guidance: Inform users how to manage permissions if they are the owner
+        if (currentUser == null) {
+          Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = AntiqueGold.copy(alpha = 0.08f),
+            border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.25f)),
+            modifier = Modifier.fillMaxWidth().testTag("author_rooms_guest_banner")
+          ) {
+            Row(
+              modifier = Modifier.padding(12.dp),
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              Icon(
+                imageVector = Icons.Outlined.AdminPanelSettings,
+                contentDescription = null,
+                tint = AntiqueGold,
+                modifier = Modifier.size(20.dp)
+              )
+              Spacer(modifier = Modifier.width(8.dp))
+              Text(
+                text = "Viewing in Reader Mode. Archive Owner: Sign in with clarifymanga@gmail.com to assign translator Gmails and toggle publishing permissions.",
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                color = CharcoalText
+              )
+            }
+          }
+          Spacer(modifier = Modifier.height(14.dp))
+        }
+
+        // OWNER DIRECT GRANT PANEL: Unmissable at the top of Writer's Rooms
+        if (isOwnerUser && onGrantPermissionByEmail != null) {
+          Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = AntiqueGoldLight.copy(alpha = 0.55f),
+            border = BorderStroke(1.2.dp, AntiqueGold),
+            modifier = Modifier
+              .fillMaxWidth()
+              .testTag("owner_grant_by_gmail_panel")
+          ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+              Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+              ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                  Icon(
+                    imageVector = Icons.Outlined.PersonAdd,
+                    contentDescription = null,
+                    tint = AntiqueGold,
+                    modifier = Modifier.size(18.dp)
+                  )
+                  Spacer(modifier = Modifier.width(6.dp))
+                  Text(
+                    text = "GRANT TRANSLATOR RIGHTS BY GMAIL",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontSize = 10.5.sp,
+                      fontWeight = FontWeight.ExtraBold,
+                      letterSpacing = 1.sp
+                    ),
+                    color = AntiqueGold
+                  )
+                }
+
+                Surface(
+                  shape = RoundedCornerShape(6.dp),
+                  color = AntiqueGold.copy(alpha = 0.2f)
+                ) {
+                  Text(
+                    text = "OWNER CONTROL",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontSize = 8.sp,
+                      fontWeight = FontWeight.Bold,
+                      color = AntiqueGold
+                    ),
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                  )
+                }
+              }
+
+              Spacer(modifier = Modifier.height(6.dp))
+
+              Text(
+                text = "Enter a translator's Gmail below to grant them publishing permissions and assign their Writer's Room seat:",
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp, lineHeight = 15.sp),
+                color = CharcoalSecondary
+              )
+
+              Spacer(modifier = Modifier.height(10.dp))
+
+              OutlinedTextField(
+                value = inputGrantEmail,
+                onValueChange = {
+                  inputGrantEmail = it
+                  grantEmailError = null
+                },
+                placeholder = { Text("e.g. translator@gmail.com", fontSize = 12.sp, color = CharcoalTertiary) },
+                singleLine = true,
+                shape = RoundedCornerShape(10.dp),
+                leadingIcon = {
+                  Icon(
+                    imageVector = Icons.Outlined.Mail,
+                    contentDescription = null,
+                    tint = AntiqueGold,
+                    modifier = Modifier.size(17.dp)
+                  )
+                },
+                trailingIcon = {
+                  if (inputGrantEmail.isNotBlank()) {
+                    IconButton(onClick = { inputGrantEmail = "" }) {
+                      Icon(Icons.Outlined.Close, contentDescription = "Clear", tint = CharcoalTertiary, modifier = Modifier.size(15.dp))
+                    }
+                  }
+                },
+                colors = OutlinedTextFieldDefaults.colors(
+                  focusedBorderColor = AntiqueGold,
+                  unfocusedBorderColor = SubtleBorder,
+                  focusedContainerColor = SoftCreamPaper,
+                  unfocusedContainerColor = SoftCreamPaper,
+                  focusedTextColor = CharcoalText,
+                  unfocusedTextColor = CharcoalText
+                ),
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .testTag("grant_translator_gmail_field")
+              )
+
+              if (grantEmailError != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                  text = grantEmailError!!,
+                  style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, color = Color(0xFFC62828))
+                )
+              }
+
+              Spacer(modifier = Modifier.height(10.dp))
+
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                // Room selector
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                  Text(
+                    text = "Seat:",
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
+                    color = CharcoalSecondary
+                  )
+                  Spacer(modifier = Modifier.width(6.dp))
+                  LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.widthIn(max = 180.dp)
+                  ) {
+                    items(10) { index ->
+                      val slotNum = index + 1
+                      val isSelected = selectedGrantSlot == slotNum
+                      Surface(
+                        onClick = { selectedGrantSlot = slotNum },
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (isSelected) AntiqueGold else SoftCreamPaper,
+                        border = BorderStroke(1.dp, if (isSelected) AntiqueGold else SubtleBorder)
+                      ) {
+                        Text(
+                          text = "#$slotNum",
+                          fontSize = 10.sp,
+                          fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                          color = if (isSelected) SoftCreamPaper else CharcoalText,
+                          modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                        )
+                      }
+                    }
+                  }
+                }
+
+                Button(
+                  onClick = {
+                    val clean = inputGrantEmail.trim().lowercase()
+                    if (clean.isBlank()) {
+                      grantEmailError = "Please enter a Gmail address"
+                      return@Button
+                    }
+                    if (!clean.contains("@")) {
+                      grantEmailError = "Enter a valid Gmail address"
+                      return@Button
+                    }
+                    onGrantPermissionByEmail(clean, selectedGrantSlot)
+                    Toast.makeText(context, "Granted permission to $clean in Room #$selectedGrantSlot!", Toast.LENGTH_LONG).show()
+                    inputGrantEmail = ""
+                    grantEmailError = null
+                  },
+                  shape = RoundedCornerShape(10.dp),
+                  colors = ButtonDefaults.buttonColors(containerColor = AntiqueGold),
+                  contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                  modifier = Modifier
+                    .height(36.dp)
+                    .testTag("submit_grant_translator_button")
+                ) {
+                  Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = SoftCreamPaper, modifier = Modifier.size(13.dp))
+                  Spacer(modifier = Modifier.width(4.dp))
+                  Text("Grant Access", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SoftCreamPaper)
+                }
+              }
+            }
+          }
+
+          Spacer(modifier = Modifier.height(16.dp))
+        }
+
         // 1. OWNER / FOUNDER ARCHIVE PROFILE (Strawberrycandy - Slot 0)
         val ownerNovels = novels.filter { it.authorSlot == 0 }
         TranslatorCardItem(
@@ -453,8 +666,8 @@ fun AuthorRoomsModal(
             onPermissionChange = { editPermissionGranted = it },
             onEditStart = {
               editingSlotNumber = slotNum
-              editPenName = slot.penName
-              editBio = slot.bio
+              editPenName = if (slot.penName.startsWith("Translator ", ignoreCase = true) || slot.penName.startsWith("Author ", ignoreCase = true)) "" else slot.penName
+              editBio = if (slot.bio.startsWith("Contributing translator")) "" else slot.bio
               editEmail = slot.translatorEmail ?: ""
               editPermissionGranted = slot.isPermissionGranted
             },
@@ -804,7 +1017,7 @@ private fun TranslatorCardItem(
             )
           } else {
             Text(
-              text = slot.penName.take(2).uppercase(),
+              text = if (slot.penName.isNotBlank()) slot.penName.take(2).uppercase() else "#${slot.slotNumber}",
               style = MaterialTheme.typography.titleMedium.copy(
                 fontWeight = FontWeight.Bold,
                 color = SoftCreamPaper,
@@ -940,24 +1153,35 @@ private fun TranslatorCardItem(
           if (isOwnerUser && !isOwner) {
             Row(
               verticalAlignment = Alignment.CenterVertically,
-              modifier = Modifier.padding(top = 1.dp)
+              modifier = Modifier.padding(top = 2.dp)
             ) {
               Icon(
                 imageVector = Icons.Outlined.Mail,
                 contentDescription = null,
-                tint = if (slot.translatorEmail != null) AntiqueGold else CharcoalTertiary,
-                modifier = Modifier.size(11.dp)
+                tint = if (slot.translatorEmail != null) AntiqueGold else Color(0xFFC62828),
+                modifier = Modifier.size(12.dp)
               )
               Spacer(modifier = Modifier.width(3.dp))
               Text(
-                text = slot.translatorEmail ?: "No Gmail assigned (Tap Edit to assign)",
+                text = if (slot.translatorEmail.isNullOrBlank()) "Gmail: Not assigned" else "Gmail: ${slot.translatorEmail}",
                 style = MaterialTheme.typography.labelSmall.copy(
-                  fontSize = 10.sp,
+                  fontSize = 10.5.sp,
                   fontWeight = FontWeight.Bold,
-                  fontStyle = if (slot.translatorEmail == null) androidx.compose.ui.text.font.FontStyle.Italic else androidx.compose.ui.text.font.FontStyle.Normal,
-                  color = if (slot.translatorEmail != null) AntiqueGold else CharcoalTertiary
+                  color = if (slot.translatorEmail.isNullOrBlank()) Color(0xFFC62828) else CharcoalText
                 )
               )
+              if (slot.translatorEmail.isNullOrBlank() && !isEditing) {
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                  text = "[Assign]",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = AntiqueGold
+                  ),
+                  modifier = Modifier.clickable { onEditStart() }
+                )
+              }
             }
           }
 
@@ -1086,7 +1310,8 @@ private fun TranslatorCardItem(
         OutlinedTextField(
           value = editPenName,
           onValueChange = onPenNameChange,
-          label = { Text("Translator Name / Pen Name") },
+          label = { Text("Translator Pen Name") },
+          placeholder = { Text("Choose your pen name...") },
           singleLine = true,
           colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = AntiqueGold,
@@ -1176,65 +1401,101 @@ private fun TranslatorCardItem(
         )
       }
 
-      // Admin / Owner Controls: Permission toggle & Upload Novel
-      // Strictly hide permission toggle from Readers and Translators (Only Owner can toggle permissions)
-      if (canManage && !isOwner && isOwnerUser) {
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(
-          modifier = Modifier.fillMaxWidth(),
-          horizontalArrangement = Arrangement.SpaceBetween,
-          verticalAlignment = Alignment.CenterVertically
+      // Owner Controls: Dedicated, Unmissable Permission Toggle Switch & Actions
+      if (!isOwner && isOwnerUser) {
+        Spacer(modifier = Modifier.height(10.dp))
+        Surface(
+          shape = RoundedCornerShape(10.dp),
+          color = if (slot.isPermissionGranted) Color(0xFFE8F5E9) else Color(0xFFFFF3E0),
+          border = BorderStroke(1.dp, if (slot.isPermissionGranted) Color(0xFFA5D6A7) else Color(0xFFFFCC80)),
+          modifier = Modifier
+            .fillMaxWidth()
+            .testTag("owner_permission_strip_${slot.slotNumber}")
         ) {
-          Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-              imageVector = if (slot.isPermissionGranted) Icons.Outlined.LockOpen else Icons.Outlined.Lock,
-              contentDescription = null,
-              tint = if (slot.isPermissionGranted) Color(0xFF2E7D32) else CharcoalTertiary,
-              modifier = Modifier.size(13.dp)
-            )
-            Spacer(modifier = Modifier.width(4.dp))
-            Text(
-              text = if (slot.isPermissionGranted) "Permission: Granted" else "Permission: Revoked",
-              style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 10.sp,
-                color = if (slot.isPermissionGranted) Color(0xFF2E7D32) else CharcoalTertiary,
-                fontWeight = FontWeight.Medium
-              )
-            )
-          }
-
-          Row(verticalAlignment = Alignment.CenterVertically) {
-            // Grant / Revoke switch: ONLY visible for Archive Owner
-            Switch(
-              checked = slot.isPermissionGranted,
-              onCheckedChange = onTogglePermission,
-              colors = SwitchDefaults.colors(
-                checkedThumbColor = SoftCreamPaper,
-                checkedTrackColor = Color(0xFF2E7D32),
-                uncheckedThumbColor = CharcoalSecondary,
-                uncheckedTrackColor = SubtleBorder
-              ),
-              modifier = Modifier.size(width = 38.dp, height = 22.dp)
-            )
-
-            if (slot.isPermissionGranted) {
-              Spacer(modifier = Modifier.width(10.dp))
-              OutlinedButton(
-                onClick = onOpenUpload,
-                shape = RoundedCornerShape(8.dp),
-                border = BorderStroke(1.dp, SubtleBorder),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                modifier = Modifier.height(28.dp)
-              ) {
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Column(modifier = Modifier.weight(1f)) {
+              Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                  imageVector = Icons.Outlined.Upload,
+                  imageVector = if (slot.isPermissionGranted) Icons.Outlined.CheckCircle else Icons.Outlined.Lock,
                   contentDescription = null,
-                  tint = AntiqueGold,
-                  modifier = Modifier.size(11.dp)
+                  tint = if (slot.isPermissionGranted) Color(0xFF2E7D32) else Color(0xFFE65100),
+                  modifier = Modifier.size(15.dp)
                 )
-                Spacer(modifier = Modifier.width(3.dp))
-                Text("Upload", fontSize = 10.sp, color = CharcoalText)
+                Spacer(modifier = Modifier.width(5.dp))
+                Text(
+                  text = if (slot.isPermissionGranted) "TRANSLATOR PERMISSION: GRANTED" else "TRANSLATOR PERMISSION: REVOKED",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 10.5.sp,
+                    color = if (slot.isPermissionGranted) Color(0xFF2E7D32) else Color(0xFFE65100)
+                  )
+                )
               }
+              Text(
+                text = if (slot.isPermissionGranted) "Can publish novel & edit manuscripts" else "Locked: Translator cannot upload or edit",
+                style = MaterialTheme.typography.bodySmall.copy(
+                  fontSize = 9.5.sp,
+                  color = CharcoalSecondary
+                )
+              )
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              Text(
+                text = if (slot.isPermissionGranted) "ON" else "OFF",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontWeight = FontWeight.ExtraBold,
+                  fontSize = 11.sp,
+                  color = if (slot.isPermissionGranted) Color(0xFF2E7D32) else CharcoalTertiary
+                ),
+                modifier = Modifier.padding(end = 6.dp)
+              )
+              // Standard-sized, unclipped Material 3 switch
+              Switch(
+                checked = slot.isPermissionGranted,
+                onCheckedChange = { isChecked ->
+                  onTogglePermission(isChecked)
+                },
+                colors = SwitchDefaults.colors(
+                  checkedThumbColor = SoftCreamPaper,
+                  checkedTrackColor = Color(0xFF2E7D32),
+                  uncheckedThumbColor = CharcoalSecondary,
+                  uncheckedTrackColor = SubtleBorder
+                ),
+                modifier = Modifier.testTag("slot_permission_toggle_${slot.slotNumber}")
+              )
+            }
+          }
+        }
+
+        // Upload Novel button if owner wants to upload directly into this slot
+        if (slot.isPermissionGranted) {
+          Spacer(modifier = Modifier.height(6.dp))
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End
+          ) {
+            OutlinedButton(
+              onClick = onOpenUpload,
+              shape = RoundedCornerShape(8.dp),
+              border = BorderStroke(1.dp, SubtleBorder),
+              contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+              modifier = Modifier.height(30.dp)
+            ) {
+              Icon(
+                imageVector = Icons.Outlined.Upload,
+                contentDescription = null,
+                tint = AntiqueGold,
+                modifier = Modifier.size(13.dp)
+              )
+              Spacer(modifier = Modifier.width(4.dp))
+              Text("Upload Novel to Room #${slot.slotNumber}", fontSize = 10.sp, color = CharcoalText)
             }
           }
         }

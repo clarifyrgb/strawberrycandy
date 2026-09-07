@@ -90,6 +90,8 @@ fun TypographyCustomizerModal(
   isFirstLineIndent: Boolean = false,
   isBold: Boolean = false,
   isItalic: Boolean = false,
+  readingTheme: String = "light", // "light", "dark", "sepia"
+  onSelectReadingTheme: (String) -> Unit = {},
   onSelectFontType: (String) -> Unit,
   onCustomFontUploaded: (filePath: String, fontName: String) -> Unit,
   onUpdateFontSizeScale: (Float) -> Unit,
@@ -140,11 +142,18 @@ fun TypographyCustomizerModal(
     }
   }
 
+  val isDarkModal = readingTheme == "dark"
+  val modalBgColor = if (isDarkModal) Color(0xFF1E1C1A) else SoftCreamPaper
+  val modalBorderColor = if (isDarkModal) Color(0xFF38332E) else SubtleBorder
+  val modalTextColor = if (isDarkModal) Color(0xFFE8E2D9) else CharcoalText
+  val modalSecondaryTextColor = if (isDarkModal) Color(0xFFA8A099) else CharcoalSecondary
+  val modalTertiaryTextColor = if (isDarkModal) Color(0xFF7A736C) else CharcoalTertiary
+
   Dialog(onDismissRequest = onDismiss) {
     Card(
       shape = RoundedCornerShape(26.dp),
-      colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
-      border = BorderStroke(1.2.dp, SubtleBorder),
+      colors = CardDefaults.cardColors(containerColor = modalBgColor),
+      border = BorderStroke(1.2.dp, modalBorderColor),
       elevation = CardDefaults.cardElevation(defaultElevation = 18.dp),
       modifier = Modifier
         .fillMaxWidth()
@@ -189,13 +198,13 @@ fun TypographyCustomizerModal(
                 color = AntiqueGold
               )
               Text(
-                text = "Page Turning & Typography",
+                text = "Appearance & Typography",
                 style = MaterialTheme.typography.titleMedium.copy(
                   fontFamily = FontFamily.Serif,
                   fontWeight = FontWeight.SemiBold,
                   fontSize = 15.sp
                 ),
-                color = CharcoalText
+                color = modalTextColor
               )
             }
           }
@@ -207,7 +216,7 @@ fun TypographyCustomizerModal(
             Icon(
               imageVector = Icons.Outlined.Close,
               contentDescription = "Close",
-              tint = CharcoalSecondary,
+              tint = modalSecondaryTextColor,
               modifier = Modifier.size(18.dp)
             )
           }
@@ -223,6 +232,133 @@ fun TypographyCustomizerModal(
             .heightIn(max = 480.dp)
             .verticalScroll(rememberScrollState())
         ) {
+          // 0. SECTION: READING THEME / DARK MODE
+          Text(
+            text = "APPEARANCE & READING THEME",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 9.sp,
+              letterSpacing = 1.4.sp,
+              fontWeight = FontWeight.Bold
+            ),
+            color = modalTertiaryTextColor
+          )
+          Spacer(modifier = Modifier.height(8.dp))
+
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+          ) {
+            // Option 1: Light Paper
+            val isLightSelected = readingTheme == "light"
+            Surface(
+              shape = RoundedCornerShape(14.dp),
+              color = if (isLightSelected) AntiqueGold.copy(alpha = 0.15f) else if (isDarkModal) Color(0xFF282522) else Color(0xFFFBF8F2),
+              border = BorderStroke(if (isLightSelected) 1.5.dp else 1.dp, if (isLightSelected) AntiqueGold else if (isDarkModal) Color(0xFF38332E) else SubtleBorder),
+              modifier = Modifier
+                .weight(1f)
+                .clickable { onSelectReadingTheme("light") }
+                .testTag("theme_option_light")
+            ) {
+              Column(
+                modifier = Modifier.padding(10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+              ) {
+                Box(
+                  modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFFDFBF7))
+                    .border(1.dp, Color(0xFFE0D8CB), CircleShape),
+                  contentAlignment = Alignment.Center
+                ) {
+                  Text("☀️", fontSize = 13.sp)
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                  text = "Light Paper",
+                  fontSize = 11.sp,
+                  fontWeight = if (isLightSelected) FontWeight.Bold else FontWeight.Medium,
+                  color = if (isLightSelected) AntiqueGold else modalTextColor,
+                  textAlign = TextAlign.Center
+                )
+              }
+            }
+
+            // Option 2: Midnight Dark (Dark Mode)
+            val isDarkSelected = readingTheme == "dark"
+            Surface(
+              shape = RoundedCornerShape(14.dp),
+              color = if (isDarkSelected) AntiqueGold.copy(alpha = 0.22f) else if (isDarkModal) Color(0xFF282522) else Color(0xFFFBF8F2),
+              border = BorderStroke(if (isDarkSelected) 1.5.dp else 1.dp, if (isDarkSelected) AntiqueGold else if (isDarkModal) Color(0xFF38332E) else SubtleBorder),
+              modifier = Modifier
+                .weight(1f)
+                .clickable { onSelectReadingTheme("dark") }
+                .testTag("theme_option_dark")
+            ) {
+              Column(
+                modifier = Modifier.padding(10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+              ) {
+                Box(
+                  modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF141211))
+                    .border(1.dp, if (isDarkSelected) AntiqueGold else Color(0xFF44403C), CircleShape),
+                  contentAlignment = Alignment.Center
+                ) {
+                  Text("🌙", fontSize = 13.sp)
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                  text = "Dark Mode",
+                  fontSize = 11.sp,
+                  fontWeight = if (isDarkSelected) FontWeight.Bold else FontWeight.Medium,
+                  color = if (isDarkSelected) AntiqueGold else modalTextColor,
+                  textAlign = TextAlign.Center
+                )
+              }
+            }
+
+            // Option 3: Warm Sepia
+            val isSepiaSelected = readingTheme == "sepia"
+            Surface(
+              shape = RoundedCornerShape(14.dp),
+              color = if (isSepiaSelected) AntiqueGold.copy(alpha = 0.15f) else if (isDarkModal) Color(0xFF282522) else Color(0xFFFBF8F2),
+              border = BorderStroke(if (isSepiaSelected) 1.5.dp else 1.dp, if (isSepiaSelected) AntiqueGold else if (isDarkModal) Color(0xFF38332E) else SubtleBorder),
+              modifier = Modifier
+                .weight(1f)
+                .clickable { onSelectReadingTheme("sepia") }
+                .testTag("theme_option_sepia")
+            ) {
+              Column(
+                modifier = Modifier.padding(10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+              ) {
+                Box(
+                  modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFF4ECD8))
+                    .border(1.dp, Color(0xFFD8CCB0), CircleShape),
+                  contentAlignment = Alignment.Center
+                ) {
+                  Text("📜", fontSize = 13.sp)
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                  text = "Warm Sepia",
+                  fontSize = 11.sp,
+                  fontWeight = if (isSepiaSelected) FontWeight.Bold else FontWeight.Medium,
+                  color = if (isSepiaSelected) AntiqueGold else modalTextColor,
+                  textAlign = TextAlign.Center
+                )
+              }
+            }
+          }
+
+          Spacer(modifier = Modifier.height(18.dp))
+
           // 1. SECTION: PAGE TURNING STYLE
           Text(
             text = "PAGE TURNING STYLE",

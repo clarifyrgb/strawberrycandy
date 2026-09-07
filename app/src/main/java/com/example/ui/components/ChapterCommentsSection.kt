@@ -78,12 +78,19 @@ fun ChapterCommentsSection(
   activeReaderName: String?,
   activeReaderEmail: String? = null,
   isOwner: Boolean = false,
+  isDarkMode: Boolean = false,
   onPostComment: (text: String, penName: String?, parentCommentId: String?, replyToReaderName: String?) -> Unit,
   onLikeComment: (commentId: String) -> Unit,
   onDeleteComment: ((commentId: String) -> Unit)? = null,
   onSavePenName: ((String) -> Unit)? = null,
   modifier: Modifier = Modifier,
 ) {
+  val sectionBgColor = if (isDarkMode) Color(0xFF221F1D) else Color(0xFFF9F6F0)
+  val sectionBorderColor = if (isDarkMode) Color(0xFF38332E) else AntiqueGold.copy(alpha = 0.35f)
+  val sectionTextColor = if (isDarkMode) Color(0xFFE8E2D9) else CharcoalText
+  val sectionSecondaryTextColor = if (isDarkMode) Color(0xFFA8A099) else CharcoalSecondary
+  val sectionInputBg = if (isDarkMode) Color(0xFF191716) else SoftCreamPaper
+
   var newCommentText by remember { mutableStateOf("") }
   var customPenName by remember(activeReaderName) {
     mutableStateOf(activeReaderName ?: "")

@@ -48,7 +48,9 @@ import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.FormatListNumbered
 import androidx.compose.material.icons.outlined.FormatSize
@@ -205,6 +207,67 @@ fun ReadingScreen(
   }
   val readerFontWeight = if (isBold) FontWeight.Bold else FontWeight.Normal
   val readerFontStyle = if (isItalic) FontStyle.Italic else FontStyle.Normal
+
+  // Reading Theme & Dark Mode State
+  var readingTheme by remember {
+    mutableStateOf(
+      typographyPrefs.getString(
+        "reading_theme",
+        if (typographyPrefs.getBoolean("is_dark_mode", false)) "dark" else "light"
+      ) ?: "light"
+    )
+  }
+  val isDarkMode = readingTheme == "dark"
+
+  fun setReadingTheme(theme: String) {
+    readingTheme = theme
+    typographyPrefs.edit()
+      .putString("reading_theme", theme)
+      .putBoolean("is_dark_mode", theme == "dark")
+      .apply()
+  }
+
+  // Dynamic Theme Colors for Reading Experience
+  val readerBgColor = when (readingTheme) {
+    "dark" -> Color(0xFF141211)
+    "sepia" -> Color(0xFFF4ECD8)
+    else -> SoftCreamPaper
+  }
+  val readerTextColor = when (readingTheme) {
+    "dark" -> Color(0xFFE8E2D9)
+    "sepia" -> Color(0xFF3B2F2F)
+    else -> CharcoalText
+  }
+  val readerSecondaryTextColor = when (readingTheme) {
+    "dark" -> Color(0xFFA8A099)
+    "sepia" -> Color(0xFF705F55)
+    else -> CharcoalSecondary
+  }
+  val readerTertiaryTextColor = when (readingTheme) {
+    "dark" -> Color(0xFF7A736C)
+    "sepia" -> Color(0xFF8C7B70)
+    else -> CharcoalTertiary
+  }
+  val readerHudBgColor = when (readingTheme) {
+    "dark" -> Color(0xF21C1A18)
+    "sepia" -> Color(0xF5EFE3CA)
+    else -> Color(0xF5F7F4EC)
+  }
+  val readerCardBgColor = when (readingTheme) {
+    "dark" -> Color(0xFF221F1D)
+    "sepia" -> Color(0xFFEBE0C7)
+    else -> Color(0xFFF5EFE3)
+  }
+  val readerBorderColor = when (readingTheme) {
+    "dark" -> Color(0xFF38332E)
+    "sepia" -> Color(0xFFDDD0B5)
+    else -> SubtleBorder
+  }
+  val readerChipBgColor = when (readingTheme) {
+    "dark" -> Color(0x28FFFFFF)
+    "sepia" -> Color(0x18705F55)
+    else -> Color(0x0E000000)
+  }
 
   // Modals & UI states
   var viewingPhoto by remember { mutableStateOf<StoryContentItem.Photo?>(null) }
@@ -420,18 +483,28 @@ fun ReadingScreen(
   Box(
     modifier = modifier
       .fillMaxSize()
-      .background(SoftCreamPaper)
+      .background(readerBgColor)
       .testTag("reading_screen_container")
   ) {
-    // Subtle Paper Ambient Lighting
+    // Subtle Ambient Lighting (Adaptive to light/dark canvas)
     Box(
       modifier = Modifier
         .fillMaxSize()
         .background(
           brush = Brush.verticalGradient(
-            0.0f to Color(0x05FFFFFF),
-            0.5f to Color(0x00FFFFFF),
-            1.0f to Color(0x08000000)
+            colors = if (isDarkMode) {
+              listOf(
+                Color(0x06FFFFFF),
+                Color(0x00000000),
+                Color(0x14000000)
+              )
+            } else {
+              listOf(
+                Color(0x05FFFFFF),
+                Color(0x00FFFFFF),
+                Color(0x08000000)
+              )
+            }
           )
         )
     )
@@ -453,7 +526,7 @@ fun ReadingScreen(
         Column(
           modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xF5F7F4EC))
+            .background(readerHudBgColor)
         ) {
           Row(
             modifier = Modifier
@@ -477,7 +550,7 @@ fun ReadingScreen(
                 Icon(
                   imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
                   contentDescription = "Return to Bookshelf",
-                  tint = CharcoalSecondary,
+                  tint = readerSecondaryTextColor,
                   modifier = Modifier.size(20.dp)
                 )
               }
@@ -492,7 +565,7 @@ fun ReadingScreen(
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 13.5.sp
                   ),
-                  color = CharcoalText,
+                  color = readerTextColor,
                   maxLines = 1,
                   overflow = TextOverflow.Ellipsis
                 )
@@ -511,7 +584,7 @@ fun ReadingScreen(
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            // Right: In-Book Search, Chapters Modal Trigger, Typography, Bookmarks, Favorite
+            // Right: In-Book Search, Chapters, Dark Mode Toggle, Typography, Bookmarks, Favorite
             Row(
               verticalAlignment = Alignment.CenterVertically,
               horizontalArrangement = Arrangement.spacedBy(5.dp)
@@ -519,7 +592,7 @@ fun ReadingScreen(
               // 1. Search in Book
               Surface(
                 shape = RoundedCornerShape(12.dp),
-                color = if (isSearchOpen) AntiqueGold else Color(0x0E000000),
+                color = if (isSearchOpen) AntiqueGold else readerChipBgColor,
                 border = BorderStroke(1.dp, if (isSearchOpen) AntiqueGold else Color.Transparent),
                 modifier = Modifier
                   .clickable {
@@ -538,7 +611,7 @@ fun ReadingScreen(
                   Icon(
                     imageVector = Icons.Outlined.Search,
                     contentDescription = "Search keywords in book",
-                    tint = if (isSearchOpen) SoftCreamPaper else CharcoalSecondary,
+                    tint = if (isSearchOpen) SoftCreamPaper else readerSecondaryTextColor,
                     modifier = Modifier.size(15.dp)
                   )
                   if (searchMatches.isNotEmpty()) {
@@ -558,7 +631,7 @@ fun ReadingScreen(
               // 2. Chapters Table of Contents Button
               Surface(
                 shape = RoundedCornerShape(12.dp),
-                color = Color(0x1AD4AF37),
+                color = if (isDarkMode) Color(0xFF25221F) else Color(0x1AD4AF37),
                 border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.7f)),
                 modifier = Modifier
                   .clickable { isChapterModalOpen = true }
@@ -580,7 +653,7 @@ fun ReadingScreen(
                     style = MaterialTheme.typography.labelSmall.copy(
                       fontSize = 10.5.sp,
                       fontWeight = FontWeight.Bold,
-                      color = CharcoalText
+                      color = readerTextColor
                     )
                   )
                   Spacer(modifier = Modifier.width(2.dp))
@@ -598,7 +671,7 @@ fun ReadingScreen(
               if (canAddChapter) {
                 Surface(
                   shape = RoundedCornerShape(12.dp),
-                  color = AntiqueGold.copy(alpha = 0.16f),
+                  color = if (isDarkMode) Color(0xFF25221F) else AntiqueGold.copy(alpha = 0.16f),
                   border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.75f)),
                   modifier = Modifier
                     .clickable { isAddChapterModalOpen = true }
@@ -613,18 +686,42 @@ fun ReadingScreen(
                       style = MaterialTheme.typography.labelSmall.copy(
                         fontSize = 10.5.sp,
                         fontWeight = FontWeight.Bold,
-                        color = CharcoalText
+                        color = readerTextColor
                       )
                     )
                   }
                 }
               }
 
-              // 3. Typography Customizer
-              val isTypographyCustomized = selectedFontType == "custom" || isBold || isItalic
+              // 2c. Quick Reading Dark Mode Toggle Button
               Surface(
                 shape = RoundedCornerShape(12.dp),
-                color = if (isTypographyCustomized) Color(0x18D4AF37) else Color(0x0E000000),
+                color = if (isDarkMode) AntiqueGold.copy(alpha = 0.22f) else readerChipBgColor,
+                border = BorderStroke(1.dp, if (isDarkMode) AntiqueGold.copy(alpha = 0.8f) else Color.Transparent),
+                modifier = Modifier
+                  .clickable {
+                    setReadingTheme(if (isDarkMode) "light" else "dark")
+                  }
+                  .testTag("reading_dark_mode_toggle")
+              ) {
+                Row(
+                  verticalAlignment = Alignment.CenterVertically,
+                  modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp)
+                ) {
+                  Icon(
+                    imageVector = if (isDarkMode) Icons.Outlined.LightMode else Icons.Outlined.DarkMode,
+                    contentDescription = if (isDarkMode) "Switch to Light Paper" else "Switch to Dark Mode",
+                    tint = if (isDarkMode) AntiqueGold else readerSecondaryTextColor,
+                    modifier = Modifier.size(15.dp)
+                  )
+                }
+              }
+
+              // 3. Typography Customizer
+              val isTypographyCustomized = selectedFontType == "custom" || isBold || isItalic || readingTheme != "light"
+              Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = if (isTypographyCustomized) Color(0x18D4AF37) else readerChipBgColor,
                 border = BorderStroke(1.dp, if (isTypographyCustomized) AntiqueGold.copy(alpha = 0.6f) else Color.Transparent),
                 modifier = Modifier
                   .clickable { isTypographyModalOpen = true }
@@ -636,8 +733,8 @@ fun ReadingScreen(
                 ) {
                   Icon(
                     imageVector = Icons.Outlined.FormatSize,
-                    contentDescription = "Reader typography",
-                    tint = if (isTypographyCustomized) AntiqueGold else CharcoalSecondary,
+                    contentDescription = "Reader typography & appearance",
+                    tint = if (isTypographyCustomized) AntiqueGold else readerSecondaryTextColor,
                     modifier = Modifier.size(14.dp)
                   )
                   Spacer(modifier = Modifier.width(2.dp))
@@ -647,7 +744,7 @@ fun ReadingScreen(
                       fontSize = 10.sp,
                       fontWeight = if (isBold) FontWeight.Bold else FontWeight.SemiBold,
                       fontStyle = readerFontStyle,
-                      color = if (isTypographyCustomized) AntiqueGold else CharcoalSecondary
+                      color = if (isTypographyCustomized) AntiqueGold else readerSecondaryTextColor
                     )
                   )
                 }
@@ -656,7 +753,7 @@ fun ReadingScreen(
               // 4. Bookmarks & Highlighted Lines Button
               Surface(
                 shape = RoundedCornerShape(12.dp),
-                color = if (bookmarksList.isNotEmpty()) Color(0x18D4AF37) else Color(0x0E000000),
+                color = if (bookmarksList.isNotEmpty()) Color(0x18D4AF37) else readerChipBgColor,
                 border = BorderStroke(1.dp, if (bookmarksList.isNotEmpty()) AntiqueGold.copy(alpha = 0.5f) else Color.Transparent),
                 modifier = Modifier
                   .clickable { isBookmarksModalOpen = true }
@@ -669,7 +766,7 @@ fun ReadingScreen(
                   Icon(
                     imageVector = if (bookmarksList.isNotEmpty()) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
                     contentDescription = "Favorite lines & bookmarks",
-                    tint = if (bookmarksList.isNotEmpty()) AntiqueGold else CharcoalSecondary,
+                    tint = if (bookmarksList.isNotEmpty()) AntiqueGold else readerSecondaryTextColor,
                     modifier = Modifier.size(14.dp)
                   )
                   if (bookmarksList.isNotEmpty()) {
@@ -689,7 +786,7 @@ fun ReadingScreen(
               // 5. Favorite Heart
               Surface(
                 shape = RoundedCornerShape(12.dp),
-                color = if (novel.isFavorite) Color(0x1AC74350) else Color(0x0E000000),
+                color = if (novel.isFavorite) Color(0x1AC74350) else readerChipBgColor,
                 modifier = Modifier
                   .clickable { onToggleFavorite() }
                   .testTag("reading_favorite_button")
@@ -701,7 +798,7 @@ fun ReadingScreen(
                   Icon(
                     imageVector = if (novel.isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
                     contentDescription = "Toggle favorite",
-                    tint = if (novel.isFavorite) Color(0xFFC74350) else CharcoalSecondary.copy(alpha = 0.65f),
+                    tint = if (novel.isFavorite) Color(0xFFC74350) else readerSecondaryTextColor.copy(alpha = 0.65f),
                     modifier = Modifier.size(13.dp)
                   )
                 }
@@ -712,7 +809,7 @@ fun ReadingScreen(
           // In-Book Search Bar (if opened)
           if (isSearchOpen) {
             Surface(
-              color = Color(0xF0FAF6EE),
+              color = readerCardBgColor,
               border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.35f)),
               modifier = Modifier.fillMaxWidth()
             ) {
@@ -738,7 +835,7 @@ fun ReadingScreen(
                     singleLine = true,
                     textStyle = MaterialTheme.typography.bodyMedium.copy(
                       fontSize = 13.sp,
-                      color = CharcoalText
+                      color = readerTextColor
                     ),
                     cursorBrush = SolidColor(AntiqueGold),
                     decorationBox = { innerTextField ->
@@ -748,7 +845,7 @@ fun ReadingScreen(
                             text = "Search lines, words, or character names...",
                             style = MaterialTheme.typography.bodyMedium.copy(
                               fontSize = 13.sp,
-                              color = CharcoalTertiary
+                              color = readerTertiaryTextColor
                             )
                           )
                         }
@@ -768,7 +865,7 @@ fun ReadingScreen(
                       Icon(
                         imageVector = Icons.Outlined.Close,
                         contentDescription = "Clear search",
-                        tint = CharcoalSecondary,
+                        tint = readerSecondaryTextColor,
                         modifier = Modifier.size(14.dp)
                       )
                     }
@@ -908,7 +1005,7 @@ fun ReadingScreen(
                   fontWeight = FontWeight.Normal,
                   lineHeight = 30.sp
                 ),
-                color = CharcoalText,
+                color = readerTextColor,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.testTag("reading_book_title")
               )
@@ -935,7 +1032,7 @@ fun ReadingScreen(
                     letterSpacing = 1.2.sp,
                     fontWeight = FontWeight.Bold
                   ),
-                  color = CharcoalTertiary,
+                  color = readerTertiaryTextColor,
                   textAlign = TextAlign.Center
                 )
                 Spacer(modifier = Modifier.height(6.dp))
@@ -949,8 +1046,8 @@ fun ReadingScreen(
 
               Surface(
                 shape = RoundedCornerShape(18.dp),
-                color = AntiqueGold.copy(alpha = 0.12f),
-                border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.45f)),
+                color = if (isDarkMode) Color(0xFF221F1D) else AntiqueGold.copy(alpha = 0.12f),
+                border = BorderStroke(1.dp, AntiqueGold.copy(alpha = if (isDarkMode) 0.6f else 0.45f)),
                 modifier = Modifier
                   .clip(RoundedCornerShape(18.dp))
                   .clickable {
@@ -974,7 +1071,7 @@ fun ReadingScreen(
                     style = MaterialTheme.typography.labelSmall.copy(
                       fontSize = 10.5.sp,
                       fontWeight = FontWeight.Bold,
-                      color = CharcoalText,
+                      color = readerTextColor,
                       letterSpacing = 0.3.sp
                     )
                   )
@@ -1237,7 +1334,7 @@ fun ReadingScreen(
                               fontFamily = readerFontFamily,
                               fontWeight = readerFontWeight,
                               fontStyle = finalFontStyle,
-                              color = CharcoalText,
+                              color = readerTextColor,
                               lineHeight = baseLineHeight.sp,
                               fontSize = baseFontSize.sp,
                               textAlign = finalAlign,
@@ -1277,7 +1374,7 @@ fun ReadingScreen(
 
                       Card(
                         shape = RoundedCornerShape(18.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFAF7F0)),
+                        colors = CardDefaults.cardColors(containerColor = readerCardBgColor),
                         border = BorderStroke(1.2.dp, AntiqueGold.copy(alpha = 0.6f)),
                         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
                         modifier = Modifier
@@ -1317,7 +1414,7 @@ fun ReadingScreen(
                               Icon(
                                 imageVector = Icons.Outlined.Close,
                                 contentDescription = "Close",
-                                tint = CharcoalSecondary,
+                                tint = readerSecondaryTextColor,
                                 modifier = Modifier.size(16.dp)
                               )
                             }
@@ -1331,7 +1428,7 @@ fun ReadingScreen(
                               style = MaterialTheme.typography.labelSmall.copy(
                                 fontSize = 9.5.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = CharcoalSecondary
+                                color = readerSecondaryTextColor
                               )
                             )
                             Spacer(modifier = Modifier.height(6.dp))
@@ -1348,10 +1445,10 @@ fun ReadingScreen(
 
                                 Surface(
                                   shape = RoundedCornerShape(12.dp),
-                                  color = if (isSelected) AntiqueGold else if (isSentenceHighlighted != null) Color(isSentenceHighlighted.colorHex).copy(alpha = 0.2f) else Color(0x0C000000),
+                                  color = if (isSelected) AntiqueGold else if (isSentenceHighlighted != null) Color(isSentenceHighlighted.colorHex).copy(alpha = 0.2f) else readerChipBgColor,
                                   border = BorderStroke(
                                     width = if (isSelected) 1.5.dp else 1.dp,
-                                    color = if (isSelected) AntiqueGold else if (isSentenceHighlighted != null) Color(isSentenceHighlighted.colorHex) else SubtleBorder
+                                    color = if (isSelected) AntiqueGold else if (isSentenceHighlighted != null) Color(isSentenceHighlighted.colorHex) else readerBorderColor
                                   ),
                                   modifier = Modifier
                                     .clickable {
@@ -1368,7 +1465,7 @@ fun ReadingScreen(
                                         modifier = Modifier
                                           .size(6.dp)
                                           .clip(CircleShape)
-                                          .background(if (isSelected) SoftCreamPaper else Color(isSentenceHighlighted.colorHex))
+                                          .background(if (isSelected) (if (isDarkMode) Color(0xFF1E1C1A) else SoftCreamPaper) else Color(isSentenceHighlighted.colorHex))
                                       )
                                       Spacer(modifier = Modifier.width(5.dp))
                                     }
@@ -1377,7 +1474,7 @@ fun ReadingScreen(
                                       style = MaterialTheme.typography.labelSmall.copy(
                                         fontSize = 10.sp,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        color = if (isSelected) SoftCreamPaper else CharcoalText
+                                        color = if (isSelected) (if (isDarkMode) Color(0xFF1E1C1A) else SoftCreamPaper) else readerTextColor
                                       )
                                     )
                                   }
@@ -1389,8 +1486,8 @@ fun ReadingScreen(
                                 val isSelected = selection.selectedSentenceIndex == -1
                                 Surface(
                                   shape = RoundedCornerShape(12.dp),
-                                  color = if (isSelected) AntiqueGold else Color(0x0C000000),
-                                  border = BorderStroke(1.dp, if (isSelected) AntiqueGold else SubtleBorder),
+                                  color = if (isSelected) AntiqueGold else readerChipBgColor,
+                                  border = BorderStroke(1.dp, if (isSelected) AntiqueGold else readerBorderColor),
                                   modifier = Modifier
                                     .clickable {
                                       activeParagraphSelection = selection.copy(selectedSentenceIndex = -1)
@@ -1402,7 +1499,7 @@ fun ReadingScreen(
                                     style = MaterialTheme.typography.labelSmall.copy(
                                       fontSize = 10.sp,
                                       fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                      color = if (isSelected) SoftCreamPaper else CharcoalText
+                                      color = if (isSelected) (if (isDarkMode) Color(0xFF1E1C1A) else SoftCreamPaper) else readerTextColor
                                     ),
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                                   )
@@ -1416,10 +1513,10 @@ fun ReadingScreen(
                           // Quote preview
                           Surface(
                             shape = RoundedCornerShape(10.dp),
-                            color = if (activeHighlight != null) Color(activeHighlight.colorHex).copy(alpha = 0.15f) else Color(0x08000000),
+                            color = if (activeHighlight != null) Color(activeHighlight.colorHex).copy(alpha = 0.15f) else readerBgColor,
                             border = BorderStroke(
                               1.dp,
-                              if (activeHighlight != null) Color(activeHighlight.colorHex).copy(alpha = 0.5f) else SubtleBorder
+                              if (activeHighlight != null) Color(activeHighlight.colorHex).copy(alpha = 0.5f) else readerBorderColor
                             ),
                             modifier = Modifier.fillMaxWidth()
                           ) {
@@ -1430,7 +1527,7 @@ fun ReadingScreen(
                                 fontStyle = FontStyle.Italic,
                                 fontSize = 12.5.sp,
                                 lineHeight = 18.sp,
-                                color = CharcoalText
+                                color = readerTextColor
                               ),
                               modifier = Modifier.padding(10.dp),
                               maxLines = 4,
@@ -1446,7 +1543,7 @@ fun ReadingScreen(
                             style = MaterialTheme.typography.labelSmall.copy(
                               fontSize = 9.5.sp,
                               fontWeight = FontWeight.SemiBold,
-                              color = CharcoalSecondary
+                              color = readerSecondaryTextColor
                             )
                           )
                           Spacer(modifier = Modifier.height(8.dp))
@@ -1479,7 +1576,7 @@ fun ReadingScreen(
                                     .background(colorOpt.displayColor)
                                     .border(
                                       width = if (isThisColorActive) 2.5.dp else 1.dp,
-                                      color = if (isThisColorActive) CharcoalText else Color(0x33000000),
+                                      color = if (isThisColorActive) (if (isDarkMode) Color.White else CharcoalText) else readerBorderColor,
                                       shape = CircleShape
                                     ),
                                   contentAlignment = Alignment.Center
@@ -1607,6 +1704,7 @@ fun ReadingScreen(
                     activeReaderName = activeUser?.displayName,
                     activeReaderEmail = activeUser?.email,
                     isOwner = activeUser?.role == "OWNER" || activeUser?.authorSlot == 0,
+                    isDarkMode = isDarkMode,
                     onPostComment = { text, penName, parentCommentId, replyToReaderName ->
                       viewModel?.postComment(
                         novelId = novel.id,
@@ -1651,8 +1749,8 @@ fun ReadingScreen(
               // Celebratory Finished Novel Card
               Surface(
                 shape = RoundedCornerShape(18.dp),
-                color = Color(0x1AD4AF37),
-                border = BorderStroke(1.2.dp, AntiqueGold.copy(alpha = 0.7f)),
+                color = if (isDarkMode) Color(0xFF221F1D) else Color(0x1AD4AF37),
+                border = BorderStroke(1.2.dp, AntiqueGold.copy(alpha = if (isDarkMode) 0.6f else 0.7f)),
                 modifier = Modifier
                   .fillMaxWidth()
                   .testTag("novel_finished_celebration_card")
@@ -1712,12 +1810,12 @@ fun ReadingScreen(
                         fontFamily = FontFamily.Serif,
                         fontWeight = FontWeight.SemiBold
                       ),
-                      color = CharcoalText
+                      color = readerTextColor
                     )
                     Text(
                       text = if (activeUser != null) "Recorded in your library • +1 Pen Name Point earned" else "Recorded as Finished in your library",
                       style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                      color = CharcoalSecondary
+                      color = readerSecondaryTextColor
                     )
                   }
                 }
@@ -1740,7 +1838,7 @@ fun ReadingScreen(
                   fontSize = 9.5.sp,
                   letterSpacing = 0.8.sp
                 ),
-                color = CharcoalTertiary
+                color = readerTertiaryTextColor
               )
 
               Spacer(modifier = Modifier.height(36.dp))
@@ -1757,6 +1855,7 @@ fun ReadingScreen(
                 activeReaderName = activeUser?.displayName,
                 activeReaderEmail = activeUser?.email,
                 isOwner = activeUser?.role == "OWNER" || activeUser?.authorSlot == 0,
+                isDarkMode = isDarkMode,
                 onPostComment = { text, penName, parentCommentId, replyToReaderName ->
                   viewModel?.postComment(
                     novelId = novel.id,
@@ -1844,6 +1943,8 @@ fun ReadingScreen(
         isFirstLineIndent = isFirstLineIndent,
         isBold = isBold,
         isItalic = isItalic,
+        readingTheme = readingTheme,
+        onSelectReadingTheme = { setReadingTheme(it) },
         onSelectFontType = { fontType ->
           selectedFontType = fontType
           typographyPrefs.edit().putString("font_family_type", fontType).apply()
@@ -1903,6 +2004,7 @@ fun ReadingScreen(
           isFirstLineIndent = false
           isBold = false
           isItalic = false
+          setReadingTheme("light")
           typographyPrefs.edit().clear().apply()
         },
         onDismiss = { isTypographyModalOpen = false }

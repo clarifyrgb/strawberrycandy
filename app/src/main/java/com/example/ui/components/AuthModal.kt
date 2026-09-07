@@ -55,11 +55,16 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
+import com.example.data.auth.GoogleSignInHandler
+import com.example.data.auth.GoogleSignInOutcome
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -97,15 +102,23 @@ fun AuthModal(
   initialEmail: String = "",
   externalErrorMessage: String? = null,
   onClearError: () -> Unit = {},
+  onSignInWithGoogleCredential: ((idToken: String, email: String, name: String?, role: String, authorSlot: Int?) -> Unit)? = null,
 ) {
   val context = LocalContext.current
+  val coroutineScope = rememberCoroutineScope()
+  val googleSignInHandler = remember { GoogleSignInHandler(context) }
+  var isGoogleSignInProcessing by remember { mutableStateOf(false) }
 
   // Mode: Sign In vs. Forgot Password
   var isForgotPasswordMode by remember { mutableStateOf(false) }
 
   // Sign In state
   var emailInput by remember { mutableStateOf(initialEmail.ifBlank { rememberedAccounts.firstOrNull()?.email ?: "" }) }
-  var passwordInput by remember { mutableStateOf("") }
+  val initialSavedPass = remember(rememberedAccounts, initialEmail) {
+    val clean = (initialEmail.ifBlank { rememberedAccounts.firstOrNull()?.email ?: "" }).trim().lowercase()
+    rememberedAccounts.firstOrNull { it.email.lowercase() == clean }?.passwordHash?.takeIf { it != "clarify123" } ?: ""
+  }
+  var passwordInput by remember { mutableStateOf(initialSavedPass) }
   var isPasswordVisible by remember { mutableStateOf(false) }
   var nameInput by remember { mutableStateOf("") }
   var rememberAccountOnDevice by remember { mutableStateOf(true) }
@@ -129,10 +142,8 @@ fun AuthModal(
   var recoveryStep by remember { mutableStateOf(1) } // 1: Request Code, 2: Verify & Set New Password
   var isSendingCode by remember { mutableStateOf(false) }
   var isSubmittingReset by remember { mutableStateOf(false) }
-  var sentRecoveryCode by remember { mutableStateOf<String?>(null) }
   var recoveryMessage by remember { mutableStateOf<String?>(null) }
   var recoveryError by remember { mutableStateOf<String?>(null) }
-  var isCodeCopied by remember { mutableStateOf(false) }
 
   fun validateAndSubmit(provider: String) {
     var trimmedEmail = emailInput.trim()
@@ -339,6 +350,9 @@ fun AuthModal(
                     onClick = {
                       emailInput = acc.email
                       recoveryEmailInput = acc.email
+                      if (!acc.passwordHash.isNullOrBlank() && acc.passwordHash != "clarify123") {
+                        passwordInput = acc.passwordHash
+                      }
                       localError = null
                       onClearError()
                     },
@@ -395,14 +409,14 @@ fun AuthModal(
                 verticalAlignment = Alignment.CenterVertically
               ) {
                 Icon(
-                  imageVector = Icons.Outlined.Lock,
+                  imageVector = Icons.Outlined.WorkspacePremium,
                   contentDescription = null,
                   tint = AntiqueGold,
                   modifier = Modifier.size(16.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                  text = "Archive Owner Account • Strict Authentication",
+                  text = "Archive Owner Account • Log in with your password",
                   style = MaterialTheme.typography.labelSmall.copy(
                     fontWeight = FontWeight.Bold,
                     fontSize = 11.sp,
@@ -466,6 +480,11 @@ fun AuthModal(
                 recoveryEmailInput = it
                 localError = null
                 onClearError()
+                val clean = it.trim().lowercase()
+                val saved = rememberedAccounts.firstOrNull { acc -> acc.email.lowercase() == clean }?.passwordHash
+                if (!saved.isNullOrBlank() && saved != "clarify123" && passwordInput.isBlank()) {
+                  passwordInput = saved
+                }
               },
               placeholder = { Text("username@gmail.com", color = CharcoalTertiary, fontSize = 13.sp) },
               leadingIcon = {
@@ -522,15 +541,39 @@ fun AuthModal(
 
           // Password Input
           Column(modifier = Modifier.fillMaxWidth()) {
-            Text(
-              text = "PASSWORD",
-              style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 9.5.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp
-              ),
-              color = CharcoalText
-            )
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.SpaceBetween,
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              Text(
+                text = "PASSWORD",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 9.5.sp,
+                  fontWeight = FontWeight.Bold,
+                  letterSpacing = 1.sp
+                ),
+                color = CharcoalText
+              )
+
+              if (matchedAccount?.passwordHash?.isNotBlank() == true && matchedAccount.passwordHash != "clarify123" && passwordInput == matchedAccount.passwordHash) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                  Icon(
+                    imageVector = Icons.Outlined.Check,
+                    contentDescription = null,
+                    tint = AntiqueGold,
+                    modifier = Modifier.size(12.dp)
+                  )
+                  Spacer(modifier = Modifier.width(3.dp))
+                  Text(
+                    text = "Saved password loaded",
+                    fontSize = 10.sp,
+                    color = AntiqueGold,
+                    fontWeight = FontWeight.SemiBold
+                  )
+                }
+              }
+            }
 
             Spacer(modifier = Modifier.height(5.dp))
 
@@ -710,7 +753,54 @@ fun AuthModal(
 
           // Sign In with Google
           Surface(
-            onClick = { validateAndSubmit("GOOGLE") },
+            onClick = {
+              if (isGoogleSignInProcessing) return@Surface
+              if (passwordInput.isNotBlank() && emailInput.isNotBlank()) {
+                validateAndSubmit("GOOGLE")
+              } else if (onSignInWithGoogleCredential != null) {
+                coroutineScope.launch {
+                  isGoogleSignInProcessing = true
+                  localError = null
+                  onClearError()
+                  try {
+                    when (val outcome = googleSignInHandler.signInWithGoogle()) {
+                      is GoogleSignInOutcome.Success -> {
+                        val role = if (isOwnerDetected) "OWNER" else "READER"
+                        val effectiveName = outcome.displayName ?: nameInput.trim().ifBlank { null }
+                        onSignInWithGoogleCredential(
+                          outcome.idToken,
+                          outcome.email,
+                          effectiveName,
+                          role,
+                          null
+                        )
+                      }
+                      is GoogleSignInOutcome.FallbackNeeded -> {
+                        if (passwordInput.isNotBlank() && emailInput.isNotBlank()) {
+                          validateAndSubmit("GOOGLE")
+                        } else {
+                          localError = outcome.message.ifBlank { "Please enter your password to sign in" }
+                        }
+                      }
+                      is GoogleSignInOutcome.Canceled -> {
+                        // User dismissed
+                      }
+                      is GoogleSignInOutcome.Error -> {
+                        if (passwordInput.isNotBlank() && emailInput.isNotBlank()) {
+                          validateAndSubmit("GOOGLE")
+                        } else {
+                          localError = outcome.message
+                        }
+                      }
+                    }
+                  } finally {
+                    isGoogleSignInProcessing = false
+                  }
+                }
+              } else {
+                validateAndSubmit("GOOGLE")
+              }
+            },
             shape = RoundedCornerShape(12.dp),
             color = Color.White,
             border = BorderStroke(1.dp, Color(0xFFDADCE0)),
@@ -726,29 +816,46 @@ fun AuthModal(
               verticalAlignment = Alignment.CenterVertically,
               horizontalArrangement = Arrangement.Center
             ) {
-              Box(
-                modifier = Modifier
-                  .size(18.dp)
-                  .clip(CircleShape)
-                  .background(Color(0xFF4285F4)),
-                contentAlignment = Alignment.Center
-              ) {
+              if (isGoogleSignInProcessing) {
+                CircularProgressIndicator(
+                  modifier = Modifier.size(16.dp),
+                  color = Color(0xFF4285F4),
+                  strokeWidth = 2.dp
+                )
+                Spacer(modifier = Modifier.width(10.dp))
                 Text(
-                  text = "G",
-                  color = Color.White,
-                  fontWeight = FontWeight.Bold,
-                  fontSize = 11.sp
+                  text = "Signing in with Google...",
+                  style = MaterialTheme.typography.labelLarge.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 13.sp
+                  ),
+                  color = Color(0xFF3C4043)
+                )
+              } else {
+                Box(
+                  modifier = Modifier
+                    .size(18.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF4285F4)),
+                  contentAlignment = Alignment.Center
+                ) {
+                  Text(
+                    text = "G",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp
+                  )
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                  text = if (matchedAccount != null) "Sign in as ${matchedAccount.displayName}" else "Sign in with Google",
+                  style = MaterialTheme.typography.labelLarge.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 13.sp
+                  ),
+                  color = Color(0xFF3C4043)
                 )
               }
-              Spacer(modifier = Modifier.width(10.dp))
-              Text(
-                text = if (matchedAccount != null) "Sign in as ${matchedAccount.displayName}" else "Sign in with Google",
-                style = MaterialTheme.typography.labelLarge.copy(
-                  fontWeight = FontWeight.SemiBold,
-                  fontSize = 13.sp
-                ),
-                color = Color(0xFF3C4043)
-              )
             }
           }
 
@@ -807,9 +914,9 @@ fun AuthModal(
 
           Text(
             text = if (recoveryStep == 1) {
-              "Enter your Gmail address. We will send a 6-digit verification code to your Gmail account to reset your password."
+              "Enter your registered Gmail address. We will send a 6-digit verification passcode to your Gmail inbox."
             } else {
-              "Enter the 6-digit recovery code sent to your Gmail and set a new password."
+              "Enter the 6-digit verification passcode sent to your Gmail and set a new password."
             },
             style = MaterialTheme.typography.bodySmall.copy(
               fontSize = 12.sp,
@@ -821,7 +928,7 @@ fun AuthModal(
 
           Spacer(modifier = Modifier.height(14.dp))
 
-          // Step 1: Send code to Gmail
+          // Step 1: Request Passcode to Gmail
           if (recoveryStep == 1) {
             Column(modifier = Modifier.fillMaxWidth()) {
               Text(
@@ -883,12 +990,13 @@ fun AuthModal(
 
                 onRequestPasswordResetCode(cleanEmail) { result ->
                   isSendingCode = false
-                  result.onSuccess { code ->
-                    sentRecoveryCode = code
+                  result.onSuccess {
+                    recoveryCodeInput = ""
                     recoveryStep = 2
-                    recoveryMessage = "Verification code generated! Auto-fill below or check Gmail."
+                    recoveryError = null
+                    recoveryMessage = "Verification passcode sent! Please check your Gmail inbox (and Spam folder) for the 6-digit code."
                   }.onFailure { err ->
-                    recoveryError = err.message ?: "Could not issue verification code"
+                    recoveryError = err.message ?: "Could not process password recovery"
                   }
                 }
               },
@@ -903,136 +1011,65 @@ fun AuthModal(
               if (isSendingCode) {
                 CircularProgressIndicator(modifier = Modifier.size(16.dp), color = SoftCreamPaper, strokeWidth = 2.dp)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Validating Gmail...", fontSize = 12.sp, color = SoftCreamPaper)
+                Text("Dispatching Passcode...", fontSize = 12.sp, color = SoftCreamPaper)
               } else {
-                Icon(Icons.Outlined.Lock, contentDescription = null, tint = SoftCreamPaper, modifier = Modifier.size(16.dp))
+                Icon(Icons.Outlined.Mail, contentDescription = null, tint = SoftCreamPaper, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Generate & Send Reset Code", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = SoftCreamPaper)
+                Text("Send Passcode to Gmail", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = SoftCreamPaper)
               }
             }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            TextButton(
+              onClick = {
+                isForgotPasswordMode = false
+                recoveryError = null
+              },
+              modifier = Modifier.testTag("cancel_recovery_button")
+            ) {
+              Text("Back to Sign In", fontSize = 11.5.sp, color = CharcoalSecondary, fontWeight = FontWeight.SemiBold)
+            }
           } else {
-            // Step 2: Enter Code and New Password
-            if (sentRecoveryCode != null) {
-              // Firebase Security Authentication Verification Banner
-              Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = AntiqueGoldLight.copy(alpha = 0.5f),
-                border = BorderStroke(1.2.dp, AntiqueGold),
-                modifier = Modifier.fillMaxWidth()
+            // Step 2: Verification Passcode & New Password
+            // Confirmation notice: Code dispatched to Gmail
+            Surface(
+              shape = RoundedCornerShape(12.dp),
+              color = AntiqueGoldLight.copy(alpha = 0.4f),
+              border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.5f)),
+              modifier = Modifier.fillMaxWidth()
+            ) {
+              Row(
+                modifier = Modifier.padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
               ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                  Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                  ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                      Icon(Icons.Outlined.Lock, contentDescription = null, tint = AntiqueGold, modifier = Modifier.size(17.dp))
-                      Spacer(modifier = Modifier.width(6.dp))
-                      Column {
-                        Text(
-                          text = "VERIFICATION CODE GENERATED",
-                          fontSize = 8.5.sp,
-                          letterSpacing = 1.sp,
-                          fontWeight = FontWeight.Bold,
-                          color = AntiqueGold
-                        )
-                        Text(
-                          text = "$sentRecoveryCode",
-                          fontSize = 18.sp,
-                          fontWeight = FontWeight.ExtraBold,
-                          color = CharcoalText,
-                          letterSpacing = 2.sp
-                        )
-                      }
-                    }
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                      Surface(
-                        onClick = {
-                          val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                          val clip = ClipData.newPlainText("Recovery Code", sentRecoveryCode)
-                          clipboard?.setPrimaryClip(clip)
-                          recoveryCodeInput = sentRecoveryCode ?: ""
-                          isCodeCopied = true
-                          Toast.makeText(context, "Code Auto-Filled!", Toast.LENGTH_SHORT).show()
-                        },
-                        shape = RoundedCornerShape(8.dp),
-                        color = Color.White,
-                        border = BorderStroke(1.dp, AntiqueGold),
-                        modifier = Modifier.padding(2.dp)
-                      ) {
-                        Row(
-                          modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
-                          verticalAlignment = Alignment.CenterVertically
-                        ) {
-                          Icon(
-                            if (isCodeCopied) Icons.Outlined.Check else Icons.Outlined.Key,
-                            contentDescription = "Apply code",
-                            tint = AntiqueGold,
-                            modifier = Modifier.size(12.dp)
-                          )
-                          Spacer(modifier = Modifier.width(4.dp))
-                          Text(
-                            text = if (isCodeCopied) "Applied!" else "Auto-Fill Code",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = AntiqueGold
-                          )
-                        }
-                      }
-
-                      Surface(
-                        onClick = {
-                          try {
-                            val gmailIntent = context.packageManager.getLaunchIntentForPackage("com.google.android.gm")
-                              ?: Intent(Intent.ACTION_MAIN).apply {
-                                addCategory(Intent.CATEGORY_APP_EMAIL)
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                              }
-                            context.startActivity(gmailIntent)
-                          } catch (e: Exception) {
-                            Toast.makeText(context, "Use Auto-Fill Code to reset immediately.", Toast.LENGTH_SHORT).show()
-                          }
-                        },
-                        shape = RoundedCornerShape(8.dp),
-                        color = Color.White,
-                        border = BorderStroke(1.dp, SubtleBorder),
-                        modifier = Modifier.padding(2.dp)
-                      ) {
-                        Row(
-                          modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
-                          verticalAlignment = Alignment.CenterVertically
-                        ) {
-                          Icon(
-                            imageVector = Icons.Outlined.Mail,
-                            contentDescription = "Open Gmail",
-                            tint = CharcoalSecondary,
-                            modifier = Modifier.size(12.dp)
-                          )
-                          Spacer(modifier = Modifier.width(4.dp))
-                          Text(
-                            text = "Open Gmail",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = CharcoalSecondary
-                          )
-                        }
-                      }
-                    }
-                  }
-
-                  Spacer(modifier = Modifier.height(6.dp))
+                Icon(
+                  imageVector = Icons.Outlined.MarkEmailRead,
+                  contentDescription = null,
+                  tint = AntiqueGold,
+                  modifier = Modifier.size(22.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
                   Text(
-                    text = "Verification code ($sentRecoveryCode) has been created. Tap 'Auto-Fill Code' to set your new password instantly, or check your Gmail inbox.",
-                    fontSize = 10.5.sp,
-                    color = CharcoalSecondary,
-                    lineHeight = 14.sp
+                    text = "PASSCODE SENT TO GMAIL",
+                    fontSize = 9.sp,
+                    letterSpacing = 1.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = AntiqueGold
+                  )
+                  Spacer(modifier = Modifier.height(2.dp))
+                  Text(
+                    text = "A 6-digit verification passcode was sent to ${recoveryEmailInput.trim()}. Check your inbox or Spam folder and enter the code below.",
+                    fontSize = 11.5.sp,
+                    color = CharcoalText,
+                    lineHeight = 15.sp
                   )
                 }
               }
-              Spacer(modifier = Modifier.height(12.dp))
             }
+
+            Spacer(modifier = Modifier.height(14.dp))
 
             // 6-digit Code Input
             Column(modifier = Modifier.fillMaxWidth()) {

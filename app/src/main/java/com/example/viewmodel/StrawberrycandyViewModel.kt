@@ -119,7 +119,17 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     viewModelScope.launch {
       repository.syncRemoteNovels()
       repository.syncRemoteAuthorSlots()
+      repository.syncAuthorSlotsFromFirestore()
       repository.checkAndUpgradeProfilesAgainstSlots()
+
+      // Sync active user profile & reading states from Firestore
+      repository.activeUser.collect { user ->
+        if (user != null) {
+          repository.syncUserProfileFromFirestore(user.userId)
+          repository.syncUserReadingStatesFromFirestore(user.userId)
+          repository.listenToUserFirestoreData(user.userId)
+        }
+      }
     }
   }
 
@@ -398,7 +408,12 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
   ): Boolean {
     if (user == null) return false
     if (isOwner(user)) return true
-    if (user.role.equals("TRANSLATOR", ignoreCase = true)) return true
+    val userSlotNum = user.authorSlot
+    if (userSlotNum != null && userSlotNum in 1..10) {
+      val slot = slots.find { it.slotNumber == userSlotNum }
+      if (slot?.isPermissionGranted == true) return true
+      if (slots.isEmpty() && user.role.equals("TRANSLATOR", ignoreCase = true)) return true
+    }
     val matchedSlot = slots.find { slot ->
       slot.isPermissionGranted && StrawberrycandyRepository.isUserMatchedToSlot(user.email, user.displayName, slot)
     }
@@ -411,7 +426,6 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
   ): Boolean {
     if (user == null) return false
     if (isOwner(user)) return true
-    if (user.role == "TRANSLATOR") return true
     return isPermittedTranslator(user, slots)
   }
 
@@ -425,10 +439,10 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     // 1. Archive owner has universal edit access across all novels
     if (isOwner(user)) return true
 
-    // 2. Translators can only edit novels in their own room
-    if (user.role == "TRANSLATOR" || user.authorSlot != null || isPermittedTranslator(user, slots)) {
+    // 2. Translators can only edit novels in their own room if permission is granted
+    if (isPermittedTranslator(user, slots)) {
       val userSlot = user.authorSlot ?: slots.find {
-        it.translatorEmail?.equals(user.email, ignoreCase = true) == true
+        it.isPermissionGranted && StrawberrycandyRepository.isUserMatchedToSlot(user.email, user.displayName, it)
       }?.slotNumber
 
       if (userSlot != null && userSlot > 0 && novel.authorSlot == userSlot) {
@@ -440,21 +454,14 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
 
   fun isTranslatorOrOwner(user: ReaderProfileEntity? = activeUser.value, slots: List<AuthorSlotEntity> = authorSlots.value): Boolean {
     if (user == null) return false
-    if (user.role.equals("OWNER", ignoreCase = true) || isOwnerEmail(user.email)) return true
-    if (user.role.equals("TRANSLATOR", ignoreCase = true)) return true
-    if (isPermittedTranslator(user, slots)) return true
-    return false
+    if (isOwner(user)) return true
+    return isPermittedTranslator(user, slots)
   }
 
   fun canUploadNovel(user: ReaderProfileEntity? = activeUser.value, slots: List<AuthorSlotEntity> = authorSlots.value): Boolean {
     if (user == null) return false
-    if (user.role.equals("READER", ignoreCase = true)) return false
-    if (user.role.equals("OWNER", ignoreCase = true) || isOwnerEmail(user.email)) return true
-    if (user.role.equals("TRANSLATOR", ignoreCase = true)) {
-      if (user.authorSlot != null && user.authorSlot > 0) return true
-      if (isPermittedTranslator(user, slots)) return true
-    }
-    return false
+    if (isOwner(user)) return true
+    return isPermittedTranslator(user, slots)
   }
 
   fun signInWithGoogle(
@@ -482,6 +489,38 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
         _snackbarMessage.value = "Signed in as $roleLabel ($email)"
       } else {
         val error = result.exceptionOrNull()?.message ?: "Sign in failed"
+        _authErrorMessage.value = error
+        _snackbarMessage.value = error
+        onError?.invoke(error)
+      }
+    }
+  }
+
+  fun signInWithGoogleCredential(
+    idToken: String,
+    email: String,
+    displayName: String?,
+    role: String = "READER",
+    authorSlot: Int? = null,
+    onError: ((String) -> Unit)? = null
+  ) {
+    viewModelScope.launch {
+      val result = repository.signInWithGoogleCredential(
+        idToken = idToken,
+        email = email,
+        displayName = displayName,
+        role = role,
+        authorSlot = authorSlot
+      )
+      if (result.isSuccess) {
+        _isAuthDialogOpen.value = false
+        _authErrorMessage.value = null
+        val profile = result.getOrNull()
+        val isOwnerUser = isOwnerEmail(email)
+        val roleLabel = if (isOwnerUser) "Sole Archive Owner" else if (profile?.role == "TRANSLATOR") "Translator" else "Reader"
+        _snackbarMessage.value = "Identified with Google & Firebase Auth as $roleLabel ($email)"
+      } else {
+        val error = result.exceptionOrNull()?.message ?: "Google Sign-In failed"
         _authErrorMessage.value = error
         _snackbarMessage.value = error
         onError?.invoke(error)
@@ -708,54 +747,70 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     originalAuthor: String = "",
     novelStatus: String = "ONGOING",
     releaseFormat: String = "CHAPTER",
+    onResult: ((Boolean, String) -> Unit)? = null,
   ) {
-    val currentUser = activeUser.value
-    if (currentUser == null || !canUploadNovel(currentUser)) {
-      _snackbarMessage.value = "Publishing is restricted to Archive Translators and the Owner."
-      return
-    }
-    val isOwnerUser = isOwner(currentUser)
-    val effectiveSlot = if (isOwnerUser) {
-      authorSlot
-    } else {
-      if (authorSlot == 0) (currentUser.authorSlot ?: 1) else authorSlot
-    }
-    val effectiveAuthor = if (effectiveSlot == 0 && isOwnerUser) {
-      "Strawberrycandy"
-    } else {
-      author.trim().ifBlank { currentUser.displayName.ifBlank { "Translator $effectiveSlot" } }
-    }
-
     viewModelScope.launch {
-      if (!isOwnerUser && (currentUser.authorSlot == null || currentUser.role != "TRANSLATOR")) {
-        repository.grantPermissionByEmail(currentUser.email, effectiveSlot)
-      }
+      try {
+        var currentUser = activeUser.value
+        if (currentUser == null) {
+          currentUser = repository.getActiveUserSync()
+        }
+        val isOwnerUser = if (currentUser != null) isOwner(currentUser) else (authorSlot == 0)
+        val effectiveSlot = if (isOwnerUser) {
+          authorSlot
+        } else {
+          if (authorSlot == 0) (currentUser?.authorSlot ?: 1) else authorSlot
+        }
 
-      val uploadResult = repository.uploadNovel(
-        title = title,
-        subtitle = subtitle,
-        chapterTitle = chapterTitle,
-        excerpt = excerpt,
-        content = content,
-        coverColorHex = coverColorHex,
-        author = effectiveAuthor,
-        authorSlot = effectiveSlot,
-        coverImageUri = coverImageUri,
-        storyImagesJson = storyImagesJson,
-        originalAuthor = originalAuthor,
-        novelStatus = novelStatus,
-        releaseFormat = releaseFormat,
-      )
-      _isUploadDialogOpen.value = false
-      _dismissedAlertNovelId.value = null
-      val authorLabel = if (effectiveSlot == 0 && isOwnerUser) "Strawberrycandy" else "$effectiveAuthor (Translator Room $effectiveSlot)"
+        if (!isOwnerUser) {
+          val hasPermission = isPermittedTranslator(currentUser, authorSlots.value)
+          if (!hasPermission) {
+            val errorMsg = "Permission denied: Translation access must be granted by the Archive Owner (clarifymanga@gmail.com)."
+            _snackbarMessage.value = errorMsg
+            onResult?.invoke(false, errorMsg)
+            return@launch
+          }
+        }
 
-      if (uploadResult.isPublishedToCloud) {
-        _snackbarMessage.value = "✨ Novel '$title' by $authorLabel is now live on the backend server & Cloud Archive!"
-        refreshCloudArchive(silent = true)
-      } else {
-        // Saved locally in SQLite
-        _snackbarMessage.value = "✨ Novel '$title' published to your library! Ready to read offline & queued for cloud sync."
+        val effectiveAuthor = if (effectiveSlot == 0 && isOwnerUser) {
+          "Strawberrycandy"
+        } else {
+          author.trim().ifBlank {
+            currentUser?.displayName?.ifBlank { "Curator $effectiveSlot" } ?: "Curator $effectiveSlot"
+          }
+        }
+
+        val uploadResult = repository.uploadNovel(
+          title = title,
+          subtitle = subtitle,
+          chapterTitle = chapterTitle,
+          excerpt = excerpt,
+          content = content,
+          coverColorHex = coverColorHex,
+          author = effectiveAuthor,
+          authorSlot = effectiveSlot,
+          coverImageUri = coverImageUri,
+          storyImagesJson = storyImagesJson,
+          originalAuthor = originalAuthor,
+          novelStatus = novelStatus,
+          releaseFormat = releaseFormat,
+        )
+        _isUploadDialogOpen.value = false
+        _dismissedAlertNovelId.value = null
+        val authorLabel = if (effectiveSlot == 0 && isOwnerUser) "Strawberrycandy" else "$effectiveAuthor (Room $effectiveSlot)"
+
+        if (uploadResult.isPublishedToCloud) {
+          _snackbarMessage.value = "✨ Novel '$title' by $authorLabel is now live on the backend server & Cloud Archive!"
+          refreshCloudArchive(silent = true)
+        } else {
+          // Saved locally in SQLite & synced
+          _snackbarMessage.value = "✨ Novel '$title' published to your library! Ready to read offline & queued for cloud sync."
+        }
+        onResult?.invoke(true, "Published successfully!")
+      } catch (e: Exception) {
+        val errorMsg = e.message ?: "Failed to publish manuscript."
+        _snackbarMessage.value = "Publish Error: $errorMsg"
+        onResult?.invoke(false, errorMsg)
       }
     }
   }

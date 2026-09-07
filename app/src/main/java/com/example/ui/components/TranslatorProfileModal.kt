@@ -58,6 +58,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -283,31 +285,39 @@ fun TranslatorProfileModal(
 
           // If authorized translator or owner, show quick actions
           if (isOwnerOrTranslator) {
-            if (!slot.isPermissionGranted && isOwner && onToggleSlotPermission != null && slot.slotNumber != 0) {
-              Button(
-                onClick = {
-                  onToggleSlotPermission(slot.slotNumber, true)
-                },
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = AntiqueGold),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                modifier = Modifier.height(34.dp)
+            if (isOwner && onToggleSlotPermission != null && slot.slotNumber != 0) {
+              Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = if (slot.isPermissionGranted) Color(0xFFE8F5E9) else Color(0xFFFFF3E0),
+                border = BorderStroke(1.dp, if (slot.isPermissionGranted) Color(0xFFA5D6A7) else Color(0xFFFFCC80)),
+                modifier = Modifier.padding(end = 6.dp)
               ) {
-                Icon(
-                  imageVector = Icons.Outlined.PersonAdd,
-                  contentDescription = null,
-                  tint = SoftCreamPaper,
-                  modifier = Modifier.size(13.dp)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                  text = "Grant Permission",
-                  style = MaterialTheme.typography.labelSmall.copy(
-                    color = SoftCreamPaper,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
+                Row(
+                  verticalAlignment = Alignment.CenterVertically,
+                  modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                  Text(
+                    text = if (slot.isPermissionGranted) "Permission: ON" else "Permission: OFF",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontSize = 10.sp,
+                      fontWeight = FontWeight.Bold,
+                      color = if (slot.isPermissionGranted) Color(0xFF2E7D32) else Color(0xFFE65100)
+                    )
                   )
-                )
+                  Spacer(modifier = Modifier.width(4.dp))
+                  Switch(
+                    checked = slot.isPermissionGranted,
+                    onCheckedChange = { isChecked ->
+                      onToggleSlotPermission(slot.slotNumber, isChecked)
+                    },
+                    colors = SwitchDefaults.colors(
+                      checkedThumbColor = SoftCreamPaper,
+                      checkedTrackColor = Color(0xFF2E7D32),
+                      uncheckedThumbColor = CharcoalSecondary,
+                      uncheckedTrackColor = SubtleBorder
+                    )
+                  )
+                }
               }
             } else if (slot.isPermissionGranted && onOpenUploadForSlot != null) {
               Button(
@@ -498,7 +508,7 @@ fun TranslatorProfileModal(
                     Spacer(modifier = Modifier.height(3.dp))
 
                     val safePenName = slot.penName.replace(emailRegex, "").trim().ifBlank {
-                      if (slot.slotNumber == 0) "Strawberrycandy" else "Translator ${slot.slotNumber}"
+                      if (slot.slotNumber == 0) "Strawberrycandy" else "Writer's Room #${slot.slotNumber}"
                     }
 
                     Text(
@@ -633,13 +643,13 @@ fun TranslatorProfileModal(
                   }
                 }
 
-                if (!slot.isPermissionGranted && isOwner && onToggleSlotPermission != null && slot.slotNumber != 0) {
+                if (isOwner && onToggleSlotPermission != null && slot.slotNumber != 0) {
                   Spacer(modifier = Modifier.height(14.dp))
                   Surface(
                     shape = RoundedCornerShape(12.dp),
-                    color = AntiqueGold.copy(alpha = 0.08f),
-                    border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.35f)),
-                    modifier = Modifier.fillMaxWidth()
+                    color = if (slot.isPermissionGranted) Color(0xFFE8F5E9) else Color(0xFFFFF3E0),
+                    border = BorderStroke(1.dp, if (slot.isPermissionGranted) Color(0xFFA5D6A7) else Color(0xFFFFCC80)),
+                    modifier = Modifier.fillMaxWidth().testTag("translator_profile_permission_banner")
                   ) {
                     Row(
                       modifier = Modifier
@@ -650,16 +660,19 @@ fun TranslatorProfileModal(
                     ) {
                       Column(modifier = Modifier.weight(1f)) {
                         Text(
-                          text = "FUTURE TRANSLATOR SLOT",
+                          text = if (slot.isPermissionGranted) "TRANSLATOR PERMISSION ACTIVE" else "TRANSLATOR PERMISSION REVOKED",
                           style = MaterialTheme.typography.labelSmall.copy(
                             fontWeight = FontWeight.Bold,
-                            color = AntiqueGold,
+                            color = if (slot.isPermissionGranted) Color(0xFF2E7D32) else Color(0xFFE65100),
                             fontSize = 10.sp,
                             letterSpacing = 1.sp
                           )
                         )
                         Text(
-                          text = "Grant permission to ${slot.translatorEmail ?: "this translator"} to activate Seat ${slot.slotNumber} and make them an active curator.",
+                          text = if (slot.isPermissionGranted)
+                            "Seat #${slot.slotNumber} is active. This translator can upload and manage manuscripts in the archive."
+                          else
+                            "Grant permission to ${slot.translatorEmail ?: "this translator"} to activate Seat #${slot.slotNumber} and allow them to publish.",
                           style = MaterialTheme.typography.bodySmall.copy(
                             fontSize = 11.sp,
                             lineHeight = 15.sp,
@@ -668,20 +681,28 @@ fun TranslatorProfileModal(
                         )
                       }
                       Spacer(modifier = Modifier.width(8.dp))
-                      Button(
-                        onClick = { onToggleSlotPermission(slot.slotNumber, true) },
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = CharcoalText),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                        modifier = Modifier.height(32.dp)
-                      ) {
+                      Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                          text = "Grant Permission",
+                          text = if (slot.isPermissionGranted) "ON" else "OFF",
                           style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 10.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = SoftCreamPaper
-                          )
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 11.sp,
+                            color = if (slot.isPermissionGranted) Color(0xFF2E7D32) else CharcoalTertiary
+                          ),
+                          modifier = Modifier.padding(end = 4.dp)
+                        )
+                        Switch(
+                          checked = slot.isPermissionGranted,
+                          onCheckedChange = { isChecked ->
+                            onToggleSlotPermission(slot.slotNumber, isChecked)
+                          },
+                          colors = SwitchDefaults.colors(
+                            checkedThumbColor = SoftCreamPaper,
+                            checkedTrackColor = Color(0xFF2E7D32),
+                            uncheckedThumbColor = CharcoalSecondary,
+                            uncheckedTrackColor = SubtleBorder
+                          ),
+                          modifier = Modifier.testTag("profile_modal_slot_switch")
                         )
                       }
                     }

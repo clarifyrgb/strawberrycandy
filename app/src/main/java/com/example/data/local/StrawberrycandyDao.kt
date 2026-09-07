@@ -60,8 +60,11 @@ interface StrawberrycandyDao {
   @Query("UPDATE author_slots SET bio = 'Contributing Translator at Strawberrycandy Archive' WHERE bio LIKE '%@%'")
   suspend fun sanitizeSlotBios()
 
-  @Query("UPDATE author_slots SET penName = 'Translator ' || slotNumber WHERE penName LIKE '%@%'")
+  @Query("UPDATE author_slots SET penName = '' WHERE slotNumber > 0 AND (penName LIKE '%@%' OR penName LIKE 'Translator %' OR penName LIKE 'Author %')")
   suspend fun sanitizeSlotPenNames()
+
+  @Query("UPDATE author_slots SET authorName = '' WHERE slotNumber > 0 AND (authorName LIKE '%@%' OR authorName LIKE 'Translator %' OR authorName LIKE 'Author %')")
+  suspend fun sanitizeSlotAuthorNames()
 
   @Query("UPDATE chapter_comments SET readerName = substr(readerName, 1, instr(readerName, '@') - 1) WHERE readerName LIKE '%@%'")
   suspend fun sanitizeCommentNames()
@@ -75,6 +78,9 @@ interface StrawberrycandyDao {
   // Reader Profiles (Google / Apple)
   @Query("SELECT * FROM reader_profiles WHERE isLoggedIn = 1 ORDER BY lastLoginTimestamp DESC LIMIT 1")
   fun getActiveReaderProfile(): Flow<ReaderProfileEntity?>
+
+  @Query("SELECT * FROM reader_profiles WHERE isLoggedIn = 1 ORDER BY lastLoginTimestamp DESC LIMIT 1")
+  suspend fun getActiveReaderProfileSync(): ReaderProfileEntity?
 
   @Query("SELECT * FROM reader_profiles ORDER BY lastLoginTimestamp DESC")
   fun getAllRememberedAccounts(): Flow<List<ReaderProfileEntity>>

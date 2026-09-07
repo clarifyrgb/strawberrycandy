@@ -125,6 +125,7 @@ fun OwnerUploadDialog(
     originalAuthor: String,
     novelStatus: String,
     releaseFormat: String,
+    onDone: ((success: Boolean, message: String) -> Unit)?,
   ) -> Unit,
 ) {
   val defaultSlot = if (isOwner) initialSlot else if (initialSlot > 0) initialSlot else (activeUser?.authorSlot ?: 1)
@@ -143,30 +144,26 @@ fun OwnerUploadDialog(
       if (selectedSlot == 0 && isOwner) {
         "Strawberrycandy"
       } else {
-        currentSlotEntity?.penName?.takeIf { it.isNotBlank() && !it.startsWith("Author ", ignoreCase = true) }
-          ?: activeUser?.displayName?.takeIf { it.isNotBlank() }
-          ?: "Translator $selectedSlot"
+        currentSlotEntity?.penName?.takeIf {
+          it.isNotBlank() && !it.startsWith("Author ", ignoreCase = true) && !it.startsWith("Translator ", ignoreCase = true)
+        } ?: ""
       }
     )
   }
   var customBio by remember(selectedSlot, currentSlotEntity) {
-    mutableStateOf(currentSlotEntity?.bio ?: "Contributing Translator")
+    mutableStateOf(currentSlotEntity?.bio?.takeIf { !it.startsWith("Contributing Translator") } ?: "")
   }
 
   var title by remember { mutableStateOf("") }
   var originalAuthor by remember { mutableStateOf("") }
   var subtitle by remember { mutableStateOf("") }
-  var chapterTitle by remember { mutableStateOf("Chapter I • Dawn on the Canal") }
+  var chapterTitle by remember { mutableStateOf("") }
   var excerpt by remember { mutableStateOf("") }
   var coverImageUri by remember { mutableStateOf<String?>(null) }
-  var content by remember {
-    mutableStateOf(
-      "The morning air smelled of wet limestone and salt-mist drifting from the open harbor. In the dim silence before the market opened, she walked along the water's edge, counting the shuttered windows that reflected the pale rose light of dawn.\n\n" +
-      "Every city has two architectures: the one made of stone and mortar, designed to resist time, and the invisible one built from memory, grief, and quiet anticipation. For years, she had believed her presence was temporary, a leaf caught on the current. But standing here, watching the swans cut through the slate-green water, she understood that some places claim you before you ever learn their name."
-    )
-  }
+  var content by remember { mutableStateOf("") }
   var selectedColorHex by remember { mutableLongStateOf(0xFF5C2D3B) }
   var errorText by remember { mutableStateOf<String?>(null) }
+  var isPublishing by remember { mutableStateOf(false) }
   val context = LocalContext.current
 
   val photoPickerLauncher = rememberLauncherForActivityResult(
@@ -521,7 +518,7 @@ fun OwnerUploadDialog(
             if (selectedSlot in 1..10) {
               Spacer(modifier = Modifier.height(4.dp))
               Text(
-                text = "Translator Room $selectedSlot • Published under pen name '$customPenName' directly to Cloud Archive.",
+                text = if (customPenName.isNotBlank()) "Translator Room $selectedSlot • Pen name: '$customPenName'" else "Translator Room $selectedSlot • No pen name set yet",
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                 color = CharcoalSecondary
               )
@@ -1428,10 +1425,16 @@ fun OwnerUploadDialog(
         }
 
         val emailRegex = Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}")
-        val cleanCustomPenName = customPenName.replace(emailRegex, "").trim().ifBlank {
-          activeUser?.displayName?.takeIf { it.isNotBlank() } ?: "Translator $selectedSlot"
+        val cleanCustomPenName = customPenName.replace(emailRegex, "").trim().let {
+          if (it.startsWith("Translator ", ignoreCase = true) || it.startsWith("Author ", ignoreCase = true)) "" else it
         }
-        val authorToCredit = if (selectedSlot == 0 && isOwner) "Strawberrycandy" else cleanCustomPenName
+        val authorToCredit = if (selectedSlot == 0 && isOwner) {
+          "Strawberrycandy"
+        } else {
+          cleanCustomPenName.ifBlank {
+            activeUser?.displayName?.takeIf { it.isNotBlank() && !it.startsWith("Translator ", ignoreCase = true) } ?: ""
+          }
+        }
         val cleanOriginalAuthor = originalAuthor.replace(emailRegex, "").trim().ifEmpty { authorToCredit }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -1469,6 +1472,10 @@ fun OwnerUploadDialog(
         // Publish Button
         Button(
           onClick = {
+            if (selectedSlot > 0 && authorToCredit.isBlank()) {
+              errorText = "Please set your translator pen name before publishing."
+              return@Button
+            }
             if (title.isBlank()) {
               errorText = "Please enter a novel title before publishing."
               return@Button
@@ -1478,6 +1485,7 @@ fun OwnerUploadDialog(
               return@Button
             }
             errorText = null
+            isPublishing = true
             onPublishNovel(
               title.trim(),
               subtitle.trim(),
@@ -1491,8 +1499,14 @@ fun OwnerUploadDialog(
               cleanOriginalAuthor,
               if (isFinishedNovel) "FINISHED" else "ONGOING",
               if (isPerVolumeRelease) "VOLUME" else "CHAPTER"
-            )
+            ) { success, message ->
+              isPublishing = false
+              if (!success) {
+                errorText = message
+              }
+            }
           },
+          enabled = !isPublishing,
           shape = RoundedCornerShape(16.dp),
           colors = ButtonDefaults.buttonColors(containerColor = CharcoalText),
           modifier = Modifier
@@ -1500,22 +1514,40 @@ fun OwnerUploadDialog(
             .height(52.dp)
             .testTag("publish_novel_button")
         ) {
-          Icon(
-            imageVector = Icons.Outlined.Upload,
-            contentDescription = null,
-            tint = SoftCreamPaper,
-            modifier = Modifier.size(18.dp)
-          )
-          Spacer(modifier = Modifier.width(8.dp))
-          Text(
-            text = "Publish Manuscript",
-            style = MaterialTheme.typography.labelLarge.copy(
-              letterSpacing = 0.6.sp,
-              fontWeight = FontWeight.Bold,
-              fontSize = 14.sp
-            ),
-            color = SoftCreamPaper
-          )
+          if (isPublishing) {
+            CircularProgressIndicator(
+              modifier = Modifier.size(18.dp),
+              color = SoftCreamPaper,
+              strokeWidth = 2.dp
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+              text = "Publishing Manuscript...",
+              style = MaterialTheme.typography.labelLarge.copy(
+                letterSpacing = 0.6.sp,
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp
+              ),
+              color = SoftCreamPaper
+            )
+          } else {
+            Icon(
+              imageVector = Icons.Outlined.Upload,
+              contentDescription = null,
+              tint = SoftCreamPaper,
+              modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+              text = "Publish Manuscript",
+              style = MaterialTheme.typography.labelLarge.copy(
+                letterSpacing = 0.6.sp,
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp
+              ),
+              color = SoftCreamPaper
+            )
+          }
         }
       }
     }

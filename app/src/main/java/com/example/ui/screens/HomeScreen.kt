@@ -179,13 +179,13 @@ fun HomeScreen(
     (1..10).map { slotNum ->
       uiState.authorSlots.find { it.slotNumber == slotNum } ?: AuthorSlotEntity(
         slotNumber = slotNum,
-        authorName = "Translator $slotNum",
-        penName = "Translator $slotNum",
-        bio = "Contributing translator at Strawberrycandy Archive",
+        authorName = "",
+        penName = "",
+        bio = "",
         avatarColorHex = 0xFF353C48,
         accessCode = "AUTH-ROOM-$slotNum",
         isClaimed = false,
-        isPermissionGranted = slotNum <= 4
+        isPermissionGranted = false
       )
     }
   }
@@ -225,17 +225,20 @@ fun HomeScreen(
         onOpenProfile = { viewModel.openProfileDialog() },
         onOpenAbout = { isAboutModalOpen = true },
         onOpenAuthorRooms = {
-          if (activeUser != null) {
-            isAuthorRoomsModalOpen = true
-          }
+          isAuthorRoomsModalOpen = true
         },
         onOpenUpload = {
-          if (activeUser == null) {
-            viewModel.openAuthDialog()
-            viewModel.showSnackbar("Please sign in to publish novels directly to the Cloud Archive")
-          } else {
-            selectedUploadSlot = if (isSoleOwner) 0 else (activeUser.authorSlot ?: 1)
+          if (isSoleOwner) {
+            selectedUploadSlot = 0
             viewModel.openUploadDialog()
+          } else if (canUploadNovel && activeUser != null) {
+            selectedUploadSlot = activeUser.authorSlot ?: 1
+            viewModel.openUploadDialog()
+          } else if (activeUser == null) {
+            viewModel.openAuthDialog()
+            viewModel.showSnackbar("Please sign in to access the archive")
+          } else {
+            viewModel.showSnackbar("Publishing requires translator permission granted by the Archive Owner")
           }
         },
         activeTranslatorsCount = activeTranslators.size
@@ -575,26 +578,6 @@ fun HomeScreen(
               .fillMaxWidth()
               .padding(horizontal = 24.dp, vertical = 12.dp)
           )
-
-          // 5.2. Curated Cover Gallery Showcase
-          CuratedCoverShowcase(
-            novels = novels,
-            selectedNovelId = focusedNovel.id,
-            canEditSpecificNovel = { nov -> viewModel.canEditSpecificNovel(nov, activeUser, uiState.authorSlots) },
-            onSelectNovel = { novel ->
-              val idx = novels.indexOfFirst { it.id == novel.id }
-              if (idx >= 0) selectedIndex = idx
-              onSelectNovel(novel)
-            },
-            onEditNovel = { novel ->
-              val idx = novels.indexOfFirst { it.id == novel.id }
-              if (idx >= 0) selectedIndex = idx
-              novelToEdit = novel
-            },
-            modifier = Modifier
-              .fillMaxWidth()
-              .padding(horizontal = 24.dp, vertical = 10.dp)
-          )
         }
       } else {
         // Empty state for filters
@@ -864,7 +847,16 @@ fun HomeScreen(
           viewModel.resetPasswordWithCode(email, code, newPassword, onResult)
         },
         externalErrorMessage = uiState.authErrorMessage,
-        onClearError = { viewModel.clearAuthError() }
+        onClearError = { viewModel.clearAuthError() },
+        onSignInWithGoogleCredential = { idToken, email, name, role, authorSlot ->
+          viewModel.signInWithGoogleCredential(
+            idToken = idToken,
+            email = email,
+            displayName = name,
+            role = role,
+            authorSlot = authorSlot
+          )
+        }
       )
     }
 
@@ -925,7 +917,7 @@ fun HomeScreen(
     }
 
     // Author Rooms / Translator Collective Archive Modal (5 Curators)
-    if (isAuthorRoomsModalOpen && activeUser != null) {
+    if (isAuthorRoomsModalOpen) {
       AuthorRoomsModal(
         authorSlots = uiState.authorSlots,
         novels = allNovelsList,
@@ -1020,7 +1012,7 @@ fun HomeScreen(
         },
         title = {
           Text(
-            text = "Grant Permission to ${slot.penName}?",
+            text = "Grant Permission to ${slot.penName.ifBlank { "Writer's Room #${slot.slotNumber}" }}?",
             style = MaterialTheme.typography.titleMedium.copy(
               fontFamily = FontFamily.Serif,
               fontWeight = FontWeight.Bold
@@ -1130,7 +1122,7 @@ fun HomeScreen(
         onUpdateAuthorSlot = { slot, name, penName, bio ->
           viewModel.updateAuthorSlot(slot, name, penName, bio)
         },
-        onPublishNovel = { title, subtitle, chapterTitle, excerpt, content, coverColor, author, authorSlot, coverImageUri, originalAuthor, novelStatus, releaseFormat ->
+        onPublishNovel = { title, subtitle, chapterTitle, excerpt, content, coverColor, author, authorSlot, coverImageUri, originalAuthor, novelStatus, releaseFormat, onDone ->
           viewModel.uploadNovel(
             title = title,
             subtitle = subtitle,
@@ -1143,7 +1135,8 @@ fun HomeScreen(
             coverImageUri = coverImageUri,
             originalAuthor = originalAuthor,
             novelStatus = novelStatus,
-            releaseFormat = releaseFormat
+            releaseFormat = releaseFormat,
+            onResult = onDone
           )
         }
       )
@@ -1215,72 +1208,190 @@ private fun TopUtilityBar(
   onOpenUpload: () -> Unit,
   activeTranslatorsCount: Int = 4,
 ) {
-  Column(
+  Row(
     modifier = Modifier
       .fillMaxWidth()
-      .padding(horizontal = 16.dp, vertical = 6.dp)
+      .padding(horizontal = 16.dp, vertical = 8.dp),
+    horizontalArrangement = Arrangement.SpaceBetween,
+    verticalAlignment = Alignment.CenterVertically
   ) {
-    // Primary Header Row: Brand Title on Left, Profile + Sign Out on Right
+    // Left: Strawberrycandy Novel Archive Logo Lockup
     Row(
-      modifier = Modifier.fillMaxWidth(),
-      horizontalArrangement = Arrangement.SpaceBetween,
-      verticalAlignment = Alignment.CenterVertically
+      verticalAlignment = Alignment.CenterVertically,
+      modifier = Modifier
+        .weight(1f, fill = false)
+        .testTag("app_brand_logo_lockup")
     ) {
-      // Left: Strawberrycandy Novel Archive Logo Lockup
-      Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-          .weight(1f, fill = false)
-          .testTag("app_brand_logo_lockup")
+      Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = SoftCreamPaper,
+        border = BorderStroke(1.2.dp, AntiqueGold.copy(alpha = 0.75f)),
+        shadowElevation = 2.dp,
+        modifier = Modifier.size(36.dp)
       ) {
-        Surface(
-          shape = RoundedCornerShape(10.dp),
-          color = SoftCreamPaper,
-          border = BorderStroke(1.2.dp, AntiqueGold.copy(alpha = 0.75f)),
-          shadowElevation = 2.dp,
-          modifier = Modifier.size(36.dp)
-        ) {
-          Image(
-            painter = painterResource(id = R.drawable.img_strawberrycandy_launcher),
-            contentDescription = "Strawberrycandy Logo",
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize()
-          )
-        }
-
-        Spacer(modifier = Modifier.width(8.dp))
-
-        Column {
-          Text(
-            text = "Strawberrycandy",
-            style = MaterialTheme.typography.titleMedium.copy(
-              fontFamily = FontFamily.Serif,
-              fontWeight = FontWeight.ExtraBold,
-              fontSize = 16.sp,
-              letterSpacing = 0.2.sp
-            ),
-            color = CharcoalText,
-            maxLines = 1,
-            modifier = Modifier.testTag("app_brand_title")
-          )
-          Text(
-            text = "NOVEL ARCHIVE",
-            style = MaterialTheme.typography.labelSmall.copy(
-              letterSpacing = 1.4.sp,
-              fontSize = 8.5.sp,
-              fontWeight = FontWeight.Bold
-            ),
-            color = AntiqueGold
-          )
-        }
+        Image(
+          painter = painterResource(id = R.drawable.img_strawberrycandy_launcher),
+          contentDescription = "Strawberrycandy Logo",
+          contentScale = ContentScale.Crop,
+          modifier = Modifier.fillMaxSize()
+        )
       }
 
-      // Right: About + User Profile + Sign Out (or Sign In)
-      Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-      ) {
-        // About App & Updates Pill
+      Spacer(modifier = Modifier.width(8.dp))
+
+      Column {
+        Text(
+          text = "Strawberrycandy",
+          style = MaterialTheme.typography.titleMedium.copy(
+            fontFamily = FontFamily.Serif,
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = 16.sp,
+            letterSpacing = 0.2.sp
+          ),
+          color = CharcoalText,
+          maxLines = 1,
+          modifier = Modifier.testTag("app_brand_title")
+        )
+        Text(
+          text = "NOVEL ARCHIVE",
+          style = MaterialTheme.typography.labelSmall.copy(
+            letterSpacing = 1.4.sp,
+            fontSize = 8.5.sp,
+            fontWeight = FontWeight.Bold
+          ),
+          color = AntiqueGold
+        )
+      }
+    }
+
+    // Right: Action Buttons + User Profile
+    Row(
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+      if (activeUser != null) {
+        // Writer's Rooms button for Owner & Translators
+        if (isSoleOwner) {
+          Surface(
+            onClick = onOpenAuthorRooms,
+            shape = RoundedCornerShape(14.dp),
+            color = AntiqueGoldLight.copy(alpha = 0.9f),
+            border = BorderStroke(1.dp, AntiqueGold),
+            modifier = Modifier.testTag("top_utility_author_rooms_button")
+          ) {
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+            ) {
+              Icon(
+                imageVector = Icons.Outlined.MeetingRoom,
+                contentDescription = "Writer's Rooms",
+                tint = AntiqueGold,
+                modifier = Modifier.size(14.dp)
+              )
+              Spacer(modifier = Modifier.width(4.dp))
+              Text(
+                text = "Rooms",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontWeight = FontWeight.Bold,
+                  fontSize = 11.sp
+                ),
+                color = CharcoalText
+              )
+            }
+          }
+        } else if (canUpload) {
+          Surface(
+            onClick = onOpenUpload,
+            shape = RoundedCornerShape(14.dp),
+            color = AntiqueGoldLight.copy(alpha = 0.9f),
+            border = BorderStroke(1.dp, AntiqueGold),
+            modifier = Modifier.testTag("owner_upload_button")
+          ) {
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+            ) {
+              Icon(
+                imageVector = Icons.Outlined.Upload,
+                contentDescription = "Publish Novel",
+                tint = AntiqueGold,
+                modifier = Modifier.size(14.dp)
+              )
+              Spacer(modifier = Modifier.width(4.dp))
+              Text(
+                text = "Publish",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontWeight = FontWeight.Bold,
+                  fontSize = 11.sp
+                ),
+                color = CharcoalText
+              )
+            }
+          }
+        }
+
+        // Profile Pill (Tapping opens Profile modal with reading history, account stats, pen name, and Sign Out)
+        Surface(
+          onClick = onOpenProfile,
+          shape = RoundedCornerShape(16.dp),
+          color = SoftCreamPaper,
+          border = BorderStroke(1.dp, if (isSoleOwner) AntiqueGold.copy(alpha = 0.7f) else SubtleBorder),
+          modifier = Modifier.testTag("reader_profile_pill")
+        ) {
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+          ) {
+            Box(
+              modifier = Modifier
+                .size(18.dp)
+                .clip(CircleShape)
+                .background(if (activeUser.provider == "GOOGLE") Color(0xFF4285F4) else Color(0xFF1E1D1B)),
+              contentAlignment = Alignment.Center
+            ) {
+              Text(
+                text = if (activeUser.provider == "GOOGLE") "G" else "",
+                color = Color.White,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold
+              )
+            }
+            Spacer(modifier = Modifier.width(5.dp))
+            val safeDisplayName = activeUser.displayName
+              .replace(Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"), "")
+              .substringBefore("@")
+              .trim()
+              .ifBlank { if (activeUser.role == "TRANSLATOR") "Translator" else "Reader" }
+            Text(
+              text = safeDisplayName.take(10),
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 10.5.sp,
+                fontWeight = FontWeight.Medium
+              ),
+              color = CharcoalText
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Surface(
+              shape = RoundedCornerShape(6.dp),
+              color = AntiqueGold.copy(alpha = 0.15f),
+              border = BorderStroke(0.5.dp, AntiqueGold.copy(alpha = 0.5f)),
+              modifier = Modifier.testTag("user_points_indicator")
+            ) {
+              Text(
+                text = "${activeUser.penNamePoints}pt",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 8.5.sp,
+                  fontWeight = FontWeight.Bold
+                ),
+                color = AntiqueGold,
+                modifier = Modifier.padding(horizontal = 3.5.dp, vertical = 1.dp)
+              )
+            }
+          }
+        }
+      } else {
+        // Guest mode: About + Sign In
         Surface(
           onClick = onOpenAbout,
           shape = RoundedCornerShape(16.dp),
@@ -1290,11 +1401,11 @@ private fun TopUtilityBar(
         ) {
           Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
           ) {
             Icon(
               imageVector = Icons.Outlined.Info,
-              contentDescription = "About Strawberrycandy",
+              contentDescription = "About",
               tint = AntiqueGold,
               modifier = Modifier.size(13.dp)
             )
@@ -1303,170 +1414,38 @@ private fun TopUtilityBar(
               text = "About",
               style = MaterialTheme.typography.labelSmall.copy(
                 fontWeight = FontWeight.Bold,
-                fontSize = 9.5.sp,
+                fontSize = 10.sp,
                 color = CharcoalText
               )
             )
           }
         }
 
-        if (activeUser != null) {
-          // Profile Pill
-          Surface(
-            onClick = onOpenProfile,
-            shape = RoundedCornerShape(16.dp),
-            color = SoftCreamPaper,
-            border = BorderStroke(1.dp, if (isSoleOwner) AntiqueGold.copy(alpha = 0.6f) else SubtleBorder),
-            modifier = Modifier.testTag("reader_profile_pill")
-          ) {
-            Row(
-              verticalAlignment = Alignment.CenterVertically,
-              modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
-            ) {
-              Box(
-                modifier = Modifier
-                  .size(18.dp)
-                  .clip(CircleShape)
-                  .background(if (activeUser.provider == "GOOGLE") Color(0xFF4285F4) else Color(0xFF1E1D1B)),
-                contentAlignment = Alignment.Center
-              ) {
-                Text(
-                  text = if (activeUser.provider == "GOOGLE") "G" else "",
-                  color = Color.White,
-                  fontSize = 9.sp,
-                  fontWeight = FontWeight.Bold
-                )
-              }
-              Spacer(modifier = Modifier.width(4.dp))
-              val safeDisplayName = activeUser.displayName
-                .replace(Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"), "")
-                .substringBefore("@")
-                .trim()
-                .ifBlank { if (activeUser.role == "TRANSLATOR") "Translator" else "Reader" }
-              Text(
-                text = safeDisplayName.take(10),
-                style = MaterialTheme.typography.labelSmall.copy(
-                  fontSize = 10.sp,
-                  fontWeight = FontWeight.Medium
-                ),
-                color = CharcoalText
-              )
-              Spacer(modifier = Modifier.width(4.dp))
-              Surface(
-                shape = RoundedCornerShape(6.dp),
-                color = AntiqueGold.copy(alpha = 0.15f),
-                border = BorderStroke(0.5.dp, AntiqueGold.copy(alpha = 0.5f)),
-                modifier = Modifier.testTag("user_points_indicator")
-              ) {
-                Text(
-                  text = "${activeUser.penNamePoints}pt",
-                  style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 8.sp,
-                    fontWeight = FontWeight.Bold
-                  ),
-                  color = AntiqueGold,
-                  modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
-                )
-              }
-            }
-          }
-
-          // Direct, Prominent Sign Out Button (Always visible!)
-          Surface(
-            onClick = onSignOut,
-            shape = RoundedCornerShape(16.dp),
-            color = Color(0xFFFDEDEC),
-            border = BorderStroke(1.dp, Color(0xFFEF9A9A)),
-            modifier = Modifier.testTag("top_utility_sign_out_button")
-          ) {
-            Row(
-              verticalAlignment = Alignment.CenterVertically,
-              modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
-            ) {
-              Icon(
-                imageVector = Icons.Outlined.Logout,
-                contentDescription = "Sign Out",
-                tint = Color(0xFFC62828),
-                modifier = Modifier.size(13.dp)
-              )
-              Spacer(modifier = Modifier.width(3.dp))
-              Text(
-                text = "Sign Out",
-                style = MaterialTheme.typography.labelSmall.copy(
-                  fontWeight = FontWeight.Bold,
-                  fontSize = 9.5.sp,
-                  color = Color(0xFFC62828)
-                )
-              )
-            }
-          }
-        } else {
-          // Direct Sign In Button when signed out
-          Surface(
-            onClick = onOpenAuth,
-            shape = RoundedCornerShape(16.dp),
-            color = AntiqueGold,
-            border = BorderStroke(1.dp, AntiqueGold),
-            modifier = Modifier.testTag("top_utility_sign_in_button")
-          ) {
-            Row(
-              verticalAlignment = Alignment.CenterVertically,
-              modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-            ) {
-              Icon(
-                imageVector = Icons.Outlined.Person,
-                contentDescription = "Sign In",
-                tint = Color.White,
-                modifier = Modifier.size(13.dp)
-              )
-              Spacer(modifier = Modifier.width(4.dp))
-              Text(
-                text = "Sign In",
-                style = MaterialTheme.typography.labelSmall.copy(
-                  fontWeight = FontWeight.Bold,
-                  fontSize = 10.sp,
-                  color = Color.White
-                )
-              )
-            }
-          }
-        }
-      }
-    }
-
-    // Secondary Row: Direct Publish Novel action (Clean & Minimized for Translators & Owner)
-    if (activeUser != null && canUpload) {
-      Spacer(modifier = Modifier.height(6.dp))
-      Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.End,
-        verticalAlignment = Alignment.CenterVertically
-      ) {
         Surface(
-          onClick = onOpenUpload,
-          shape = RoundedCornerShape(14.dp),
-          color = AntiqueGoldLight.copy(alpha = 0.85f),
-          border = BorderStroke(1.2.dp, AntiqueGold),
-          modifier = Modifier.testTag("owner_upload_button")
+          onClick = onOpenAuth,
+          shape = RoundedCornerShape(16.dp),
+          color = AntiqueGold,
+          border = BorderStroke(1.dp, AntiqueGold),
+          modifier = Modifier.testTag("top_utility_sign_in_button")
         ) {
           Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
           ) {
             Icon(
-              imageVector = Icons.Outlined.Upload,
-              contentDescription = "Publish Novel",
-              tint = AntiqueGold,
-              modifier = Modifier.size(15.dp)
+              imageVector = Icons.Outlined.Person,
+              contentDescription = "Sign In",
+              tint = Color.White,
+              modifier = Modifier.size(13.dp)
             )
-            Spacer(modifier = Modifier.width(5.dp))
+            Spacer(modifier = Modifier.width(4.dp))
             Text(
-              text = "✍️ Publish Novel",
+              text = "Sign In",
               style = MaterialTheme.typography.labelSmall.copy(
                 fontWeight = FontWeight.Bold,
-                fontSize = 11.sp
-              ),
-              color = CharcoalText
+                fontSize = 10.5.sp,
+                color = Color.White
+              )
             )
           }
         }
@@ -1816,7 +1795,7 @@ private fun HorizontalNovelCard(
             val authorLabel = when {
               cleanOriginalAuthor.isNotBlank() -> cleanOriginalAuthor
               cleanAuthor.isNotBlank() -> cleanAuthor
-              novel.authorSlot > 0 -> "Translator ${novel.authorSlot}"
+              novel.authorSlot > 0 -> "Room ${novel.authorSlot}"
               else -> "Strawberrycandy"
             }
             val headerText = if (novel.authorSlot > 0) {
@@ -2050,7 +2029,7 @@ private fun HorizontalNovelCard(
         append("By ")
         append(cleanOriginalAuthor)
       } else if (novel.authorSlot > 0) {
-        val penName = cleanAuthor.ifBlank { "Translator ${novel.authorSlot}" }
+        val penName = cleanAuthor.ifBlank { "Room ${novel.authorSlot}" }
         append(penName)
       } else {
         append("Strawberrycandy")

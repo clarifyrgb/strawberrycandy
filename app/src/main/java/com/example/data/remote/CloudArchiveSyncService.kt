@@ -982,9 +982,11 @@ class CloudArchiveSyncService(private val context: Context) {
 
   fun jsonToAuthorSlot(obj: JSONObject): AuthorSlotEntity {
     val slotNumber = obj.optInt("slotNumber", 1)
-    val authorName = obj.optString("authorName", "Translator $slotNumber")
-    val penName = obj.optString("penName", "Translator $slotNumber")
-    val bio = obj.optString("bio", "Contributing Translator at Strawberrycandy Archive")
+    val rawAuthor = obj.optString("authorName", "")
+    val authorName = if (rawAuthor.startsWith("Translator ", ignoreCase = true) || rawAuthor.startsWith("Author ", ignoreCase = true)) "" else rawAuthor
+    val rawPen = obj.optString("penName", "")
+    val penName = if (rawPen.startsWith("Translator ", ignoreCase = true) || rawPen.startsWith("Author ", ignoreCase = true)) "" else rawPen
+    val bio = obj.optString("bio", "")
     val coverImageUri = obj.optString("coverImageUri").takeIf { it.isNotBlank() && it != "null" }
     val translatorEmail = obj.optString("translatorEmail").takeIf { it.isNotBlank() && it != "null" }
     val accessCode = obj.optString("accessCode", "AUTH-ROOM-$slotNumber")
