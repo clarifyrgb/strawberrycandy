@@ -165,6 +165,10 @@ fun AuthModal(
       localError = "Please enter your password."
       return
     }
+    if (passwordInput.trim().length < 4) {
+      localError = "Password must be at least 4 characters."
+      return
+    }
 
     localError = null
     onClearError()
@@ -391,14 +395,14 @@ fun AuthModal(
                 verticalAlignment = Alignment.CenterVertically
               ) {
                 Icon(
-                  imageVector = Icons.Outlined.WorkspacePremium,
+                  imageVector = Icons.Outlined.Lock,
                   contentDescription = null,
                   tint = AntiqueGold,
                   modifier = Modifier.size(16.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                  text = "Archive Owner Account (Clarify)",
+                  text = "Archive Owner Account • Strict Authentication",
                   style = MaterialTheme.typography.labelSmall.copy(
                     fontWeight = FontWeight.Bold,
                     fontSize = 11.sp,
@@ -882,7 +886,7 @@ fun AuthModal(
                   result.onSuccess { code ->
                     sentRecoveryCode = code
                     recoveryStep = 2
-                    recoveryMessage = "Firebase Authentication dispatched a reset email to $cleanEmail! You can also use the 2FA code below."
+                    recoveryMessage = "Verification code generated! Auto-fill below or check Gmail."
                   }.onFailure { err ->
                     recoveryError = err.message ?: "Could not issue verification code"
                   }
@@ -899,11 +903,11 @@ fun AuthModal(
               if (isSendingCode) {
                 CircularProgressIndicator(modifier = Modifier.size(16.dp), color = SoftCreamPaper, strokeWidth = 2.dp)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Validating with Firebase Auth...", fontSize = 12.sp, color = SoftCreamPaper)
+                Text("Validating Gmail...", fontSize = 12.sp, color = SoftCreamPaper)
               } else {
                 Icon(Icons.Outlined.Lock, contentDescription = null, tint = SoftCreamPaper, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Send Firebase 2FA Reset Code", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = SoftCreamPaper)
+                Text("Generate & Send Reset Code", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = SoftCreamPaper)
               }
             }
           } else {
@@ -927,59 +931,100 @@ fun AuthModal(
                       Spacer(modifier = Modifier.width(6.dp))
                       Column {
                         Text(
-                          text = "FIREBASE 2FA VERIFIED",
-                          fontSize = 9.5.sp,
+                          text = "VERIFICATION CODE GENERATED",
+                          fontSize = 8.5.sp,
                           letterSpacing = 1.sp,
                           fontWeight = FontWeight.Bold,
                           color = AntiqueGold
                         )
                         Text(
-                          text = "Handshake: ${recoveryEmailInput.trim()} • Firebase Live",
-                          fontSize = 11.sp,
-                          fontWeight = FontWeight.Bold,
-                          color = CharcoalText
+                          text = "$sentRecoveryCode",
+                          fontSize = 18.sp,
+                          fontWeight = FontWeight.ExtraBold,
+                          color = CharcoalText,
+                          letterSpacing = 2.sp
                         )
                       }
                     }
 
-                    Surface(
-                      onClick = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                        val clip = ClipData.newPlainText("Recovery Code", sentRecoveryCode)
-                        clipboard?.setPrimaryClip(clip)
-                        recoveryCodeInput = sentRecoveryCode ?: ""
-                        isCodeCopied = true
-                        Toast.makeText(context, "2FA Code Auto-Filled!", Toast.LENGTH_SHORT).show()
-                      },
-                      shape = RoundedCornerShape(8.dp),
-                      color = Color.White,
-                      border = BorderStroke(1.dp, AntiqueGold),
-                      modifier = Modifier.padding(2.dp)
-                    ) {
-                      Row(
-                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                      Surface(
+                        onClick = {
+                          val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                          val clip = ClipData.newPlainText("Recovery Code", sentRecoveryCode)
+                          clipboard?.setPrimaryClip(clip)
+                          recoveryCodeInput = sentRecoveryCode ?: ""
+                          isCodeCopied = true
+                          Toast.makeText(context, "Code Auto-Filled!", Toast.LENGTH_SHORT).show()
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color.White,
+                        border = BorderStroke(1.dp, AntiqueGold),
+                        modifier = Modifier.padding(2.dp)
                       ) {
-                        Icon(
-                          if (isCodeCopied) Icons.Outlined.Check else Icons.Outlined.Key,
-                          contentDescription = "Apply code",
-                          tint = AntiqueGold,
-                          modifier = Modifier.size(12.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                          text = if (isCodeCopied) "Applied!" else "Auto-Fill 2FA",
-                          fontSize = 10.sp,
-                          fontWeight = FontWeight.Bold,
-                          color = AntiqueGold
-                        )
+                        Row(
+                          modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
+                          verticalAlignment = Alignment.CenterVertically
+                        ) {
+                          Icon(
+                            if (isCodeCopied) Icons.Outlined.Check else Icons.Outlined.Key,
+                            contentDescription = "Apply code",
+                            tint = AntiqueGold,
+                            modifier = Modifier.size(12.dp)
+                          )
+                          Spacer(modifier = Modifier.width(4.dp))
+                          Text(
+                            text = if (isCodeCopied) "Applied!" else "Auto-Fill Code",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = AntiqueGold
+                          )
+                        }
+                      }
+
+                      Surface(
+                        onClick = {
+                          try {
+                            val gmailIntent = context.packageManager.getLaunchIntentForPackage("com.google.android.gm")
+                              ?: Intent(Intent.ACTION_MAIN).apply {
+                                addCategory(Intent.CATEGORY_APP_EMAIL)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                              }
+                            context.startActivity(gmailIntent)
+                          } catch (e: Exception) {
+                            Toast.makeText(context, "Use Auto-Fill Code to reset immediately.", Toast.LENGTH_SHORT).show()
+                          }
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color.White,
+                        border = BorderStroke(1.dp, SubtleBorder),
+                        modifier = Modifier.padding(2.dp)
+                      ) {
+                        Row(
+                          modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
+                          verticalAlignment = Alignment.CenterVertically
+                        ) {
+                          Icon(
+                            imageVector = Icons.Outlined.Mail,
+                            contentDescription = "Open Gmail",
+                            tint = CharcoalSecondary,
+                            modifier = Modifier.size(12.dp)
+                          )
+                          Spacer(modifier = Modifier.width(4.dp))
+                          Text(
+                            text = "Open Gmail",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = CharcoalSecondary
+                          )
+                        }
                       }
                     }
                   }
 
                   Spacer(modifier = Modifier.height(6.dp))
                   Text(
-                    text = "The APK security firewall has verified your identity and generated 2FA verification code ($sentRecoveryCode). Enter or auto-fill below to reset your password.",
+                    text = "Verification code ($sentRecoveryCode) has been created. Tap 'Auto-Fill Code' to set your new password instantly, or check your Gmail inbox.",
                     fontSize = 10.5.sp,
                     color = CharcoalSecondary,
                     lineHeight = 14.sp

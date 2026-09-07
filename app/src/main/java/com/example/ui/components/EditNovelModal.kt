@@ -32,6 +32,8 @@ import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.FormatSize
+import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -60,6 +62,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -138,6 +141,56 @@ fun EditNovelModal(
         coverImageUri = destFile.absolutePath
       } catch (e: Exception) {
         coverImageUri = uri.toString()
+      }
+    }
+  }
+
+  var selectedFont by remember { mutableStateOf(ManuscriptFont.SERIF) }
+  var targetPhotoPlacement by remember { mutableStateOf(StoryPhotoPlacement.FRONT) }
+
+  val storyPhotoPickerLauncher = rememberLauncherForActivityResult(
+    contract = ActivityResultContracts.PickVisualMedia()
+  ) { uri: Uri? ->
+    if (uri != null) {
+      val imagePath = try {
+        val storyDir = File(context.filesDir, "story_images").apply { mkdirs() }
+        val destFile = File(storyDir, "story_${System.currentTimeMillis()}.jpg")
+        context.contentResolver.openInputStream(uri)?.use { inStream ->
+          FileOutputStream(destFile).use { outStream ->
+            inStream.copyTo(outStream)
+          }
+        }
+        destFile.absolutePath
+      } catch (e: Exception) {
+        uri.toString()
+      }
+
+      val marker = "[image:$imagePath:${targetPhotoPlacement.defaultCaption}]"
+      contentText = when (targetPhotoPlacement) {
+        StoryPhotoPlacement.FRONT -> {
+          if (contentText.isBlank()) "$marker\n\n"
+          else "$marker\n\n${contentText.trimStart()}"
+        }
+        StoryPhotoPlacement.MIDDLE -> {
+          val paras = contentText.split("\n\n").filter { it.isNotBlank() }
+          if (paras.size <= 1) {
+            if (paras.isEmpty()) {
+              "$marker\n\n"
+            } else {
+              val half = (paras[0].length / 2).coerceAtLeast(0)
+              paras[0].take(half) + "\n\n" + marker + "\n\n" + paras[0].substring(half)
+            }
+          } else {
+            val mid = (paras.size + 1) / 2
+            val firstHalf = paras.take(mid).joinToString("\n\n")
+            val secondHalf = paras.drop(mid).joinToString("\n\n")
+            firstHalf + "\n\n" + marker + "\n\n" + secondHalf
+          }
+        }
+        StoryPhotoPlacement.LAST -> {
+          if (contentText.isBlank()) "$marker\n\n"
+          else "${contentText.trimEnd()}\n\n$marker\n\n"
+        }
       }
     }
   }
@@ -374,24 +427,249 @@ fun EditNovelModal(
         Spacer(modifier = Modifier.height(14.dp))
 
         // Novel Content
-        Text(
-          text = "NOVEL CONTENT & CHAPTER TEXT",
-          style = MaterialTheme.typography.labelSmall.copy(
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.sp
-          ),
-          color = AntiqueGold
-        )
+        val wordCount = remember(contentText) {
+          contentText.split(Regex("""\s+""")).count { it.isNotBlank() }
+        }
+        val estimatedReadMin = remember(wordCount) {
+          maxOf(1, wordCount / 200)
+        }
+
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Text(
+            text = "MANUSCRIPT WRITING ROOM",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontWeight = FontWeight.Bold,
+              letterSpacing = 1.sp
+            ),
+            color = AntiqueGold
+          )
+
+          Text(
+            text = "$wordCount words • ~$estimatedReadMin min read",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 8.5.sp,
+              color = CharcoalSecondary
+            )
+          )
+        }
+
         Spacer(modifier = Modifier.height(6.dp))
+
+        // Font selection options
+        Row(
+          modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+          Icon(
+            imageVector = Icons.Outlined.FormatSize,
+            contentDescription = "Font options",
+            tint = AntiqueGold,
+            modifier = Modifier.size(14.dp)
+          )
+          Text(
+            text = "Font:",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 9.sp,
+              fontWeight = FontWeight.Bold,
+              color = CharcoalTertiary
+            )
+          )
+          ManuscriptFont.entries.forEach { fontOption ->
+            val isSelected = selectedFont == fontOption
+            Surface(
+              shape = RoundedCornerShape(8.dp),
+              color = if (isSelected) AntiqueGold else SoftCreamPaper,
+              border = BorderStroke(1.dp, if (isSelected) AntiqueGold else SubtleBorder),
+              onClick = { selectedFont = fontOption },
+              modifier = Modifier.testTag("edit_font_option_${fontOption.name.lowercase()}")
+            ) {
+              Text(
+                text = fontOption.shortName,
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 9.sp,
+                  fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                  fontFamily = fontOption.fontFamily
+                ),
+                color = if (isSelected) Color.White else CharcoalText,
+                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+              )
+            }
+          }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Embed Photo options
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+              imageVector = Icons.Outlined.PhotoLibrary,
+              contentDescription = null,
+              tint = AntiqueGold,
+              modifier = Modifier.size(13.dp)
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+              text = "Embed Photo At:",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                color = CharcoalTertiary
+              )
+            )
+          }
+
+          Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            StoryPhotoPlacement.entries.forEach { placement ->
+              OutlinedButton(
+                onClick = {
+                  targetPhotoPlacement = placement
+                  storyPhotoPickerLauncher.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                  )
+                },
+                shape = RoundedCornerShape(8.dp),
+                border = BorderStroke(0.8.dp, AntiqueGold.copy(alpha = 0.5f)),
+                contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp),
+                modifier = Modifier.testTag("edit_embed_photo_${placement.name.lowercase()}")
+              ) {
+                Text(
+                  text = "+ ${placement.chipLabel}",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 8.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = CharcoalText
+                  )
+                )
+              }
+            }
+          }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // Smooth Writing Toolbar
+        Row(
+          modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+          Text(
+            text = "Smooth Writing:",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 8.5.sp,
+              fontWeight = FontWeight.Bold,
+              color = CharcoalTertiary
+            )
+          )
+
+          Surface(
+            shape = RoundedCornerShape(6.dp),
+            color = SoftCreamPaper,
+            border = BorderStroke(0.7.dp, SubtleBorder),
+            onClick = {
+              contentText = contentText.trimEnd() + "\n\n[chapter:New Chapter]\n\n"
+            }
+          ) {
+            Text(
+              text = "+ Chapter Break",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Medium,
+                color = AntiqueGold
+              ),
+              modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
+            )
+          }
+
+          Surface(
+            shape = RoundedCornerShape(6.dp),
+            color = SoftCreamPaper,
+            border = BorderStroke(0.7.dp, SubtleBorder),
+            onClick = {
+              contentText = "$contentText\n\n"
+            }
+          ) {
+            Text(
+              text = "Paragraph §",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Medium,
+                color = CharcoalText
+              ),
+              modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
+            )
+          }
+
+          Surface(
+            shape = RoundedCornerShape(6.dp),
+            color = SoftCreamPaper,
+            border = BorderStroke(0.7.dp, SubtleBorder),
+            onClick = {
+              contentText = "$contentText\"\""
+            }
+          ) {
+            Text(
+              text = "Dialogue \"\"",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Medium,
+                color = CharcoalText
+              ),
+              modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
+            )
+          }
+
+          Surface(
+            shape = RoundedCornerShape(6.dp),
+            color = SoftCreamPaper,
+            border = BorderStroke(0.7.dp, SubtleBorder),
+            onClick = {
+              contentText = contentText.trimEnd() + "\n\n❦ ❦ ❦\n\n"
+            }
+          ) {
+            Text(
+              text = "Scene Divider ❦",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Medium,
+                color = AntiqueGold
+              ),
+              modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
+            )
+          }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
         OutlinedTextField(
           value = contentText,
           onValueChange = { contentText = it },
           placeholder = { Text("Full novel text here...") },
+          textStyle = TextStyle(
+            fontFamily = selectedFont.fontFamily,
+            fontSize = 14.sp,
+            lineHeight = 22.sp,
+            color = CharcoalText
+          ),
           modifier = Modifier
             .fillMaxWidth()
-            .height(180.dp)
+            .height(200.dp)
             .testTag("edit_content_input"),
-          maxLines = 20,
+          maxLines = 25,
           shape = RoundedCornerShape(12.dp),
           colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = AntiqueGold,

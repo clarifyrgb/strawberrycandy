@@ -317,6 +317,7 @@ fun AuthorRoomsModal(
           isOwnerUser = isOwnerUser,
           isTranslatorUser = isTranslatorUser,
           isReaderUser = isReaderUser,
+          isMyOwnRoom = isOwnerUser,
           currentUserPoints = currentUser?.penNamePoints ?: 0,
           isEditing = editingSlotNumber == 0,
           editPenName = editPenName,
@@ -428,6 +429,10 @@ fun AuthorRoomsModal(
           val slotNum = slot.slotNumber
           val slotNovels = novels.filter { it.authorSlot == slotNum }
           val isEditingThis = editingSlotNumber == slotNum
+          val isMyOwnSlot = isOwnerUser || (isTranslatorUser && (
+            currentUser?.authorSlot == slotNum ||
+            (currentUser?.email != null && slot.translatorEmail?.equals(currentUser.email, ignoreCase = true) == true)
+          ))
 
           TranslatorCardItem(
             slot = slot,
@@ -437,6 +442,7 @@ fun AuthorRoomsModal(
             isOwnerUser = isOwnerUser,
             isTranslatorUser = isTranslatorUser,
             isReaderUser = isReaderUser,
+            isMyOwnRoom = isMyOwnSlot,
             currentUserPoints = currentUser?.penNamePoints ?: 0,
             isEditing = isEditingThis,
             editPenName = editPenName,
@@ -738,6 +744,7 @@ private fun TranslatorCardItem(
   isOwnerUser: Boolean = false,
   isTranslatorUser: Boolean = false,
   isReaderUser: Boolean = false,
+  isMyOwnRoom: Boolean = false,
   currentUserPoints: Int = 0,
   isEditing: Boolean,
   editPenName: String,
@@ -758,7 +765,7 @@ private fun TranslatorCardItem(
   onViewArchive: () -> Unit,
 ) {
   val isReader = roleView == UserRoleView.READER || isReaderUser
-  val canManage = !isReader && !isReaderUser && (isOwnerUser || (isTranslatorUser && (slot.isPermissionGranted || isOwner)))
+  val canManage = !isReader && !isReaderUser && (isOwnerUser || (isTranslatorUser && isMyOwnRoom && (slot.isPermissionGranted || isOwner)))
 
   Card(
     shape = RoundedCornerShape(18.dp),

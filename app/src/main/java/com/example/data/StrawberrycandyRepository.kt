@@ -437,17 +437,21 @@ class StrawberrycandyRepository(
         return Result.failure(IllegalArgumentException("For Google sign in, you must enter a valid Gmail address (@gmail.com)."))
       }
     }
-    if (password.isBlank()) {
+    val cleanPass = password.trim()
+    if (cleanPass.isBlank()) {
       return Result.failure(IllegalArgumentException("Please enter your account password."))
+    }
+    if (cleanPass.length < 4) {
+      return Result.failure(IllegalArgumentException("Password must be at least 4 characters."))
     }
 
     val userId = "usr_" + provider.lowercase() + "_" + cleanEmail.replace(Regex("[^a-z0-9]"), "_")
     val isOwner = isOwnerEmail(cleanEmail)
 
-    // Check existing profile for this email or userId
+    // Strict password verification for all accounts (Owner, Guest, and Readers alike)
     val existingProfile = dao.getReaderProfileByEmail(cleanEmail) ?: dao.getReaderProfile(userId)
-    if (!isOwner && existingProfile != null && !existingProfile.passwordHash.isNullOrBlank() && password.isNotBlank()) {
-      if (existingProfile.passwordHash != password) {
+    if (existingProfile != null && !existingProfile.passwordHash.isNullOrBlank()) {
+      if (existingProfile.passwordHash != cleanPass) {
         return Result.failure(
           IllegalArgumentException(
             "Incorrect password for $cleanEmail. The password entered must match your account password. If you forgot your password, tap 'Forgot Password?' to retrieve it."
@@ -517,7 +521,7 @@ class StrawberrycandyRepository(
       authorSlot = finalSlot,
       penNamePoints = existingPoints,
       lastLoginTimestamp = System.currentTimeMillis(),
-      passwordHash = password.ifBlank { existingProfile?.passwordHash ?: "account_pass" },
+      passwordHash = cleanPass.ifBlank { existingProfile?.passwordHash ?: cleanPass },
       isLoggedIn = true
     )
     dao.insertReaderProfile(profile)
@@ -607,13 +611,7 @@ class StrawberrycandyRepository(
     if (cleanEmail.isBlank() || !cleanEmail.contains("@")) {
       return Result.failure(IllegalArgumentException("Please enter a valid Gmail address."))
     }
-    val existingProfile = dao.getReaderProfileByEmail(cleanEmail)
-    val isOwner = isOwnerEmail(cleanEmail)
-    if (existingProfile == null && !isOwner) {
-      return Result.failure(
-        IllegalArgumentException("No account found for $cleanEmail on this device. Please sign in or register with your Gmail address.")
-      )
-    }
+
     // 1. Generate secure 6-digit recovery code for in-app verification
     val code = (100000..999999).random().toString()
     activeRecoverySessions[cleanEmail] = RecoverySession(cleanEmail, code, System.currentTimeMillis(), 0)
@@ -621,10 +619,26 @@ class StrawberrycandyRepository(
     // 2. Dispatch official password reset email directly via Firebase Authentication
     try {
       val auth = FirebaseAuth.getInstance()
-      auth.sendPasswordResetEmail(cleanEmail)
-      Log.d("StrawberrycandyAuth", "Firebase Authentication password reset email requested for $cleanEmail")
+      auth.sendPasswordResetEmail(cleanEmail).addOnCompleteListener { task ->
+        if (task.isSuccessful) {
+          Log.d("StrawberrycandyAuth", "Firebase Authentication password reset email dispatched for $cleanEmail")
+        } else {
+          val ex = task.exception
+          Log.w("StrawberrycandyAuth", "Firebase Auth reset dispatch error: ${ex?.message}")
+          try {
+            val tempPass = "Reset_" + java.util.UUID.randomUUID().toString().take(8) + "!"
+            auth.createUserWithEmailAndPassword(cleanEmail, tempPass).addOnCompleteListener { createRes ->
+              if (createRes.isSuccessful) {
+                auth.sendPasswordResetEmail(cleanEmail)
+              }
+            }
+          } catch (createEx: Exception) {
+            Log.w("StrawberrycandyAuth", "Firebase Auth auto-provision failed: ${createEx.message}")
+          }
+        }
+      }
     } catch (e: Exception) {
-      Log.w("StrawberrycandyAuth", "Firebase Auth reset dispatch error: ${e.message}")
+      Log.w("StrawberrycandyAuth", "Firebase Auth reset error: ${e.message}")
     }
 
     return Result.success(code)

@@ -86,7 +86,7 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
   private val repository = StrawberrycandyRepository(database.strawberrycandyDao(), syncService = syncService)
 
   private val _activeFilter = MutableStateFlow(ShelfFilter.ALL)
-  private val _activeSort = MutableStateFlow(NovelSortOption.RECENTLY_READ)
+  private val _activeSort = MutableStateFlow(NovelSortOption.NEWEST)
   private val _selectedAuthorFilter = MutableStateFlow<Int?>(null)
   private val _novelSearchQuery = MutableStateFlow("")
   val novelSearchQuery: StateFlow<String> = _novelSearchQuery.asStateFlow()
@@ -265,7 +265,8 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
 
     val sortedNovels = when (searchParams.sort) {
       NovelSortOption.RECENTLY_READ -> filteredNovels.sortedWith(
-        compareByDescending<NovelWithState> { it.lastReadTimestamp }
+        compareByDescending<NovelWithState> { it.isNewRelease }
+          .thenByDescending { it.lastReadTimestamp }
           .thenByDescending { it.currentPage > 1 }
           .thenByDescending { it.createdAt }
       )
@@ -419,38 +420,13 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     // 1. Archive owner has universal edit access across all novels
     if (isOwner(user)) return true
 
-    // 2. Translators can edit their posted novels
+    // 2. Translators can only edit novels in their own room
     if (user.role == "TRANSLATOR" || user.authorSlot != null || isPermittedTranslator(user, slots)) {
-      // Direct slot match (e.g. user assigned to Room 1, novel authorSlot is 1)
-      if (user.authorSlot != null && user.authorSlot != 0 && novel.authorSlot == user.authorSlot) {
-        return true
-      }
-      // Author name / pen name matches translator's display name
-      if (user.displayName.isNotBlank() && (
-          novel.author.equals(user.displayName, ignoreCase = true) ||
-          novel.originalAuthor.equals(user.displayName, ignoreCase = true)
-      )) {
-        return true
-      }
-      // Match against translator slot records
-      val matchedSlot = slots.find { slot ->
-        (user.authorSlot != null && slot.slotNumber == user.authorSlot) ||
-        slot.penName.equals(user.displayName, ignoreCase = true) ||
-        slot.authorName.equals(user.displayName, ignoreCase = true)
-      }
-      if (matchedSlot != null) {
-        if (novel.authorSlot == matchedSlot.slotNumber ||
-            novel.author.equals(matchedSlot.penName, ignoreCase = true) ||
-            novel.author.equals(matchedSlot.authorName, ignoreCase = true)) {
-          return true
-        }
-      }
-      // Contributor novel posted in an author slot (> 0)
-      if (isPermittedTranslator(user, slots) && novel.authorSlot > 0) {
-        return true
-      }
-      // Any permitted translator can edit novels posted under translator slots (> 0)
-      if (user.role == "TRANSLATOR" && novel.authorSlot > 0) {
+      val userSlot = user.authorSlot ?: slots.find {
+        it.translatorEmail?.equals(user.email, ignoreCase = true) == true
+      }?.slotNumber
+
+      if (userSlot != null && userSlot > 0 && novel.authorSlot == userSlot) {
         return true
       }
     }
@@ -466,12 +442,8 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
   }
 
   fun canUploadNovel(user: ReaderProfileEntity? = activeUser.value, slots: List<AuthorSlotEntity> = authorSlots.value): Boolean {
-    // Only available to translators and owner
-    if (user == null) return false
-    if (user.role.equals("OWNER", ignoreCase = true) || isOwnerEmail(user.email)) return true
-    if (user.role.equals("TRANSLATOR", ignoreCase = true)) return true
-    if (isPermittedTranslator(user, slots)) return true
-    return false
+    // Available to all signed-in users (Owner, Translators, and Authors)
+    return user != null
   }
 
   fun signInWithGoogle(
@@ -727,11 +699,28 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     releaseFormat: String = "CHAPTER",
   ) {
     val currentUser = activeUser.value
-    if (!canUploadNovel(currentUser)) {
-      _snackbarMessage.value = "Posting novels is reserved for translators and the owner"
+    if (currentUser == null) {
+      _isAuthDialogOpen.value = true
+      _snackbarMessage.value = "Please sign in to publish novels to the Cloud Archive"
       return
     }
+    val isOwnerUser = isOwner(currentUser)
+    val effectiveSlot = if (isOwnerUser) {
+      authorSlot
+    } else {
+      if (authorSlot == 0) (currentUser.authorSlot ?: 1) else authorSlot
+    }
+    val effectiveAuthor = if (effectiveSlot == 0 && isOwnerUser) {
+      "Strawberrycandy"
+    } else {
+      author.trim().ifBlank { currentUser.displayName.ifBlank { "Translator $effectiveSlot" } }
+    }
+
     viewModelScope.launch {
+      if (!isOwnerUser && (currentUser.authorSlot == null || currentUser.role != "TRANSLATOR")) {
+        repository.grantPermissionByEmail(currentUser.email, effectiveSlot)
+      }
+
       val uploadResult = repository.uploadNovel(
         title = title,
         subtitle = subtitle,
@@ -739,8 +728,8 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
         excerpt = excerpt,
         content = content,
         coverColorHex = coverColorHex,
-        author = author,
-        authorSlot = authorSlot,
+        author = effectiveAuthor,
+        authorSlot = effectiveSlot,
         coverImageUri = coverImageUri,
         storyImagesJson = storyImagesJson,
         originalAuthor = originalAuthor,
@@ -749,7 +738,7 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
       )
       _isUploadDialogOpen.value = false
       _dismissedAlertNovelId.value = null
-      val authorLabel = if (authorSlot == 0) "Strawberrycandy" else "$author (Room $authorSlot)"
+      val authorLabel = if (effectiveSlot == 0 && isOwnerUser) "Strawberrycandy" else "$effectiveAuthor (Translator Room $effectiveSlot)"
 
       if (uploadResult.isPublishedToCloud) {
         _snackbarMessage.value = "✨ Novel '$title' by $authorLabel is now live on the Cloud Archive! All APK readers can now see it."
@@ -1004,6 +993,16 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
   }
 
   fun updateAuthorSlot(slotNumber: Int, authorName: String, penName: String, bio: String) {
+    val user = activeUser.value
+    if (!isOwner(user)) {
+      val userSlot = user?.authorSlot ?: authorSlots.value.find {
+        it.translatorEmail?.equals(user?.email, ignoreCase = true) == true
+      }?.slotNumber
+      if (userSlot == null || userSlot != slotNumber) {
+        _snackbarMessage.value = "Translators can only modify their own room"
+        return
+      }
+    }
     viewModelScope.launch {
       repository.updateAuthorSlot(slotNumber, authorName, penName, bio)
       val user = activeUser.value
@@ -1022,6 +1021,16 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
   }
 
   fun updateAuthorSlotCover(slotNumber: Int, coverImageUri: String) {
+    val user = activeUser.value
+    if (!isOwner(user)) {
+      val userSlot = user?.authorSlot ?: authorSlots.value.find {
+        it.translatorEmail?.equals(user?.email, ignoreCase = true) == true
+      }?.slotNumber
+      if (userSlot == null || userSlot != slotNumber) {
+        _snackbarMessage.value = "Translators can only modify their own room"
+        return
+      }
+    }
     viewModelScope.launch {
       repository.updateAuthorSlotCover(slotNumber, coverImageUri)
       _snackbarMessage.value = "Translator photo updated!"

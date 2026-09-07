@@ -234,7 +234,7 @@ fun HomeScreen(
             viewModel.openAuthDialog()
             viewModel.showSnackbar("Please sign in to publish novels directly to the Cloud Archive")
           } else {
-            selectedUploadSlot = activeUser.authorSlot ?: 0
+            selectedUploadSlot = if (isSoleOwner) 0 else (activeUser.authorSlot ?: 1)
             viewModel.openUploadDialog()
           }
         },
@@ -249,20 +249,7 @@ fun HomeScreen(
         )
       } else {
         // Logged-in mode
-        // 1. Room for Translators and Owner (appears after signing in!)
-        if (canUploadNovel) {
-          TranslatorAndOwnerRoomCard(
-            activeUser = activeUser,
-            isSoleOwner = isSoleOwner,
-            onOpenAuthorRooms = { isAuthorRoomsModalOpen = true },
-            onOpenUpload = {
-              selectedUploadSlot = activeUser.authorSlot ?: 0
-              viewModel.openUploadDialog()
-            }
-          )
-        }
-
-        // 2. Novel Search Bar for Readers and Translators
+        // 1. Novel Search Bar for Readers and Translators
         NovelSearchBar(
           query = uiState.novelSearchQuery,
           onQueryChange = { viewModel.setNovelSearchQuery(it) },
@@ -347,45 +334,6 @@ fun HomeScreen(
                   fontWeight = FontWeight.Bold,
                   letterSpacing = 0.6.sp,
                   color = Color(0xFF2E7D32)
-                )
-              )
-            }
-          }
-
-          Spacer(modifier = Modifier.width(6.dp))
-          Surface(
-            shape = RoundedCornerShape(10.dp),
-            color = if (uiState.isCloudSyncing) DeepBurgundy.copy(alpha = 0.08f) else Color(0xFFF3E5F5),
-            border = BorderStroke(0.6.dp, if (uiState.isCloudSyncing) DeepBurgundy.copy(alpha = 0.3f) else Color(0xFFCE93D8)),
-            onClick = { viewModel.refreshCloudArchive() },
-            modifier = Modifier.testTag("cloud_sync_chip")
-          ) {
-            Row(
-              modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp),
-              verticalAlignment = Alignment.CenterVertically
-            ) {
-              if (uiState.isCloudSyncing) {
-                CircularProgressIndicator(
-                  modifier = Modifier.size(7.dp),
-                  strokeWidth = 1.dp,
-                  color = DeepBurgundy
-                )
-              } else {
-                Box(
-                  modifier = Modifier
-                    .size(5.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFF7B1FA2))
-                )
-              }
-              Spacer(modifier = Modifier.width(4.dp))
-              Text(
-                text = if (uiState.isCloudSyncing) "SYNCING..." else "CLOUD ARCHIVE",
-                style = MaterialTheme.typography.labelSmall.copy(
-                  fontSize = 8.sp,
-                  fontWeight = FontWeight.Bold,
-                  letterSpacing = 0.6.sp,
-                  color = if (uiState.isCloudSyncing) DeepBurgundy else Color(0xFF7B1FA2)
                 )
               )
             }
@@ -476,6 +424,23 @@ fun HomeScreen(
           onResumeReading = { onSelectNovel(continueReadingNovel) },
           onEditNovel = { novelToEdit = continueReadingNovel },
           modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+        )
+      }
+
+      // 4.1. New Release Novels Shelf on Homepage
+      val newReleaseNovels = remember(allNovelsList) {
+        val recent = allNovelsList.filter { it.isNewRelease }.sortedByDescending { it.createdAt }
+        if (recent.isNotEmpty()) recent else allNovelsList.sortedByDescending { it.createdAt }.take(5)
+      }
+      if (newReleaseNovels.isNotEmpty() && uiState.novelSearchQuery.isBlank()) {
+        NewReleasesShowcase(
+          novels = newReleaseNovels,
+          authorSlots = uiState.authorSlots,
+          onViewTranslator = { slot -> selectedTranslatorForDetail = slot },
+          onSelectNovel = onSelectNovel,
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 6.dp)
         )
       }
 
@@ -601,6 +566,8 @@ fun HomeScreen(
           SelectedNovelSpotlight(
             novel = focusedNovel,
             canEditNovel = canEditFocusedNovel,
+            authorSlots = uiState.authorSlots,
+            onViewTranslator = { slot -> selectedTranslatorForDetail = slot },
             onReadNovel = { onSelectNovel(focusedNovel) },
             onEditNovel = { novelToEdit = focusedNovel },
             onToggleFavorite = { viewModel.toggleFavorite(focusedNovel.id) },
@@ -655,7 +622,7 @@ fun HomeScreen(
               uiState.novelSearchQuery.isNotBlank() -> "We couldn't find any novels matching '${uiState.novelSearchQuery}'. Try searching by author, genre, or title."
               uiState.activeFilter == ShelfFilter.FAVORITES -> "Tap the heart icon on any novel to save your favorites here."
               uiState.activeFilter == ShelfFilter.NEW_RELEASES -> "Novels posted in the archive will appear here in real-time."
-              isGlobalArchiveEmpty -> "Sample novels have been removed. When Strawberrycandy or permitted translators post a manuscript, it will appear here in real-time for all readers."
+              isGlobalArchiveEmpty -> ""
               else -> "Start reading or tap any novel from the archive to add it to this shelf."
             }
 
@@ -664,13 +631,15 @@ fun HomeScreen(
               style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Serif),
               color = CharcoalText
             )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-              text = subtitleText,
-              style = MaterialTheme.typography.bodySmall,
-              color = CharcoalSecondary,
-              textAlign = TextAlign.Center
-            )
+            if (subtitleText.isNotBlank()) {
+              Spacer(modifier = Modifier.height(6.dp))
+              Text(
+                text = subtitleText,
+                style = MaterialTheme.typography.bodySmall,
+                color = CharcoalSecondary,
+                textAlign = TextAlign.Center
+              )
+            }
 
             if (isGlobalArchiveEmpty && canUploadNovel) {
               Spacer(modifier = Modifier.height(14.dp))
@@ -993,40 +962,46 @@ fun HomeScreen(
       )
     }
 
-    // Dedicated Personal Archive Page for a Translator
-    if (selectedTranslatorForDetail != null && activeUser != null) {
+    // Dedicated Personal Archive Page for a Translator (accessible to anyone)
+    if (selectedTranslatorForDetail != null) {
       val activeSlot = uiState.authorSlots.find { it.slotNumber == selectedTranslatorForDetail!!.slotNumber }
         ?: selectedTranslatorForDetail!!
+      val canModifyThisRoom = isSoleOwner || (
+        activeUser?.role == "TRANSLATOR" && (
+          activeUser.authorSlot == activeSlot.slotNumber ||
+          (activeUser.email.isNotBlank() && activeSlot.translatorEmail?.equals(activeUser.email, ignoreCase = true) == true)
+        )
+      )
       TranslatorProfileModal(
         slot = activeSlot,
         novels = allNovelsList,
         isOwner = isSoleOwner,
-        isOwnerOrTranslator = isTranslatorOrOwner,
+        isOwnerOrTranslator = canModifyThisRoom,
         onDismiss = { selectedTranslatorForDetail = null },
         onSelectNovel = { novel ->
           selectedTranslatorForDetail = null
           onSelectNovel(novel)
         },
         onUpdateCoverImage = { slotNum, imagePath ->
-          if (isSoleOwner || (activeUser?.role == "TRANSLATOR" && activeUser.authorSlot == slotNum)) {
+          if (canModifyThisRoom) {
             viewModel.updateAuthorSlotCover(slotNum, imagePath)
             selectedTranslatorForDetail = activeSlot.copy(coverImageUri = imagePath)
           }
         },
-        onOpenUploadForSlot = if (canUploadNovel) { slotNum ->
+        onOpenUploadForSlot = if (canModifyThisRoom) { slotNum ->
           selectedUploadSlot = slotNum
           viewModel.openUploadDialog()
         } else null,
         onToggleSlotPermission = if (isSoleOwner) { slotNum, isGranted ->
           viewModel.setSlotPermission(slotNum, isGranted)
         } else null,
-        onAddChapterToNovel = { novelId, title, content ->
+        onAddChapterToNovel = if (canModifyThisRoom) { novelId, title, content ->
           viewModel.addChapterToNovel(novelId, title, content)
-        },
-        onEditNovel = { novel ->
+        } else null,
+        onEditNovel = if (canModifyThisRoom) { novel ->
           selectedTranslatorForDetail = null
           novelToEdit = novel
-        }
+        } else null
       )
     }
 
@@ -1149,6 +1124,8 @@ fun HomeScreen(
       OwnerUploadDialog(
         authorSlots = uiState.authorSlots,
         initialSlot = selectedUploadSlot,
+        activeUser = activeUser,
+        isOwner = isSoleOwner,
         onDismiss = { viewModel.closeUploadDialog() },
         onUpdateAuthorSlot = { slot, name, penName, bio ->
           viewModel.updateAuthorSlot(slot, name, penName, bio)
@@ -1272,12 +1249,12 @@ private fun TopUtilityBar(
 
         Column {
           Text(
-            text = "STRAWBERRYCANDY",
+            text = "Strawberrycandy",
             style = MaterialTheme.typography.titleMedium.copy(
-              letterSpacing = 1.5.sp,
-              fontWeight = FontWeight.Bold,
               fontFamily = FontFamily.Serif,
-              fontSize = 14.sp
+              fontWeight = FontWeight.ExtraBold,
+              fontSize = 16.sp,
+              letterSpacing = 0.2.sp
             ),
             color = CharcoalText,
             maxLines = 1,
@@ -1286,8 +1263,8 @@ private fun TopUtilityBar(
           Text(
             text = "NOVEL ARCHIVE",
             style = MaterialTheme.typography.labelSmall.copy(
-              letterSpacing = 1.2.sp,
-              fontSize = 8.sp,
+              letterSpacing = 1.4.sp,
+              fontSize = 8.5.sp,
               fontWeight = FontWeight.Bold
             ),
             color = AntiqueGold
@@ -1424,7 +1401,7 @@ private fun TopUtilityBar(
       }
     }
 
-    // Secondary Row: Curators & Upload buttons (only when logged in)
+    // Secondary Row: Direct Publish Novel action (Clean & Minimized)
     if (activeUser != null) {
       Spacer(modifier = Modifier.height(6.dp))
       Row(
@@ -1432,65 +1409,32 @@ private fun TopUtilityBar(
         horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically
       ) {
-        // Curators button
         Surface(
-          onClick = onOpenAuthorRooms,
+          onClick = onOpenUpload,
           shape = RoundedCornerShape(14.dp),
-          color = SoftCreamPaper,
-          border = BorderStroke(1.dp, SubtleBorder),
-          modifier = Modifier.testTag("author_rooms_button")
+          color = AntiqueGoldLight.copy(alpha = 0.85f),
+          border = BorderStroke(1.2.dp, AntiqueGold),
+          modifier = Modifier.testTag("owner_upload_button")
         ) {
           Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
           ) {
             Icon(
-              imageVector = Icons.Outlined.WorkspacePremium,
-              contentDescription = "Curators",
+              imageVector = Icons.Outlined.Upload,
+              contentDescription = "Publish Novel",
               tint = AntiqueGold,
-              modifier = Modifier.size(12.dp)
+              modifier = Modifier.size(15.dp)
             )
-            Spacer(modifier = Modifier.width(3.dp))
+            Spacer(modifier = Modifier.width(5.dp))
             Text(
-              text = "$activeTranslatorsCount Translators",
+              text = "✍️ Publish Novel",
               style = MaterialTheme.typography.labelSmall.copy(
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 9.5.sp
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp
               ),
               color = CharcoalText
             )
-          }
-        }
-
-        if (canUpload) {
-          Spacer(modifier = Modifier.width(6.dp))
-          Surface(
-            onClick = onOpenUpload,
-            shape = RoundedCornerShape(14.dp),
-            color = AntiqueGoldLight.copy(alpha = 0.7f),
-            border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.6f)),
-            modifier = Modifier.testTag("owner_upload_button")
-          ) {
-            Row(
-              verticalAlignment = Alignment.CenterVertically,
-              modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-            ) {
-              Icon(
-                imageVector = Icons.Outlined.Upload,
-                contentDescription = null,
-                tint = AntiqueGold,
-                modifier = Modifier.size(12.dp)
-              )
-              Spacer(modifier = Modifier.width(3.dp))
-              Text(
-                text = "✍️ Publish Novel",
-                style = MaterialTheme.typography.labelSmall.copy(
-                  fontWeight = FontWeight.Bold,
-                  fontSize = 9.5.sp
-                ),
-                color = AntiqueGold
-              )
-            }
           }
         }
       }
@@ -2392,6 +2336,8 @@ private fun SearchResultNovelCard(
 private fun SelectedNovelSpotlight(
   novel: NovelWithState,
   canEditNovel: Boolean = false,
+  authorSlots: List<AuthorSlotEntity> = emptyList(),
+  onViewTranslator: ((AuthorSlotEntity) -> Unit)? = null,
   onReadNovel: () -> Unit,
   onEditNovel: (() -> Unit)? = null,
   onToggleFavorite: () -> Unit,
@@ -2576,14 +2522,26 @@ private fun SelectedNovelSpotlight(
             } else {
               novel.author
             }
+            val targetSlot = if (novel.authorSlot > 0) {
+              authorSlots.find { it.slotNumber == novel.authorSlot }
+            } else {
+              authorSlots.find { it.penName.equals(novel.author, ignoreCase = true) }
+            } ?: authorSlots.find { it.slotNumber == 0 }
+
             Text(
-              text = "By $authorDisplay",
+              text = "By $authorDisplay • Profile →",
               style = MaterialTheme.typography.labelSmall.copy(
                 fontSize = 8.5.sp,
+                fontWeight = FontWeight.SemiBold,
                 color = AntiqueGold
               ),
               maxLines = 1,
-              overflow = TextOverflow.Ellipsis
+              overflow = TextOverflow.Ellipsis,
+              modifier = Modifier
+                .clip(RoundedCornerShape(4.dp))
+                .clickable(enabled = targetSlot != null && onViewTranslator != null) {
+                  targetSlot?.let { onViewTranslator?.invoke(it) }
+                }
             )
           }
 
@@ -3067,6 +3025,241 @@ private fun CuratedCoverGridCard(
 }
 
 @Composable
+private fun NewReleasesShowcase(
+  novels: List<NovelWithState>,
+  authorSlots: List<AuthorSlotEntity> = emptyList(),
+  onViewTranslator: ((AuthorSlotEntity) -> Unit)? = null,
+  onSelectNovel: (NovelWithState) -> Unit,
+  modifier: Modifier = Modifier
+) {
+  Column(
+    modifier = modifier.testTag("homepage_new_releases_section")
+  ) {
+    Row(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(horizontal = 4.dp, vertical = 4.dp),
+      horizontalArrangement = Arrangement.SpaceBetween,
+      verticalAlignment = Alignment.CenterVertically
+    ) {
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+          modifier = Modifier
+            .size(7.dp)
+            .clip(CircleShape)
+            .background(AntiqueGold)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+          text = "NEW RELEASES",
+          style = MaterialTheme.typography.labelSmall.copy(
+            fontSize = 9.5.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.3.sp,
+            color = AntiqueGold
+          )
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Surface(
+          shape = RoundedCornerShape(8.dp),
+          color = AntiqueGold.copy(alpha = 0.15f),
+          border = BorderStroke(0.6.dp, AntiqueGold.copy(alpha = 0.4f))
+        ) {
+          Text(
+            text = "FRESH RELEASES",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 7.5.sp,
+              fontWeight = FontWeight.ExtraBold,
+              letterSpacing = 0.5.sp,
+              color = DeepBurgundy
+            ),
+            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+          )
+        }
+      }
+      Text(
+        text = "Recently Added",
+        style = MaterialTheme.typography.labelSmall.copy(
+          fontSize = 8.5.sp,
+          color = CharcoalTertiary
+        )
+      )
+    }
+
+    Spacer(modifier = Modifier.height(6.dp))
+
+    Row(
+      modifier = Modifier
+        .fillMaxWidth()
+        .horizontalScroll(rememberScrollState())
+        .padding(vertical = 4.dp),
+      horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+      novels.forEach { novel ->
+        NewReleaseCard(
+          novel = novel,
+          authorSlots = authorSlots,
+          onViewTranslator = onViewTranslator,
+          onCardClick = { onSelectNovel(novel) }
+        )
+      }
+    }
+  }
+}
+
+@Composable
+private fun NewReleaseCard(
+  novel: NovelWithState,
+  authorSlots: List<AuthorSlotEntity> = emptyList(),
+  onViewTranslator: ((AuthorSlotEntity) -> Unit)? = null,
+  onCardClick: () -> Unit
+) {
+  Card(
+    shape = RoundedCornerShape(14.dp),
+    colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
+    border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.45f)),
+    elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+    onClick = onCardClick,
+    modifier = Modifier
+      .width(135.dp)
+      .testTag("new_release_card_${novel.id}")
+  ) {
+    Column(modifier = Modifier.padding(8.dp)) {
+      Box(
+        modifier = Modifier
+          .fillMaxWidth()
+          .height(130.dp)
+          .clip(RoundedCornerShape(topStart = 3.dp, bottomStart = 3.dp, topEnd = 8.dp, bottomEnd = 8.dp))
+          .background(Color(novel.coverColorHex))
+      ) {
+        if (novel.coverImageUri != null) {
+          AsyncImage(
+            model = File(novel.coverImageUri!!).takeIf { it.exists() } ?: novel.coverImageUri,
+            contentDescription = novel.title,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+          )
+        } else if (novel.coverDrawableRes != 0) {
+          Image(
+            painter = painterResource(id = novel.coverDrawableRes),
+            contentDescription = novel.title,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+          )
+        } else {
+          Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+              text = novel.title.take(16),
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Serif
+              ),
+              color = AntiqueGold,
+              textAlign = TextAlign.Center,
+              modifier = Modifier.padding(6.dp)
+            )
+          }
+        }
+
+        // Spine highlight
+        Box(
+          modifier = Modifier
+            .fillMaxSize()
+            .background(
+              brush = Brush.horizontalGradient(
+                0.0f to Color(0x35000000),
+                0.04f to Color(0x10000000),
+                0.08f to Color(0x20FFFFFF),
+                0.12f to Color(0x00000000)
+              )
+            )
+        )
+
+        // ✨ NEW Badge
+        Surface(
+          shape = RoundedCornerShape(bottomEnd = 6.dp),
+          color = AntiqueGold,
+          modifier = Modifier.align(Alignment.TopStart)
+        ) {
+          Text(
+            text = "✨ NEW",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 7.sp,
+              fontWeight = FontWeight.ExtraBold,
+              letterSpacing = 0.4.sp,
+              color = DeepBurgundy
+            ),
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+          )
+        }
+      }
+
+      Spacer(modifier = Modifier.height(6.dp))
+
+      Text(
+        text = novel.title,
+        style = MaterialTheme.typography.titleSmall.copy(
+          fontSize = 11.5.sp,
+          fontWeight = FontWeight.Bold,
+          fontFamily = FontFamily.Serif
+        ),
+        color = CharcoalText,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis
+      )
+
+      val authorText = when {
+        novel.originalAuthor.isNotBlank() -> novel.originalAuthor
+        novel.author.isNotBlank() -> novel.author
+        novel.authorSlot > 0 -> "Translator Room ${novel.authorSlot}"
+        else -> "Strawberrycandy"
+      }
+      val targetSlot = if (novel.authorSlot > 0) {
+        authorSlots.find { it.slotNumber == novel.authorSlot }
+      } else {
+        authorSlots.find { it.penName.equals(novel.author, ignoreCase = true) }
+      } ?: authorSlots.find { it.slotNumber == 0 }
+
+      Text(
+        text = authorText,
+        style = MaterialTheme.typography.labelSmall.copy(
+          fontSize = 9.sp,
+          color = AntiqueGold,
+          fontWeight = FontWeight.Medium
+        ),
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier
+          .clip(RoundedCornerShape(4.dp))
+          .clickable(enabled = targetSlot != null && onViewTranslator != null) {
+            targetSlot?.let { onViewTranslator?.invoke(it) }
+          }
+      )
+
+      Spacer(modifier = Modifier.height(6.dp))
+
+      Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = CharcoalText,
+        modifier = Modifier.fillMaxWidth()
+      ) {
+        Text(
+          text = "Read Now →",
+          style = MaterialTheme.typography.labelSmall.copy(
+            fontSize = 8.5.sp,
+            fontWeight = FontWeight.Bold,
+            color = SoftCreamPaper
+          ),
+          textAlign = TextAlign.Center,
+          modifier = Modifier.padding(vertical = 4.dp)
+        )
+      }
+    }
+  }
+}
+
+@Composable
 private fun GuestArchiveLockedView(
   rememberedAccounts: List<ReaderProfileEntity>,
   onOpenAuth: () -> Unit
@@ -3244,130 +3437,4 @@ private fun GuestArchiveLockedView(
   }
 }
 
-@Composable
-private fun TranslatorAndOwnerRoomCard(
-  activeUser: ReaderProfileEntity,
-  isSoleOwner: Boolean,
-  onOpenAuthorRooms: () -> Unit,
-  onOpenUpload: () -> Unit
-) {
-  Surface(
-    shape = RoundedCornerShape(16.dp),
-    color = CardWarmWhite,
-    border = BorderStroke(1.2.dp, AntiqueGold),
-    shadowElevation = 2.dp,
-    modifier = Modifier
-      .fillMaxWidth()
-      .padding(horizontal = 16.dp, vertical = 6.dp)
-      .testTag("translator_and_owner_room_card")
-  ) {
-    Column(
-      modifier = Modifier
-        .fillMaxWidth()
-        .padding(14.dp)
-    ) {
-      Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-      ) {
-        Row(
-          verticalAlignment = Alignment.CenterVertically,
-          modifier = Modifier.weight(1f)
-        ) {
-          Box(
-            modifier = Modifier
-              .size(34.dp)
-              .clip(CircleShape)
-              .background(AntiqueGold.copy(alpha = 0.15f)),
-            contentAlignment = Alignment.Center
-          ) {
-            Icon(
-              imageVector = Icons.Outlined.MeetingRoom,
-              contentDescription = "Room for Translators & Owner",
-              tint = AntiqueGold,
-              modifier = Modifier.size(19.dp)
-            )
-          }
-          Spacer(modifier = Modifier.width(10.dp))
-          Column {
-            Text(
-              text = "ROOM FOR TRANSLATORS & OWNER",
-              style = MaterialTheme.typography.labelSmall.copy(
-                letterSpacing = 1.1.sp,
-                fontWeight = FontWeight.Bold,
-                fontSize = 10.5.sp
-              ),
-              color = AntiqueGold
-            )
-            Text(
-              text = if (isSoleOwner) "Archive Owner Workspace (Clarify)" else "Translator Room ${activeUser.authorSlot ?: 1}",
-              style = MaterialTheme.typography.bodySmall.copy(
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 12.sp
-              ),
-              color = CharcoalText
-            )
-          }
-        }
 
-        Spacer(modifier = Modifier.width(6.dp))
-        Surface(
-          shape = RoundedCornerShape(8.dp),
-          color = AntiqueGoldLight,
-          border = BorderStroke(0.6.dp, AntiqueGold.copy(alpha = 0.4f))
-        ) {
-          Text(
-            text = if (isSoleOwner) "OWNER" else "TRANSLATOR",
-            style = MaterialTheme.typography.labelSmall.copy(
-              fontSize = 8.5.sp,
-              fontWeight = FontWeight.Bold
-            ),
-            color = AntiqueGold,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-          )
-        }
-      }
-
-      Spacer(modifier = Modifier.height(10.dp))
-
-      Text(
-        text = "Manage author rooms, translator bio, photo covers, review contributor slots, and post new translated novels directly to the archive.",
-        style = MaterialTheme.typography.bodySmall.copy(
-          fontSize = 11.sp,
-          lineHeight = 15.sp
-        ),
-        color = CharcoalSecondary
-      )
-
-      Spacer(modifier = Modifier.height(12.dp))
-
-      // Single minimized, clean action button
-      Button(
-        onClick = onOpenAuthorRooms,
-        shape = RoundedCornerShape(12.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = AntiqueGold),
-        modifier = Modifier
-          .fillMaxWidth()
-          .height(40.dp)
-          .testTag("enter_translator_owner_room_button")
-      ) {
-        Icon(
-          imageVector = Icons.Outlined.MeetingRoom,
-          contentDescription = null,
-          tint = SoftCreamPaper,
-          modifier = Modifier.size(16.dp)
-        )
-        Spacer(modifier = Modifier.width(6.dp))
-        Text(
-          text = if (isSoleOwner) "Enter Owner Room & Publish" else "Enter Author Room & Publish",
-          style = MaterialTheme.typography.labelSmall.copy(
-            fontWeight = FontWeight.Bold,
-            fontSize = 12.sp
-          ),
-          color = SoftCreamPaper
-        )
-      }
-    }
-  }
-}

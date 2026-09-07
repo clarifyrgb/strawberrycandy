@@ -81,6 +81,9 @@ fun StrawberrycandyApp(
         ReadingScreen(
           novel = currentNovel,
           onBack = { selectedNovelId = null },
+          onSelectNovel = { newNovel ->
+            selectedNovelId = newNovel.id
+          },
           onSaveProgress = { page ->
             viewModel.saveReadingProgress(currentNovel.id, page)
           },

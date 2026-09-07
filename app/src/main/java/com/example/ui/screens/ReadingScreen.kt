@@ -56,6 +56,7 @@ import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.List
 import androidx.compose.material.icons.outlined.MenuBook
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.ZoomIn
 import androidx.compose.material3.ButtonDefaults
@@ -103,6 +104,7 @@ import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.local.AuthorSlotEntity
 import com.example.data.local.BookmarkHighlightEntity
 import com.example.model.NovelWithState
 import com.example.model.SearchMatch
@@ -113,6 +115,7 @@ import com.example.ui.components.ChapterCommentsSection
 import com.example.ui.components.ChapterSelectionModal
 import com.example.ui.components.StoryPhotoItem
 import com.example.ui.components.StoryPhotoViewerModal
+import com.example.ui.components.TranslatorProfileModal
 import com.example.ui.components.TypographyCustomizerModal
 import com.example.ui.theme.AntiqueGold
 import com.example.ui.theme.CharcoalSecondary
@@ -155,6 +158,7 @@ fun ReadingScreen(
   onBack: () -> Unit,
   onSaveProgress: (page: Int) -> Unit = {},
   onToggleFavorite: () -> Unit = {},
+  onSelectNovel: ((NovelWithState) -> Unit)? = null,
   viewModel: StrawberrycandyViewModel? = null,
   modifier: Modifier = Modifier,
 ) {
@@ -245,6 +249,12 @@ fun ReadingScreen(
   val activeUser by (viewModel?.activeUser?.collectAsState()
     ?: remember { mutableStateOf(null) })
   val canAddChapter = activeUser?.role == "OWNER" || activeUser?.authorSlot == 0 || (activeUser?.role == "TRANSLATOR" && activeUser?.authorSlot == novel.authorSlot)
+
+  val uiState by (viewModel?.uiState?.collectAsState()
+    ?: remember { mutableStateOf(null) })
+  val authorSlots = uiState?.authorSlots ?: emptyList()
+  val allNovelsList = uiState?.novels ?: listOf(novel)
+  var viewingTranslatorSlot by remember { mutableStateOf<AuthorSlotEntity?>(null) }
 
   // Font family resolution
   val readerFontFamily = remember(selectedFontType, customFontPath) {
@@ -905,31 +915,71 @@ fun ReadingScreen(
 
               Spacer(modifier = Modifier.height(8.dp))
 
-              // Author Line
-              val authorHeader = if (novel.originalAuthor.isNotBlank()) {
+              // Author Line and Clickable Translator Profile Badge
+              val translatorSlot = remember(novel, authorSlots) {
                 if (novel.authorSlot > 0) {
-                  "BY ${novel.originalAuthor.uppercase()} • TRANSLATED BY ${novel.author.uppercase()} (ROOM ${novel.authorSlot})"
-                } else if (novel.author.isNotBlank() && !novel.author.equals(novel.originalAuthor, ignoreCase = true)) {
-                  "BY ${novel.originalAuthor.uppercase()} • CURATED BY ${novel.author.uppercase()}"
+                  authorSlots.find { it.slotNumber == novel.authorSlot }
                 } else {
-                  "BY ${novel.originalAuthor.uppercase()} • STRAWBERRYCANDY ARCHIVE"
-                }
-              } else if (novel.authorSlot > 0) {
-                "BY ${novel.author.uppercase()} • ROOM ${novel.authorSlot} • STRAWBERRYCANDY"
-              } else {
-                "BY ${novel.author.uppercase()} • STRAWBERRYCANDY ARCHIVE"
+                  authorSlots.find {
+                    it.penName.equals(novel.author, ignoreCase = true) ||
+                    it.authorName.equals(novel.author, ignoreCase = true)
+                  }
+                } ?: authorSlots.find { it.slotNumber == 0 }
               }
 
-              Text(
-                text = authorHeader,
-                style = MaterialTheme.typography.labelSmall.copy(
-                  fontSize = 9.sp,
-                  letterSpacing = 1.2.sp,
-                  fontWeight = FontWeight.Bold
-                ),
-                color = CharcoalTertiary,
-                textAlign = TextAlign.Center
-              )
+              if (novel.originalAuthor.isNotBlank()) {
+                Text(
+                  text = "BY ${novel.originalAuthor.uppercase()}",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 9.sp,
+                    letterSpacing = 1.2.sp,
+                    fontWeight = FontWeight.Bold
+                  ),
+                  color = CharcoalTertiary,
+                  textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+              }
+
+              val translatorLabel = when {
+                novel.authorSlot > 0 -> "Translated by ${novel.author.ifBlank { "Translator Room ${novel.authorSlot}" }}"
+                novel.author.isNotBlank() && !novel.author.equals(novel.originalAuthor, ignoreCase = true) -> "Curated by ${novel.author}"
+                else -> "Curated by Strawberrycandy"
+              }
+
+              Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = AntiqueGold.copy(alpha = 0.12f),
+                border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.45f)),
+                modifier = Modifier
+                  .clip(RoundedCornerShape(18.dp))
+                  .clickable {
+                    viewingTranslatorSlot = translatorSlot
+                  }
+                  .testTag("novel_translator_profile_button")
+              ) {
+                Row(
+                  modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                  verticalAlignment = Alignment.CenterVertically
+                ) {
+                  Icon(
+                    imageVector = Icons.Outlined.Person,
+                    contentDescription = "Translator Profile",
+                    tint = AntiqueGold,
+                    modifier = Modifier.size(14.dp)
+                  )
+                  Spacer(modifier = Modifier.width(6.dp))
+                  Text(
+                    text = "$translatorLabel • View Profile →",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontSize = 10.5.sp,
+                      fontWeight = FontWeight.Bold,
+                      color = CharcoalText,
+                      letterSpacing = 0.3.sp
+                    )
+                  )
+                }
+              }
 
               Spacer(modifier = Modifier.height(28.dp))
             }
@@ -1867,6 +1917,46 @@ fun ReadingScreen(
           viewModel?.deleteBookmark(bookmarkId)
         },
         onDismiss = { isBookmarksModalOpen = false }
+      )
+    }
+
+    // 5. Translator Profile Modal (Viewable by anyone, translators can only modify their own room)
+    if (viewingTranslatorSlot != null) {
+      val slot = viewingTranslatorSlot!!
+      val user = activeUser
+      val isSoleOwner = StrawberrycandyViewModel.isOwnerEmail(user?.email)
+      val canModifyThisRoom = isSoleOwner || (
+        user?.role == "TRANSLATOR" && (
+          user.authorSlot == slot.slotNumber ||
+          (user.email.isNotBlank() && slot.translatorEmail?.equals(user.email, ignoreCase = true) == true)
+        )
+      )
+      TranslatorProfileModal(
+        slot = slot,
+        novels = allNovelsList,
+        isOwner = isSoleOwner,
+        isOwnerOrTranslator = canModifyThisRoom,
+        onDismiss = { viewingTranslatorSlot = null },
+        onSelectNovel = { newNovel ->
+          viewingTranslatorSlot = null
+          if (newNovel.id != novel.id) {
+            onSelectNovel?.invoke(newNovel) ?: viewModel?.recordNovelRead(newNovel.id)
+          }
+        },
+        onUpdateCoverImage = { slotNum, imagePath ->
+          if (canModifyThisRoom) {
+            viewModel?.updateAuthorSlotCover(slotNum, imagePath)
+            viewingTranslatorSlot = slot.copy(coverImageUri = imagePath)
+          }
+        },
+        onOpenUploadForSlot = null,
+        onToggleSlotPermission = if (isSoleOwner) { slotNum, isGranted ->
+          viewModel?.setSlotPermission(slotNum, isGranted)
+        } else null,
+        onAddChapterToNovel = if (canModifyThisRoom) { novelId, title, content ->
+          viewModel?.addChapterToNovel(novelId, title, content)
+        } else null,
+        onEditNovel = null
       )
     }
   }

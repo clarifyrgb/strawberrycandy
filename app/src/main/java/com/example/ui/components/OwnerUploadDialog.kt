@@ -34,9 +34,11 @@ import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.FormatSize
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Upload
@@ -68,6 +70,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -76,6 +79,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import com.example.data.local.AuthorSlotEntity
+import com.example.data.local.ReaderProfileEntity
 import com.example.ui.theme.AntiqueGold
 import com.example.ui.theme.CharcoalSecondary
 import com.example.ui.theme.CharcoalTertiary
@@ -87,10 +91,25 @@ import com.example.util.EpubParser
 import java.io.File
 import java.io.FileOutputStream
 
+enum class ManuscriptFont(val label: String, val shortName: String, val fontFamily: FontFamily) {
+  SERIF("Classic Serif", "Serif", FontFamily.Serif),
+  SANS("Modern Sans", "Sans", FontFamily.SansSerif),
+  MONOSPACE("Typewriter", "Typewriter", FontFamily.Monospace),
+  CURSIVE("Cursive", "Cursive", FontFamily.Cursive)
+}
+
+enum class StoryPhotoPlacement(val label: String, val chipLabel: String, val defaultCaption: String) {
+  FRONT("Front Page", "Front Page", "Frontispiece Illustration"),
+  MIDDLE("Middle Page", "Middle Page", "Story Scene Illustration"),
+  LAST("Last Page", "Last Page", "Concluding Illustration Plate")
+}
+
 @Composable
 fun OwnerUploadDialog(
   authorSlots: List<AuthorSlotEntity> = emptyList(),
   initialSlot: Int = 0,
+  activeUser: ReaderProfileEntity? = null,
+  isOwner: Boolean = false,
   onDismiss: () -> Unit,
   onUpdateAuthorSlot: ((slotNumber: Int, name: String, penName: String, bio: String) -> Unit)? = null,
   onPublishNovel: (
@@ -108,7 +127,8 @@ fun OwnerUploadDialog(
     releaseFormat: String,
   ) -> Unit,
 ) {
-  var selectedSlot by remember { mutableIntStateOf(initialSlot) }
+  val defaultSlot = if (isOwner) initialSlot else if (initialSlot > 0) initialSlot else (activeUser?.authorSlot ?: 1)
+  var selectedSlot by remember(defaultSlot) { mutableIntStateOf(defaultSlot) }
   var isEditingSlotProfile by remember { mutableStateOf(false) }
 
   // Publication status: Ongoing vs Finished
@@ -118,11 +138,19 @@ fun OwnerUploadDialog(
 
   // Active author slot data
   val currentSlotEntity = authorSlots.find { it.slotNumber == selectedSlot }
-  var customPenName by remember(selectedSlot, currentSlotEntity) {
-    mutableStateOf(currentSlotEntity?.penName ?: if (selectedSlot == 0) "Strawberrycandy" else "Author $selectedSlot")
+  var customPenName by remember(selectedSlot, currentSlotEntity, activeUser) {
+    mutableStateOf(
+      if (selectedSlot == 0 && isOwner) {
+        "Strawberrycandy"
+      } else {
+        currentSlotEntity?.penName?.takeIf { it.isNotBlank() && !it.startsWith("Author ", ignoreCase = true) }
+          ?: activeUser?.displayName?.takeIf { it.isNotBlank() }
+          ?: "Translator $selectedSlot"
+      }
+    )
   }
   var customBio by remember(selectedSlot, currentSlotEntity) {
-    mutableStateOf(currentSlotEntity?.bio ?: "Contributing Writer")
+    mutableStateOf(currentSlotEntity?.bio ?: "Contributing Translator")
   }
 
   var title by remember { mutableStateOf("") }
@@ -202,11 +230,14 @@ fun OwnerUploadDialog(
     }
   }
 
+  var selectedFont by remember { mutableStateOf(ManuscriptFont.SERIF) }
+  var targetPhotoPlacement by remember { mutableStateOf(StoryPhotoPlacement.FRONT) }
+
   val storyPhotoPickerLauncher = rememberLauncherForActivityResult(
     contract = ActivityResultContracts.PickVisualMedia()
   ) { uri: Uri? ->
     if (uri != null) {
-      try {
+      val imagePath = try {
         val storyDir = File(context.filesDir, "story_images").apply { mkdirs() }
         val destFile = File(storyDir, "story_${System.currentTimeMillis()}.jpg")
         context.contentResolver.openInputStream(uri)?.use { inStream ->
@@ -214,12 +245,39 @@ fun OwnerUploadDialog(
             inStream.copyTo(outStream)
           }
         }
-        content = content.trimEnd() + "\n\n[image:${destFile.absolutePath}:Story illustration plate]\n\n"
-        extractedPhotosCount++
+        destFile.absolutePath
       } catch (e: Exception) {
-        content = content.trimEnd() + "\n\n[image:$uri:Story illustration plate]\n\n"
-        extractedPhotosCount++
+        uri.toString()
       }
+
+      val marker = "[image:$imagePath:${targetPhotoPlacement.defaultCaption}]"
+      content = when (targetPhotoPlacement) {
+        StoryPhotoPlacement.FRONT -> {
+          if (content.isBlank()) "$marker\n\n"
+          else "$marker\n\n${content.trimStart()}"
+        }
+        StoryPhotoPlacement.MIDDLE -> {
+          val paras = content.split("\n\n").filter { it.isNotBlank() }
+          if (paras.size <= 1) {
+            if (paras.isEmpty()) {
+              "$marker\n\n"
+            } else {
+              val half = (paras[0].length / 2).coerceAtLeast(0)
+              paras[0].take(half) + "\n\n" + marker + "\n\n" + paras[0].substring(half)
+            }
+          } else {
+            val mid = (paras.size + 1) / 2
+            val firstHalf = paras.take(mid).joinToString("\n\n")
+            val secondHalf = paras.drop(mid).joinToString("\n\n")
+            firstHalf + "\n\n" + marker + "\n\n" + secondHalf
+          }
+        }
+        StoryPhotoPlacement.LAST -> {
+          if (content.isBlank()) "$marker\n\n"
+          else "${content.trimEnd()}\n\n$marker\n\n"
+        }
+      }
+      extractedPhotosCount++
     }
   }
 
@@ -289,26 +347,18 @@ fun OwnerUploadDialog(
         Spacer(modifier = Modifier.height(10.dp))
 
         Text(
-          text = "Publish Manuscript to Cloud",
+          text = "Publish Manuscript",
           style = MaterialTheme.typography.headlineSmall.copy(
             fontFamily = FontFamily.Serif
           ),
           color = CharcoalText
         )
 
-        Spacer(modifier = Modifier.height(6.dp))
-
-        Text(
-          text = "Direct Wattpad-style cloud upload. No tokens or HTTPS URLs required — your novel is published directly to the Global Cloud Archive for all APK readers.",
-          style = MaterialTheme.typography.bodySmall,
-          color = CharcoalSecondary
-        )
-
         Spacer(modifier = Modifier.height(14.dp))
 
-        // Author & 4-Room Access Selector
+        // Author & Contributor Room Access Selector
         Text(
-          text = "AUTHOR ACCESS (OWNER + 4 WRITER ROOMS)",
+          text = if (isOwner) "AUTHOR ACCESS (OWNER & TRANSLATOR ROOMS)" else "TRANSLATOR ARCHIVE SEAT",
           style = MaterialTheme.typography.labelSmall.copy(
             fontSize = 9.sp,
             fontWeight = FontWeight.Bold,
@@ -436,7 +486,7 @@ fun OwnerUploadDialog(
             ) {
               Column {
                 Text(
-                  text = if (selectedSlot == 0) "OWNER UPLOAD" else "AUTHOR ROOM $selectedSlot VERIFIED",
+                  text = if (selectedSlot == 0 && isOwner) "OWNER UPLOAD" else "TRANSLATOR ROOM $selectedSlot",
                   style = MaterialTheme.typography.labelSmall.copy(
                     fontSize = 8.5.sp,
                     fontWeight = FontWeight.Bold,
@@ -445,7 +495,7 @@ fun OwnerUploadDialog(
                   color = AntiqueGold
                 )
                 Text(
-                  text = if (selectedSlot == 0) "Strawberrycandy" else customPenName,
+                  text = if (selectedSlot == 0 && isOwner) "Strawberrycandy" else customPenName,
                   style = MaterialTheme.typography.titleSmall.copy(
                     fontWeight = FontWeight.Bold
                   ),
@@ -453,7 +503,7 @@ fun OwnerUploadDialog(
                 )
               }
 
-              if (selectedSlot in 1..4 && onUpdateAuthorSlot != null) {
+              if (selectedSlot in 1..10) {
                 IconButton(
                   onClick = { isEditingSlotProfile = !isEditingSlotProfile },
                   modifier = Modifier.size(32.dp)
@@ -468,10 +518,10 @@ fun OwnerUploadDialog(
               }
             }
 
-            if (selectedSlot in 1..4) {
+            if (selectedSlot in 1..10) {
               Spacer(modifier = Modifier.height(4.dp))
               Text(
-                text = "Access Code: AUTH-ROOM-$selectedSlot • Access granted to upload novels to the Strawberrycandy collective.",
+                text = "Translator Room $selectedSlot • Published under pen name '$customPenName' directly to Cloud Archive.",
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                 color = CharcoalSecondary
               )
@@ -480,7 +530,7 @@ fun OwnerUploadDialog(
         }
 
         // Inline edit slot pen name if toggled
-        AnimatedVisibility(visible = isEditingSlotProfile && selectedSlot in 1..4) {
+        AnimatedVisibility(visible = isEditingSlotProfile && selectedSlot in 1..10) {
           Column(
             modifier = Modifier
               .fillMaxWidth()
@@ -754,32 +804,96 @@ fun OwnerUploadDialog(
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        // Full Manuscript Content with Embed Photo in Story Button
+        // Full Manuscript Content & Writing Room with Font Picker, Photo Placement, and Smooth Writing Buttons
+        val wordCount = remember(content) {
+          content.split(Regex("""\s+""")).count { it.isNotBlank() }
+        }
+        val estimatedReadMin = remember(wordCount) {
+          maxOf(1, wordCount / 200)
+        }
+
         Row(
           modifier = Modifier.fillMaxWidth(),
           horizontalArrangement = Arrangement.SpaceBetween,
           verticalAlignment = Alignment.CenterVertically
         ) {
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+              text = "MANUSCRIPT WRITING ROOM",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
+              ),
+              color = CharcoalTertiary
+            )
+          }
+
           Text(
-            text = "MANUSCRIPT CONTENT",
+            text = "$wordCount words • ~$estimatedReadMin min read",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 8.5.sp,
+              color = CharcoalSecondary
+            )
+          )
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // 1. Font Selection Options for Manuscript
+        Row(
+          modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+          Icon(
+            imageVector = Icons.Outlined.FormatSize,
+            contentDescription = "Font options",
+            tint = AntiqueGold,
+            modifier = Modifier.size(14.dp)
+          )
+          Text(
+            text = "Font:",
             style = MaterialTheme.typography.labelSmall.copy(
               fontSize = 9.sp,
               fontWeight = FontWeight.Bold,
-              letterSpacing = 1.sp
-            ),
-            color = CharcoalTertiary
+              color = CharcoalTertiary
+            )
           )
-
-          OutlinedButton(
-            onClick = {
-              storyPhotoPickerLauncher.launch(
-                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+          ManuscriptFont.entries.forEach { fontOption ->
+            val isSelected = selectedFont == fontOption
+            Surface(
+              shape = RoundedCornerShape(8.dp),
+              color = if (isSelected) AntiqueGold else SoftCreamPaper,
+              border = BorderStroke(1.dp, if (isSelected) AntiqueGold else SubtleBorder),
+              onClick = { selectedFont = fontOption },
+              modifier = Modifier.testTag("font_option_${fontOption.name.lowercase()}")
+            ) {
+              Text(
+                text = fontOption.shortName,
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 9.sp,
+                  fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                  fontFamily = fontOption.fontFamily
+                ),
+                color = if (isSelected) Color.White else CharcoalText,
+                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
               )
-            },
-            shape = RoundedCornerShape(10.dp),
-            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-            modifier = Modifier.testTag("embed_story_photo_button")
-          ) {
+            }
+          }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // 2. Photo Embedding Placement Options (Front Page, Middle, Last Page)
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
               imageVector = Icons.Outlined.PhotoLibrary,
               contentDescription = null,
@@ -788,14 +902,152 @@ fun OwnerUploadDialog(
             )
             Spacer(modifier = Modifier.width(4.dp))
             Text(
-              text = "Embed Story Photo",
+              text = "Embed Photo At:",
               style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 10.5.sp,
-                fontWeight = FontWeight.Medium,
-                color = CharcoalText
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                color = CharcoalTertiary
               )
             )
           }
+
+          Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            StoryPhotoPlacement.entries.forEach { placement ->
+              OutlinedButton(
+                onClick = {
+                  targetPhotoPlacement = placement
+                  storyPhotoPickerLauncher.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                  )
+                },
+                shape = RoundedCornerShape(8.dp),
+                border = BorderStroke(0.8.dp, AntiqueGold.copy(alpha = 0.5f)),
+                contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp),
+                modifier = Modifier.testTag("embed_photo_${placement.name.lowercase()}")
+              ) {
+                Text(
+                  text = "+ ${placement.chipLabel}",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 8.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = CharcoalText
+                  )
+                )
+              }
+            }
+          }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // 3. Smooth Writing Buttons Toolbar
+        Row(
+          modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+          Text(
+            text = "Smooth Writing:",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 8.5.sp,
+              fontWeight = FontWeight.Bold,
+              color = CharcoalTertiary
+            )
+          )
+
+          // Quick Insert Chapter Break
+          Surface(
+            shape = RoundedCornerShape(6.dp),
+            color = SoftCreamPaper,
+            border = BorderStroke(0.7.dp, SubtleBorder),
+            onClick = {
+              content = content.trimEnd() + "\n\n[chapter:New Chapter]\n\n"
+            }
+          ) {
+            Text(
+              text = "+ Chapter Break",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Medium,
+                color = DeepBurgundy
+              ),
+              modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
+            )
+          }
+
+          // Paragraph Break
+          Surface(
+            shape = RoundedCornerShape(6.dp),
+            color = SoftCreamPaper,
+            border = BorderStroke(0.7.dp, SubtleBorder),
+            onClick = {
+              content = "$content\n\n"
+            }
+          ) {
+            Text(
+              text = "Paragraph §",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Medium,
+                color = CharcoalText
+              ),
+              modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
+            )
+          }
+
+          // Dialogue Quotes
+          Surface(
+            shape = RoundedCornerShape(6.dp),
+            color = SoftCreamPaper,
+            border = BorderStroke(0.7.dp, SubtleBorder),
+            onClick = {
+              content = "$content\"\""
+            }
+          ) {
+            Text(
+              text = "Dialogue \"\"",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Medium,
+                color = CharcoalText
+              ),
+              modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
+            )
+          }
+
+          // Scene Divider
+          Surface(
+            shape = RoundedCornerShape(6.dp),
+            color = SoftCreamPaper,
+            border = BorderStroke(0.7.dp, SubtleBorder),
+            onClick = {
+              content = content.trimEnd() + "\n\n❦ ❦ ❦\n\n"
+            }
+          ) {
+            Text(
+              text = "Scene Divider ❦",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Medium,
+                color = AntiqueGold
+              ),
+              modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
+            )
+          }
+        }
+
+        if (extractedPhotosCount > 0) {
+          Spacer(modifier = Modifier.height(4.dp))
+          Text(
+            text = "✨ $extractedPhotosCount story illustration(s) embedded in manuscript",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 8.sp,
+              color = Color(0xFF2E7D32),
+              fontWeight = FontWeight.Medium
+            )
+          )
         }
 
         Spacer(modifier = Modifier.height(6.dp))
@@ -806,9 +1058,15 @@ fun OwnerUploadDialog(
             content = it
             errorText = null
           },
-          label = { Text("Manuscript Content (Supports [image:path:caption] markers)") },
-          minLines = 4,
-          maxLines = 8,
+          label = { Text("Manuscript Content (${selectedFont.shortName} font)") },
+          textStyle = TextStyle(
+            fontFamily = selectedFont.fontFamily,
+            fontSize = 14.sp,
+            lineHeight = 22.sp,
+            color = CharcoalText
+          ),
+          minLines = 5,
+          maxLines = 10,
           colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = AntiqueGold,
             unfocusedBorderColor = SubtleBorder
@@ -1169,67 +1427,63 @@ fun OwnerUploadDialog(
           }
         }
 
-        if (errorText != null) {
-          Spacer(modifier = Modifier.height(8.dp))
-          Text(
-            text = errorText ?: "",
-            color = MaterialTheme.colorScheme.error,
-            style = MaterialTheme.typography.bodySmall
-          )
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
-
         val emailRegex = Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}")
-        val cleanCustomPenName = customPenName.replace(emailRegex, "").trim().ifBlank { "Translator $selectedSlot" }
-        val authorToCredit = if (selectedSlot == 0) "Strawberrycandy" else cleanCustomPenName
+        val cleanCustomPenName = customPenName.replace(emailRegex, "").trim().ifBlank {
+          activeUser?.displayName?.takeIf { it.isNotBlank() } ?: "Translator $selectedSlot"
+        }
+        val authorToCredit = if (selectedSlot == 0 && isOwner) "Strawberrycandy" else cleanCustomPenName
         val cleanOriginalAuthor = originalAuthor.replace(emailRegex, "").trim().ifEmpty { authorToCredit }
 
-        // Global Distribution Banner
-        Surface(
-          shape = RoundedCornerShape(12.dp),
-          color = DeepBurgundy.copy(alpha = 0.07f),
-          border = BorderStroke(0.8.dp, DeepBurgundy.copy(alpha = 0.25f)),
-          modifier = Modifier.fillMaxWidth()
-        ) {
-          Row(
-            modifier = Modifier.padding(10.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Direct visible error feedback above the publish button
+        if (errorText != null) {
+          Surface(
+            shape = RoundedCornerShape(10.dp),
+            color = Color(0xFFFDEDEC),
+            border = BorderStroke(1.dp, Color(0xFFEF9A9A)),
+            modifier = Modifier
+              .fillMaxWidth()
+              .padding(bottom = 12.dp)
           ) {
-            Icon(
-              imageVector = Icons.Outlined.Public,
-              contentDescription = null,
-              tint = DeepBurgundy,
-              modifier = Modifier.size(16.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-              text = "Direct Cloud Publishing: Once you tap publish, this novel is uploaded directly to the Global Cloud Archive. No tokens or URLs needed — all readers will see it immediately!",
-              style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 15.sp),
-              color = DeepBurgundy
-            )
+            Row(
+              modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              Icon(
+                imageVector = Icons.Outlined.Info,
+                contentDescription = null,
+                tint = Color(0xFFC62828),
+                modifier = Modifier.size(18.dp)
+              )
+              Spacer(modifier = Modifier.width(8.dp))
+              Text(
+                text = errorText ?: "",
+                color = Color(0xFFC62828),
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold)
+              )
+            }
           }
         }
-
-        Spacer(modifier = Modifier.height(14.dp))
 
         // Publish Button
         Button(
           onClick = {
             if (title.isBlank()) {
-              errorText = "Please enter a novel title."
+              errorText = "Please enter a novel title before publishing."
               return@Button
             }
             if (content.isBlank()) {
-              errorText = "Please provide manuscript content."
+              errorText = "Please enter manuscript text or import an EPUB/TXT file."
               return@Button
             }
+            errorText = null
             onPublishNovel(
-              title,
-              subtitle,
-              chapterTitle,
-              excerpt.ifBlank { content.take(120) + "..." },
-              content,
+              title.trim(),
+              subtitle.trim(),
+              chapterTitle.trim().ifBlank { "Chapter 1: Prologue" },
+              excerpt.trim().ifBlank { if (content.trim().length > 120) content.trim().take(120) + "..." else content.trim() },
+              content.trim(),
               selectedColorHex,
               authorToCredit,
               selectedSlot,
@@ -1243,21 +1497,22 @@ fun OwnerUploadDialog(
           colors = ButtonDefaults.buttonColors(containerColor = CharcoalText),
           modifier = Modifier
             .fillMaxWidth()
-            .height(50.dp)
+            .height(52.dp)
             .testTag("publish_novel_button")
         ) {
           Icon(
             imageVector = Icons.Outlined.Upload,
             contentDescription = null,
             tint = SoftCreamPaper,
-            modifier = Modifier.size(16.dp)
+            modifier = Modifier.size(18.dp)
           )
           Spacer(modifier = Modifier.width(8.dp))
           Text(
-            text = "Publish Directly to Cloud Archive",
+            text = "Publish Manuscript",
             style = MaterialTheme.typography.labelLarge.copy(
               letterSpacing = 0.6.sp,
-              fontWeight = FontWeight.SemiBold
+              fontWeight = FontWeight.Bold,
+              fontSize = 14.sp
             ),
             color = SoftCreamPaper
           )

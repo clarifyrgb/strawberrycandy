@@ -1260,12 +1260,6 @@ private fun GlobalCloudArchiveCard(
         }
       }
 
-      Text(
-        text = "When translators or owners upload a novel, it pushes to the Global Archive so anyone who installed this APK can read the published manuscripts.",
-        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 15.sp),
-        color = CharcoalSecondary
-      )
-
       HorizontalDivider(thickness = 0.6.dp, color = SubtleBorder)
 
       DiagnosticRow(label = "Sync Architecture", value = "Remote Multi-User Shared Sync")
