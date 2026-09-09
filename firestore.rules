@@ -26,6 +26,12 @@ service cloud.firestore {
       allow create, update: if true; // Allows offline/anonymous or authenticated authors & translators to publish live
       allow delete: if isOwner() || isAuthenticated();
     }
+
+    match /novel/{novelId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if isOwner() || isAuthenticated();
+    }
     
     // Chapter Comments: Read by all readers, write for readers and translators
     match /chapter_comments/{commentId} {

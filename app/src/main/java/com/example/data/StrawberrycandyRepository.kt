@@ -202,7 +202,8 @@ class StrawberrycandyRepository(
     }
   }
 
-  fun novelToFirestoreMap(novel: NovelEntity, uploaderEmail: String = ""): HashMap<String, Any?> {
+  fun novelToFirestoreMap(novel: NovelEntity, uploaderUserId: String = "", uploaderEmail: String = ""): HashMap<String, Any?> {
+    val cleanUserId = uploaderUserId.ifBlank { "ZyqtVe6YctehGwYzOjdtnw562ol1" }
     return hashMapOf(
       "id" to novel.id,
       "title" to novel.title,
@@ -235,7 +236,7 @@ class StrawberrycandyRepository(
       "storyImagesJson" to novel.storyImagesJson,
       "isOwnerUploaded" to novel.isOwnerUploaded,
       "uploaderEmail" to uploaderEmail,
-      "uploaderId" to uploaderEmail.ifBlank { "owner_admin" },
+      "uploaderId" to cleanUserId,
       "genre" to novel.genre
     )
   }
@@ -243,23 +244,20 @@ class StrawberrycandyRepository(
   fun listenToCloudNovels() {
     try {
       val firestore = FirebaseFirestore.getInstance()
-      firestore.collection("novels")
-        .addSnapshotListener { snapshot, error ->
-          if (error != null) {
-            Log.w("StrawberrycandyRepository", "Firestore listenToCloudNovels error: ${error.message}")
-            return@addSnapshotListener
-          }
-          if (snapshot == null) return@addSnapshotListener
-          val cloudNovels = snapshot.documents.mapNotNull { doc ->
-            parseNovelFromFirestoreDoc(doc)
-          }.sortedByDescending { it.createdAt }
-          if (cloudNovels.isNotEmpty()) {
-            externalScope.launch {
-              dao.insertNovels(cloudNovels)
-              Log.i("StrawberrycandyRepository", "Synchronized ${cloudNovels.size} novels from Firebase Firestore in real-time.")
-            }
+      val listener = com.google.firebase.firestore.EventListener<com.google.firebase.firestore.QuerySnapshot> { snapshot, error ->
+        if (error != null || snapshot == null) return@EventListener
+        val cloudNovels = snapshot.documents.mapNotNull { doc ->
+          parseNovelFromFirestoreDoc(doc)
+        }
+        if (cloudNovels.isNotEmpty()) {
+          externalScope.launch {
+            dao.insertNovels(cloudNovels)
+            Log.i("StrawberrycandyRepository", "Synchronized ${cloudNovels.size} novels from Firebase Firestore in real-time.")
           }
         }
+      }
+      firestore.collection("novel").addSnapshotListener(listener)
+      firestore.collection("novels").addSnapshotListener(listener)
     } catch (e: Exception) {
       Log.w("StrawberrycandyRepository", "Firestore listenToCloudNovels notice: ${e.message}")
     }
@@ -346,14 +344,20 @@ class StrawberrycandyRepository(
     // 1. Primary Online Store: Fetch live novels from Firebase Cloud Firestore
     try {
       val firestore = FirebaseFirestore.getInstance()
-      val snapshot = firestore.collection("novels").get().await()
-      if (snapshot != null && !snapshot.isEmpty) {
-        val cloudNovels = snapshot.documents.mapNotNull { doc -> parseNovelFromFirestoreDoc(doc) }
-        if (cloudNovels.isNotEmpty()) {
-          dao.insertNovels(cloudNovels)
-          Log.i("StrawberrycandyRepository", "Fetched ${cloudNovels.size} live novels from Firebase Cloud Firestore.")
-          return Result.success(cloudNovels.size)
-        }
+      val list = mutableListOf<NovelEntity>()
+      val snap1 = firestore.collection("novel").get().await()
+      if (snap1 != null) {
+        list.addAll(snap1.documents.mapNotNull { parseNovelFromFirestoreDoc(it) })
+      }
+      val snap2 = firestore.collection("novels").get().await()
+      if (snap2 != null) {
+        list.addAll(snap2.documents.mapNotNull { parseNovelFromFirestoreDoc(it) })
+      }
+      val cloudNovels = list.distinctBy { it.id }
+      if (cloudNovels.isNotEmpty()) {
+        dao.insertNovels(cloudNovels)
+        Log.i("StrawberrycandyRepository", "Fetched ${cloudNovels.size} live novels from Firebase Cloud Firestore.")
+        return Result.success(cloudNovels.size)
       }
     } catch (e: Exception) {
       Log.w("StrawberrycandyRepository", "Firestore fetch novels notice: ${e.message}")
@@ -533,15 +537,18 @@ class StrawberrycandyRepository(
     var novelJson = ""
     var fullCatalogJson = "[]"
 
-    // 1. Direct Online Upload to Firebase Firestore collection 'novels'
+    // 1. Direct Online Upload to Firebase Firestore collection 'novel' and 'novels'
     try {
       val firestore = FirebaseFirestore.getInstance()
-      val activeEmail = dao.getActiveReaderProfileSync()?.email ?: ""
-      val novelData = novelToFirestoreMap(novel, activeEmail)
+      val activeProfile = dao.getActiveReaderProfileSync()
+      val activeUserId = activeProfile?.userId ?: "ZyqtVe6YctehGwYzOjdtnw562ol1"
+      val activeEmail = activeProfile?.email ?: ""
+      val novelData = novelToFirestoreMap(novel, activeUserId, activeEmail)
+      firestore.collection("novel").document(novel.id).set(novelData).await()
       firestore.collection("novels").document(novel.id).set(novelData).await()
       isPublished = true
       statusMsg = "✨ Novel uploaded live to Firebase Cloud Archive!"
-      Log.i("StrawberrycandyRepository", "Novel ${novel.id} published directly to Firebase Firestore.")
+      Log.i("StrawberrycandyRepository", "Novel ${novel.id} published directly to Firebase Firestore (novel & novels).")
     } catch (e: Exception) {
       Log.w("StrawberrycandyRepository", "Firebase Firestore novel upload error: ${e.message}")
     }
@@ -680,8 +687,11 @@ class StrawberrycandyRepository(
     externalScope.launch {
       try {
         val firestore = FirebaseFirestore.getInstance()
-        val activeEmail = dao.getActiveReaderProfileSync()?.email ?: ""
-        val novelData = novelToFirestoreMap(updated, activeEmail)
+        val activeProfile = dao.getActiveReaderProfileSync()
+        val activeUserId = activeProfile?.userId ?: "ZyqtVe6YctehGwYzOjdtnw562ol1"
+        val activeEmail = activeProfile?.email ?: ""
+        val novelData = novelToFirestoreMap(updated, activeUserId, activeEmail)
+        firestore.collection("novel").document(updated.id).set(novelData).await()
         firestore.collection("novels").document(updated.id).set(novelData).await()
       } catch (e: Exception) {
         Log.w("StrawberrycandyRepository", "Firebase Firestore addChapter error: ${e.message}")
@@ -735,6 +745,7 @@ class StrawberrycandyRepository(
     externalScope.launch {
       try {
         val firestore = FirebaseFirestore.getInstance()
+        firestore.collection("novel").document(id).delete().await()
         firestore.collection("novels").document(id).delete().await()
       } catch (e: Exception) {
         Log.w("StrawberrycandyRepository", "Firebase Firestore deleteNovel error: ${e.message}")
@@ -775,8 +786,11 @@ class StrawberrycandyRepository(
     externalScope.launch {
       try {
         val firestore = FirebaseFirestore.getInstance()
-        val activeEmail = dao.getActiveReaderProfileSync()?.email ?: ""
-        val novelData = novelToFirestoreMap(updated, activeEmail)
+        val activeProfile = dao.getActiveReaderProfileSync()
+        val activeUserId = activeProfile?.userId ?: "ZyqtVe6YctehGwYzOjdtnw562ol1"
+        val activeEmail = activeProfile?.email ?: ""
+        val novelData = novelToFirestoreMap(updated, activeUserId, activeEmail)
+        firestore.collection("novel").document(updated.id).set(novelData).await()
         firestore.collection("novels").document(updated.id).set(novelData).await()
       } catch (e: Exception) {
         Log.w("StrawberrycandyRepository", "Firebase Firestore updateNovel error: ${e.message}")
