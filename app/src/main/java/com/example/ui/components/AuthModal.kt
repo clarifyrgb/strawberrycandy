@@ -98,8 +98,8 @@ import com.example.ui.theme.SubtleBorder
 @Composable
 fun AuthModal(
   onDismiss: () -> Unit,
-  onSignInWithGoogle: (email: String, password: String, name: String, role: String, authorSlot: Int?) -> Unit,
-  onSignInWithApple: (email: String, password: String, name: String, role: String, authorSlot: Int?) -> Unit,
+  onSignInWithGoogle: (email: String, password: String, name: String, role: String, authorSlot: Int?, isSignUp: Boolean) -> Unit,
+  onSignInWithApple: (email: String, password: String, name: String, role: String, authorSlot: Int?, isSignUp: Boolean) -> Unit,
   rememberedAccounts: List<ReaderProfileEntity> = emptyList(),
   onRequestPasswordResetCode: (email: String, onResult: (Result<String>) -> Unit) -> Unit = { _, _ -> },
   onResetPasswordWithCode: (email: String, code: String, newPassword: String, onResult: (Result<Unit>) -> Unit) -> Unit = { _, _, _, _ -> },
@@ -115,6 +115,7 @@ fun AuthModal(
 
   // Mode: Sign In vs. Forgot Password
   var isForgotPasswordMode by remember { mutableStateOf(false) }
+  var isSignUpMode by remember { mutableStateOf(false) }
 
   // Sign In state
   val resolvedInitialEmail = remember(initialEmail, rememberedAccounts) {
@@ -224,12 +225,24 @@ fun AuthModal(
       }
     }
 
-    if (passwordInput.isBlank()) {
-      localError = "Please enter your password."
+    if (!isSignUpMode && matchedAccount == null && !StrawberrycandyRepository.isOwnerEmail(trimmedEmail)) {
+      localError = "Account not found. Please click 'Create Account (Sign Up)' first."
       return
     }
     if (passwordInput.trim().length < 4) {
       localError = "Password must be at least 4 characters."
+      return
+    }
+
+    val cleanEmail = trimmedEmail.lowercase()
+    val savedPass = rememberedAccounts.firstOrNull { it.email.lowercase() == cleanEmail }?.passwordHash?.takeIf { it.isNotBlank() }
+      ?: AuthMemoryStore.getPassword(cleanEmail)
+
+    if (isSignUpMode && savedPass != null && savedPass.isNotBlank() && savedPass != "clarify123" && passwordInput.trim() != savedPass) {
+      isSignUpMode = false
+      passwordInput = ""
+      localError = null
+      onClearError()
       return
     }
 
@@ -262,9 +275,9 @@ fun AuthModal(
     AuthMemoryStore.rememberCredential(trimmedEmail, passwordInput)
 
     if (provider == "GOOGLE") {
-      onSignInWithGoogle(trimmedEmail, passwordInput, finalName, effectiveRole, assignedSlot)
+      onSignInWithGoogle(trimmedEmail, passwordInput, finalName, effectiveRole, assignedSlot, isSignUpMode)
     } else {
-      onSignInWithApple(trimmedEmail, passwordInput, finalName, effectiveRole, assignedSlot)
+      onSignInWithApple(trimmedEmail, passwordInput, finalName, effectiveRole, assignedSlot, isSignUpMode)
     }
   }
 
@@ -355,7 +368,6 @@ fun AuthModal(
 
         if (!isForgotPasswordMode) {
           // Mode Toggle: Sign Up vs Sign In
-          var isSignUpMode by remember { mutableStateOf(false) }
 
           Surface(
             shape = RoundedCornerShape(12.dp),
@@ -891,113 +903,44 @@ fun AuthModal(
 
           Spacer(modifier = Modifier.height(16.dp))
 
-          // Sign In with Google
+          // Prominent Email / Password Sign Up or Sign In Action Button
           Surface(
             onClick = {
-              if (isGoogleSignInProcessing) return@Surface
-              if (passwordInput.isNotBlank() && emailInput.isNotBlank()) {
-                validateAndSubmit("GOOGLE")
-              } else if (onSignInWithGoogleCredential != null) {
-                coroutineScope.launch {
-                  isGoogleSignInProcessing = true
-                  localError = null
-                  onClearError()
-                  try {
-                    when (val outcome = googleSignInHandler.signInWithGoogle()) {
-                      is GoogleSignInOutcome.Success -> {
-                        val role = if (isOwnerDetected) "OWNER" else "READER"
-                        val effectiveName = outcome.displayName ?: nameInput.trim().ifBlank { null }
-                        onSignInWithGoogleCredential(
-                          outcome.idToken,
-                          outcome.email,
-                          effectiveName,
-                          role,
-                          null
-                        )
-                      }
-                      is GoogleSignInOutcome.FallbackNeeded -> {
-                        if (passwordInput.isNotBlank() && emailInput.isNotBlank()) {
-                          validateAndSubmit("GOOGLE")
-                        } else {
-                          localError = outcome.message.ifBlank { "Please enter your password to sign in" }
-                        }
-                      }
-                      is GoogleSignInOutcome.Canceled -> {
-                        // User dismissed
-                      }
-                      is GoogleSignInOutcome.Error -> {
-                        if (passwordInput.isNotBlank() && emailInput.isNotBlank()) {
-                          validateAndSubmit("GOOGLE")
-                        } else {
-                          localError = outcome.message
-                        }
-                      }
-                    }
-                  } finally {
-                    isGoogleSignInProcessing = false
-                  }
-                }
-              } else {
-                validateAndSubmit("GOOGLE")
-              }
+              validateAndSubmit(if (isSignUpMode) "EMAIL_SIGNUP" else "EMAIL_SIGNIN")
             },
             shape = RoundedCornerShape(12.dp),
-            color = Color.White,
-            border = BorderStroke(1.dp, Color(0xFFDADCE0)),
-            shadowElevation = 1.dp,
+            color = AntiqueGold,
+            shadowElevation = 2.dp,
             modifier = Modifier
               .fillMaxWidth()
-              .testTag("sign_in_google_button")
+              .testTag("auth_email_submit_button")
           ) {
             Row(
               modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 11.dp),
+                .padding(horizontal = 16.dp, vertical = 13.dp),
               verticalAlignment = Alignment.CenterVertically,
               horizontalArrangement = Arrangement.Center
             ) {
-              if (isGoogleSignInProcessing) {
-                CircularProgressIndicator(
-                  modifier = Modifier.size(16.dp),
-                  color = Color(0xFF4285F4),
-                  strokeWidth = 2.dp
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                Text(
-                  text = "Signing in with Google...",
-                  style = MaterialTheme.typography.labelLarge.copy(
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 13.sp
-                  ),
-                  color = Color(0xFF3C4043)
-                )
-              } else {
-                Box(
-                  modifier = Modifier
-                    .size(18.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFF4285F4)),
-                  contentAlignment = Alignment.Center
-                ) {
-                  Text(
-                    text = "G",
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp
-                  )
-                }
-                Spacer(modifier = Modifier.width(10.dp))
-                Text(
-                  text = if (matchedAccount != null) "Sign in as ${matchedAccount.displayName}" else "Sign in with Google",
-                  style = MaterialTheme.typography.labelLarge.copy(
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 13.sp
-                  ),
-                  color = Color(0xFF3C4043)
-                )
-              }
+              Icon(
+                imageVector = Icons.Outlined.Person,
+                contentDescription = null,
+                tint = SoftCreamPaper,
+                modifier = Modifier.size(17.dp)
+              )
+              Spacer(modifier = Modifier.width(8.dp))
+              Text(
+                text = if (isSignUpMode) "Create Account & Start Reading" else "Sign In with Password",
+                style = MaterialTheme.typography.labelLarge.copy(
+                  fontWeight = FontWeight.Bold,
+                  fontSize = 13.5.sp
+                ),
+                color = SoftCreamPaper
+              )
             }
           }
+
+          Spacer(modifier = Modifier.height(12.dp))
 
           Spacer(modifier = Modifier.height(8.dp))
 
@@ -1467,27 +1410,7 @@ fun AuthModal(
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        Row(
-          verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.Center
-        ) {
-          Icon(
-            imageVector = Icons.Outlined.Lock,
-            contentDescription = null,
-            tint = CharcoalTertiary,
-            modifier = Modifier.size(10.dp)
-          )
-          Spacer(modifier = Modifier.width(4.dp))
-          Text(
-            text = "Translators granted permission by Clarify automatically unlock editing access.",
-            style = MaterialTheme.typography.labelSmall.copy(
-              fontSize = 8.5.sp,
-              lineHeight = 11.sp
-            ),
-            color = CharcoalTertiary,
-            textAlign = TextAlign.Center
-          )
-        }
+
       }
     }
   }

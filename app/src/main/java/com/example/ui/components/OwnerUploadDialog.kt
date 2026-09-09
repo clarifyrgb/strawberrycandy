@@ -1627,10 +1627,12 @@ fun OwnerUploadDialog(
             Spacer(modifier = Modifier.width(10.dp))
             Text(
               text = "Publishing Manuscript...",
+              maxLines = 1,
+              softWrap = false,
               style = MaterialTheme.typography.labelLarge.copy(
-                letterSpacing = 0.6.sp,
+                letterSpacing = 0.2.sp,
                 fontWeight = FontWeight.Bold,
-                fontSize = 14.sp
+                fontSize = 12.sp
               ),
               color = SoftCreamPaper
             )
@@ -1644,10 +1646,12 @@ fun OwnerUploadDialog(
             Spacer(modifier = Modifier.width(8.dp))
             Text(
               text = "Publish Manuscript",
+              maxLines = 1,
+              softWrap = false,
               style = MaterialTheme.typography.labelLarge.copy(
-                letterSpacing = 0.6.sp,
+                letterSpacing = 0.2.sp,
                 fontWeight = FontWeight.Bold,
-                fontSize = 14.sp
+                fontSize = 12.sp
               ),
               color = SoftCreamPaper
             )

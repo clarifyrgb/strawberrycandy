@@ -477,6 +477,7 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     displayName: String = "",
     role: String = "READER",
     authorSlot: Int? = null,
+    isSignUp: Boolean = false,
     onError: ((String) -> Unit)? = null
   ) {
     viewModelScope.launch {
@@ -486,7 +487,8 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
         password = password,
         displayName = displayName,
         role = role,
-        authorSlot = authorSlot
+        authorSlot = authorSlot,
+        isSignUp = isSignUp
       )
       if (result.isSuccess) {
         _isAuthDialogOpen.value = false
@@ -496,9 +498,13 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
         _snackbarMessage.value = "Signed in as $roleLabel ($email)"
       } else {
         val error = result.exceptionOrNull()?.message ?: "Sign in failed"
-        _authErrorMessage.value = error
-        _snackbarMessage.value = error
-        onError?.invoke(error)
+        if (error == "FORBIDDEN_SIGNUP_DIFFERENT_PASSWORD") {
+          _authErrorMessage.value = null
+        } else {
+          _authErrorMessage.value = error
+          _snackbarMessage.value = error
+          onError?.invoke(error)
+        }
       }
     }
   }
@@ -541,6 +547,7 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     displayName: String = "",
     role: String = "READER",
     authorSlot: Int? = null,
+    isSignUp: Boolean = false,
     onError: ((String) -> Unit)? = null
   ) {
     viewModelScope.launch {
@@ -550,7 +557,8 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
         password = password,
         displayName = displayName,
         role = role,
-        authorSlot = authorSlot
+        authorSlot = authorSlot,
+        isSignUp = isSignUp
       )
       if (result.isSuccess) {
         _isAuthDialogOpen.value = false
@@ -560,9 +568,13 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
         _snackbarMessage.value = "Signed in as $roleLabel ($email)"
       } else {
         val error = result.exceptionOrNull()?.message ?: "Sign in failed"
-        _authErrorMessage.value = error
-        _snackbarMessage.value = error
-        onError?.invoke(error)
+        if (error == "FORBIDDEN_SIGNUP_DIFFERENT_PASSWORD") {
+          _authErrorMessage.value = null
+        } else {
+          _authErrorMessage.value = error
+          _snackbarMessage.value = error
+          onError?.invoke(error)
+        }
       }
     }
   }

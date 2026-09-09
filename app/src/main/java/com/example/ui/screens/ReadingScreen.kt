@@ -2,6 +2,13 @@ package com.example.ui.screens
 
 import android.content.Context
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -233,41 +240,57 @@ fun ReadingScreen(
   val readerBgColor = when (readingTheme) {
     "dark" -> Color(0xFF141211)
     "sepia" -> Color(0xFFF4ECD8)
+    "pink" -> Color(0xFFFCE4EC)
+    "blue" -> Color(0xFFE3F2FD)
     else -> SoftCreamPaper
   }
   val readerTextColor = when (readingTheme) {
     "dark" -> Color(0xFFE8E2D9)
     "sepia" -> Color(0xFF3B2F2F)
+    "pink" -> Color(0xFF4A1525)
+    "blue" -> Color(0xFF0D3B66)
     else -> CharcoalText
   }
   val readerSecondaryTextColor = when (readingTheme) {
     "dark" -> Color(0xFFA8A099)
     "sepia" -> Color(0xFF705F55)
+    "pink" -> Color(0xFF884055)
+    "blue" -> Color(0xFF2E6596)
     else -> CharcoalSecondary
   }
   val readerTertiaryTextColor = when (readingTheme) {
     "dark" -> Color(0xFF7A736C)
     "sepia" -> Color(0xFF8C7B70)
+    "pink" -> Color(0xFFAB7082)
+    "blue" -> Color(0xFF5C8FB8)
     else -> CharcoalTertiary
   }
   val readerHudBgColor = when (readingTheme) {
     "dark" -> Color(0xF21C1A18)
     "sepia" -> Color(0xF5EFE3CA)
+    "pink" -> Color(0xF5FCE4EC)
+    "blue" -> Color(0xF5E3F2FD)
     else -> Color(0xF5F7F4EC)
   }
   val readerCardBgColor = when (readingTheme) {
     "dark" -> Color(0xFF221F1D)
     "sepia" -> Color(0xFFEBE0C7)
+    "pink" -> Color(0xFFF8BBD0)
+    "blue" -> Color(0xFFBBDEFB)
     else -> Color(0xFFF5EFE3)
   }
   val readerBorderColor = when (readingTheme) {
     "dark" -> Color(0xFF38332E)
     "sepia" -> Color(0xFFDDD0B5)
+    "pink" -> Color(0xFFF48FB1)
+    "blue" -> Color(0xFF90CAF9)
     else -> SubtleBorder
   }
   val readerChipBgColor = when (readingTheme) {
     "dark" -> Color(0x28FFFFFF)
     "sepia" -> Color(0x18705F55)
+    "pink" -> Color(0x18884055)
+    "blue" -> Color(0x182E6596)
     else -> Color(0x0E000000)
   }
 
@@ -1968,7 +1991,6 @@ fun ReadingScreen(
           }
         }
       }
-    }
 
     // -------------------------------------------------------------
     // MODALS & DIALOGS
@@ -2191,7 +2213,9 @@ fun ReadingScreen(
   }
 }
 
-private fun splitParagraphIntoSentences(paragraph: String): List<String> {
+}
+
+fun splitParagraphIntoSentences(paragraph: String): List<String> {
   val clean = paragraph.trim()
   if (clean.isEmpty()) return emptyList()
   val regex = Regex("""(?<=[.!?…]["'”’]?)\s+(?=[A-Z0-9"“'‘—])""")
@@ -2206,7 +2230,7 @@ data class FormattedTextResult(
   val isDivider: Boolean,
 )
 
-private fun buildReadingParagraphAnnotatedString(
+fun buildReadingParagraphAnnotatedString(
   text: String,
   query: String,
   isParagraphActive: Boolean,
@@ -2346,7 +2370,7 @@ private fun buildReadingParagraphAnnotatedString(
   )
 }
 
-private fun toRomanNumeral(n: Int): String {
+fun toRomanNumeral(n: Int): String {
   return when (n) {
     1 -> "I"
     2 -> "II"

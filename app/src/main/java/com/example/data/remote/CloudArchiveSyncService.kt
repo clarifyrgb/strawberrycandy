@@ -127,12 +127,6 @@ class CloudArchiveSyncService(private val context: Context) {
       }
     }
 
-    // 5. If remote is unreachable, read bundled asset as offline fallback
-    val assetNovels = readBundledAssetNovels()
-    if (assetNovels.isNotEmpty()) {
-      return@withContext Result.success(assetNovels)
-    }
-
     val errorMsg = firstAttempt.exceptionOrNull()?.message ?: "Unable to connect to Cloud Archive ($targetUrl)"
     recordSyncError(errorMsg)
     Result.failure(Exception(errorMsg, firstAttempt.exceptionOrNull()))

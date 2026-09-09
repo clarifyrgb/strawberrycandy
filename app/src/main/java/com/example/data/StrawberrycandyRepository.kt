@@ -51,10 +51,10 @@ class StrawberrycandyRepository(
     try {
       val firestore = FirebaseFirestore.getInstance()
       val settings = FirebaseFirestoreSettings.Builder()
-        .setPersistenceEnabled(true)
+        .setPersistenceEnabled(false)
         .build()
       firestore.firestoreSettings = settings
-      Log.i("StrawberrycandyRepository", "Cloud Firestore configured with offline persistence enabled.")
+      Log.i("StrawberrycandyRepository", "Cloud Firestore configured without offline persistence.")
     } catch (e: Exception) {
       Log.w("StrawberrycandyRepository", "Firestore settings notice: ${e.message}")
     }
@@ -741,6 +741,7 @@ class StrawberrycandyRepository(
     displayName: String,
     role: String = "READER",
     authorSlot: Int? = null,
+    isSignUp: Boolean = false,
   ): Result<Unit> {
     val cleanEmail = email.trim().lowercase()
     if (provider == "GOOGLE") {
@@ -762,6 +763,13 @@ class StrawberrycandyRepository(
     val existingProfile = dao.getReaderProfileByEmail(cleanEmail) ?: dao.getReaderProfile(userId)
     val rememberedPass = com.example.data.auth.AuthMemoryStore.getPassword(cleanEmail)
       ?: existingProfile?.passwordHash?.takeIf { it.isNotBlank() }
+
+    val hasExistingAccount = (existingProfile != null && !existingProfile.passwordHash.isNullOrBlank()) ||
+      (rememberedPass != null && rememberedPass.isNotBlank() && rememberedPass != "clarify123")
+
+    if (isSignUp && hasExistingAccount && rememberedPass != null && rememberedPass != "clarify123" && cleanPass != rememberedPass) {
+      return Result.failure(IllegalArgumentException("FORBIDDEN_SIGNUP_DIFFERENT_PASSWORD"))
+    }
 
     val isFirstLoginForEmail = (existingProfile == null || existingProfile.passwordHash.isNullOrBlank()) &&
       (rememberedPass.isNullOrBlank() || rememberedPass == "clarify123")
@@ -937,10 +945,24 @@ class StrawberrycandyRepository(
   private data class RecoverySession(val email: String, val code: String, val timestamp: Long, var failedAttempts: Int = 0)
   private val activeRecoverySessions = java.util.concurrent.ConcurrentHashMap<String, RecoverySession>()
 
+  private data class RateLimitRecord(val timestamps: MutableList<Long> = mutableListOf())
+  private val recoveryRateLimitMap = java.util.concurrent.ConcurrentHashMap<String, RateLimitRecord>()
+
   suspend fun sendPasswordRecoveryCode(email: String): Result<String> {
     val cleanEmail = email.trim().lowercase()
     if (cleanEmail.isBlank() || !cleanEmail.contains("@")) {
       return Result.failure(IllegalArgumentException("Please enter a valid Gmail address."))
+    }
+
+    val now = System.currentTimeMillis()
+    val dayMillis = 24 * 60 * 60 * 1000L
+    val record = recoveryRateLimitMap.getOrPut(cleanEmail) { RateLimitRecord() }
+    synchronized(record) {
+      record.timestamps.removeAll { now - it > dayMillis }
+      if (record.timestamps.size >= 8) {
+        return Result.failure(IllegalArgumentException("Passcode request limit reached (maximum 8 times per day for this account). Please try again later."))
+      }
+      record.timestamps.add(now)
     }
 
     // 1. Trigger Firebase Auth Password Reset Email to user's real inbox

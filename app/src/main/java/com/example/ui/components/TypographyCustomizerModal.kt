@@ -357,6 +357,85 @@ fun TypographyCustomizerModal(
             }
           }
 
+          Spacer(modifier = Modifier.height(10.dp))
+
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+          ) {
+            // Option 4: Soft Pink
+            val isPinkSelected = readingTheme == "pink"
+            Surface(
+              shape = RoundedCornerShape(14.dp),
+              color = if (isPinkSelected) AntiqueGold.copy(alpha = 0.15f) else if (isDarkModal) Color(0xFF282522) else Color(0xFFFBF8F2),
+              border = BorderStroke(if (isPinkSelected) 1.5.dp else 1.dp, if (isPinkSelected) AntiqueGold else if (isDarkModal) Color(0xFF38332E) else SubtleBorder),
+              modifier = Modifier
+                .weight(1f)
+                .clickable { onSelectReadingTheme("pink") }
+                .testTag("theme_option_pink")
+            ) {
+              Column(
+                modifier = Modifier.padding(10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+              ) {
+                Box(
+                  modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFFCE4EC))
+                    .border(1.dp, Color(0xFFF48FB1), CircleShape),
+                  contentAlignment = Alignment.Center
+                ) {
+                  Text("🌸", fontSize = 13.sp)
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                  text = "Soft Pink",
+                  fontSize = 11.sp,
+                  fontWeight = if (isPinkSelected) FontWeight.Bold else FontWeight.Medium,
+                  color = if (isPinkSelected) AntiqueGold else modalTextColor,
+                  textAlign = TextAlign.Center
+                )
+              }
+            }
+
+            // Option 5: Soft Blue
+            val isBlueSelected = readingTheme == "blue"
+            Surface(
+              shape = RoundedCornerShape(14.dp),
+              color = if (isBlueSelected) AntiqueGold.copy(alpha = 0.15f) else if (isDarkModal) Color(0xFF282522) else Color(0xFFFBF8F2),
+              border = BorderStroke(if (isBlueSelected) 1.5.dp else 1.dp, if (isBlueSelected) AntiqueGold else if (isDarkModal) Color(0xFF38332E) else SubtleBorder),
+              modifier = Modifier
+                .weight(1f)
+                .clickable { onSelectReadingTheme("blue") }
+                .testTag("theme_option_blue")
+            ) {
+              Column(
+                modifier = Modifier.padding(10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+              ) {
+                Box(
+                  modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFE3F2FD))
+                    .border(1.dp, Color(0xFF90CAF9), CircleShape),
+                  contentAlignment = Alignment.Center
+                ) {
+                  Text("🌊", fontSize = 13.sp)
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                  text = "Soft Blue",
+                  fontSize = 11.sp,
+                  fontWeight = if (isBlueSelected) FontWeight.Bold else FontWeight.Medium,
+                  color = if (isBlueSelected) AntiqueGold else modalTextColor,
+                  textAlign = TextAlign.Center
+                )
+              }
+            }
+          }
+
           Spacer(modifier = Modifier.height(18.dp))
 
           // 1. SECTION: PAGE TURNING STYLE

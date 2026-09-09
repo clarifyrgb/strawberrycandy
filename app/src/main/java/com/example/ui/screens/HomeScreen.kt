@@ -844,11 +844,11 @@ fun HomeScreen(
       AuthModal(
         onDismiss = { viewModel.closeAuthDialog() },
         initialEmail = uiState.authInitialEmail ?: "",
-        onSignInWithGoogle = { email, password, name, role, authorSlot ->
-          viewModel.signInWithGoogle(email = email, password = password, displayName = name, role = role, authorSlot = authorSlot)
+        onSignInWithGoogle = { email, password, name, role, authorSlot, isSignUp ->
+          viewModel.signInWithGoogle(email = email, password = password, displayName = name, role = role, authorSlot = authorSlot, isSignUp = isSignUp)
         },
-        onSignInWithApple = { email, password, name, role, authorSlot ->
-          viewModel.signInWithApple(email = email, password = password, displayName = name, role = role, authorSlot = authorSlot)
+        onSignInWithApple = { email, password, name, role, authorSlot, isSignUp ->
+          viewModel.signInWithApple(email = email, password = password, displayName = name, role = role, authorSlot = authorSlot, isSignUp = isSignUp)
         },
         rememberedAccounts = uiState.rememberedAccounts,
         onRequestPasswordResetCode = { email, onResult ->
@@ -1281,37 +1281,7 @@ private fun TopUtilityBar(
       horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
       if (activeUser != null) {
-        // 1. Writer's Room button (Always visible to all logged-in members)
-        Surface(
-          onClick = onOpenAuthorRooms,
-          shape = RoundedCornerShape(14.dp),
-          color = AntiqueGoldLight.copy(alpha = 0.9f),
-          border = BorderStroke(1.dp, AntiqueGold),
-          modifier = Modifier.testTag("top_utility_author_rooms_button")
-        ) {
-          Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
-          ) {
-            Icon(
-              imageVector = Icons.Outlined.MeetingRoom,
-              contentDescription = "Writer Room",
-              tint = AntiqueGold,
-              modifier = Modifier.size(14.dp)
-            )
-            Spacer(modifier = Modifier.width(4.dp))
-            Text(
-              text = "Writer Room",
-              style = MaterialTheme.typography.labelSmall.copy(
-                fontWeight = FontWeight.Bold,
-                fontSize = 11.sp
-              ),
-              color = CharcoalText
-            )
-          }
-        }
-
-        // 2. Upload Novel button (Prominently visible for Archive Owner & Authorized Translators)
+        // 1. Upload Novel button (Prominently visible for Archive Owner & Authorized Translators)
         if (isSoleOwner || canUpload) {
           Surface(
             onClick = onOpenUpload,
@@ -1841,7 +1811,7 @@ private fun HorizontalNovelCard(
             )
 
             Text(
-              text = if (novel.authorSlot > 0) "STRAWBERRYCANDY ARCHIVE" else "NOVEL ARCHIVE",
+              text = if (novel.authorSlot > 0) "STRAWBERRYCANDY STUDIO" else "NOVEL STUDIO",
               style = MaterialTheme.typography.labelSmall.copy(
                 fontSize = 6.5.sp,
                 letterSpacing = 0.8.sp
@@ -2384,67 +2354,105 @@ private fun SelectedNovelSpotlight(
         verticalAlignment = Alignment.Top
       ) {
         // Book Cover Art with elegant border and shadow
-        Card(
-          shape = RoundedCornerShape(topStart = 3.dp, bottomStart = 3.dp, topEnd = 8.dp, bottomEnd = 8.dp),
-          colors = CardDefaults.cardColors(containerColor = Color(novel.coverColorHex)),
-          elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-          border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.4f)),
+        Box(
           modifier = Modifier
             .width(80.dp)
             .height(115.dp)
-            .shadow(4.dp, RoundedCornerShape(topStart = 3.dp, bottomStart = 3.dp, topEnd = 8.dp, bottomEnd = 8.dp))
         ) {
-          Box(modifier = Modifier.fillMaxSize()) {
-            if (novel.coverImageUri != null) {
-              AsyncImage(
-                model = File(novel.coverImageUri!!).takeIf { it.exists() } ?: novel.coverImageUri,
-                contentDescription = novel.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-              )
-            } else if (novel.coverDrawableRes != 0) {
-              Image(
-                painter = painterResource(id = novel.coverDrawableRes),
-                contentDescription = novel.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-              )
-            } else {
+          Card(
+            shape = RoundedCornerShape(topStart = 3.dp, bottomStart = 3.dp, topEnd = 8.dp, bottomEnd = 8.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(novel.coverColorHex)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+            border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.4f)),
+            modifier = Modifier
+              .fillMaxSize()
+              .shadow(4.dp, RoundedCornerShape(topStart = 3.dp, bottomStart = 3.dp, topEnd = 8.dp, bottomEnd = 8.dp))
+          ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+              if (novel.coverImageUri != null) {
+                AsyncImage(
+                  model = File(novel.coverImageUri!!).takeIf { it.exists() } ?: novel.coverImageUri,
+                  contentDescription = novel.title,
+                  contentScale = ContentScale.Crop,
+                  modifier = Modifier.fillMaxSize()
+                )
+              } else if (novel.coverDrawableRes != 0) {
+                Image(
+                  painter = painterResource(id = novel.coverDrawableRes),
+                  contentDescription = novel.title,
+                  contentScale = ContentScale.Crop,
+                  modifier = Modifier.fillMaxSize()
+                )
+              } else {
+                Box(
+                  modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(novel.coverColorHex)),
+                  contentAlignment = Alignment.Center
+                ) {
+                  Text(
+                    text = novel.title.take(18),
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontSize = 9.sp,
+                      fontWeight = FontWeight.Bold,
+                      fontFamily = FontFamily.Serif
+                    ),
+                    color = AntiqueGold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(6.dp)
+                  )
+                }
+              }
+
+              // Spine shadow overlay
               Box(
                 modifier = Modifier
                   .fillMaxSize()
-                  .background(Color(novel.coverColorHex)),
-                contentAlignment = Alignment.Center
-              ) {
-                Text(
-                  text = novel.title.take(18),
-                  style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Serif
-                  ),
-                  color = AntiqueGold,
-                  textAlign = TextAlign.Center,
-                  modifier = Modifier.padding(6.dp)
-                )
-              }
+                  .background(
+                    brush = Brush.horizontalGradient(
+                      0.0f to Color(0x35000000),
+                      0.03f to Color(0x10000000),
+                      0.06f to Color(0x20FFFFFF),
+                      0.10f to Color(0x00000000)
+                    )
+                  )
+              )
             }
+          }
+        }
 
-            // Spine shadow overlay
+        // Right-side vertical New Release Ribbon
+        if (novel.isNewRelease) {
+          Spacer(modifier = Modifier.width(8.dp))
+          Surface(
+            shape = RoundedCornerShape(6.dp),
+            color = AntiqueGold,
+            modifier = Modifier
+              .width(22.dp)
+              .height(115.dp)
+          ) {
             Box(
               modifier = Modifier
                 .fillMaxSize()
-                .background(
-                  brush = Brush.horizontalGradient(
-                    0.0f to Color(0x35000000),
-                    0.03f to Color(0x10000000),
-                    0.06f to Color(0x20FFFFFF),
-                    0.10f to Color(0x00000000)
-                  )
-                )
+                .padding(vertical = 6.dp),
+              contentAlignment = Alignment.Center
+            ) {
+              Text(
+                text = "✨ NEW RELEASE",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 7.5.sp,
+                  fontWeight = FontWeight.ExtraBold,
+                  letterSpacing = 1.sp,
+                  color = DeepBurgundy
+                ),
+                maxLines = 1,
+                softWrap = false,
+                modifier = Modifier
+                  .graphicsLayer(rotationZ = 90f)
             )
           }
         }
+      }
 
         Spacer(modifier = Modifier.width(12.dp))
 
@@ -3345,7 +3353,7 @@ private fun GuestArchiveLockedView(
         Spacer(modifier = Modifier.height(14.dp))
 
         Text(
-          text = "STRAWBERRYCANDY ARCHIVE",
+          text = "STRAWBERRYCANDY STUDIO",
           style = MaterialTheme.typography.labelSmall.copy(
             letterSpacing = 2.sp,
             fontWeight = FontWeight.Bold,

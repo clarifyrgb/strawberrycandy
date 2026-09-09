@@ -12,6 +12,10 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import com.example.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -246,14 +250,15 @@ fun AboutModal(
             Surface(
               modifier = Modifier.size(40.dp),
               shape = RoundedCornerShape(10.dp),
-              color = AntiqueGold.copy(alpha = 0.12f),
-              border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.4f))
+              color = Color(0xFFFCE4EC),
+              border = BorderStroke(1.dp, Color(0xFFF48FB1))
             ) {
               Box(contentAlignment = Alignment.Center) {
-                Text(
-                  text = "❦",
-                  fontSize = 20.sp,
-                  color = AntiqueGold
+                Image(
+                  painter = painterResource(id = R.drawable.img_strawberrycandy_launcher),
+                  contentDescription = "App Logo",
+                  modifier = Modifier.size(30.dp),
+                  contentScale = ContentScale.Fit
                 )
               }
             }
@@ -272,7 +277,7 @@ fun AboutModal(
                 color = CharcoalText
               )
               Text(
-                text = "LITERARY ARCHIVE & TRANSLATION STUDIO",
+                text = "STRAWBERRYCANDY STUDIO",
                 style = MaterialTheme.typography.labelSmall.copy(
                   fontSize = 8.sp,
                   fontWeight = FontWeight.SemiBold,
@@ -509,27 +514,7 @@ private fun VersionOverviewCard(
         }
       }
 
-      HorizontalDivider(color = SubtleBorder.copy(alpha = 0.5f))
 
-      Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(
-          text = "UPCOMING UPDATES & RELEASE NOTES",
-          style = MaterialTheme.typography.labelSmall.copy(
-            fontSize = 9.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.sp
-          ),
-          color = AntiqueGold
-        )
-        Text(
-          text = "• v1.0.2 (Upcoming): Enhanced typography rendering, offline EPUB chapter caching, and smoother page transitions.\n• v1.0.3: Expanded cloud sync manuscript backup capabilities and custom reading theme palettes.\n• Seamless In-Place Upgrades: All future updates install directly over your current app without data loss.",
-          style = MaterialTheme.typography.bodySmall.copy(
-            fontSize = 11.sp,
-            lineHeight = 16.sp,
-            color = CharcoalSecondary
-          )
-        )
-      }
     }
   }
 }
@@ -1148,26 +1133,21 @@ private fun FeaturesShowcaseCard(novelsCount: Int) {
 
       FeatureItem(
         icon = Icons.Outlined.MenuBook,
-        title = "Continuous Vertical Reading Canvas",
-        description = "Unencumbered, pure vertical scroll with zero layout shifts. Custom serif typography, line-height scaling, and folio tracking."
+        title = "Multi-Theme Reading Engine",
+        description = "Choose from Light Paper, Midnight Dark, Warm Sepia, Soft Pink, and Soft Blue. Fully adjustable font scaling, line height, margins, and custom font uploads."
       )
 
-      FeatureItem(
-        icon = Icons.Outlined.Storage,
-        title = "Live Cloud Archive • Read Online In-App",
-        description = "Readers stream and read manuscripts online directly within Strawberrycandy. Novels are protected within the reader and cannot be downloaded or exported externally."
-      )
 
       FeatureItem(
         icon = Icons.Outlined.Edit,
-        title = "Translator Studio & Author Rooms",
-        description = "Collaborative multi-slot translation archives with rich text chapter authoring, Markdown support, and custom curator pen names."
+        title = "Author Rooms & Author Studios",
+        description = "Collaborative curator rooms with custom avatar badges, slot permissions, and rich markdown chapter authoring."
       )
 
       FeatureItem(
         icon = Icons.Outlined.History,
-        title = "Community Reader Reflections",
-        description = "Threaded per-chapter reader commentaries and sentence-level marginalia notes without disruptive popups."
+        title = "Sentence Highlights & Chapter Discussions",
+        description = "Color-code favorite lines with amber, rose, sage, and ocean highlights, and engage in threaded per-chapter reader commentaries."
       )
     }
   }
