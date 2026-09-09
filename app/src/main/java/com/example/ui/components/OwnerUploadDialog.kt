@@ -130,6 +130,7 @@ fun OwnerUploadDialog(
     originalAuthor: String,
     novelStatus: String,
     releaseFormat: String,
+    genre: String,
     onDone: ((success: Boolean, message: String) -> Unit)?,
   ) -> Unit,
 ) {
@@ -143,6 +144,7 @@ fun OwnerUploadDialog(
   var isPerVolumeRelease by remember { mutableStateOf(false) }
   // R19 18+/19+ Mature Content Toggle
   var isR19Novel by remember { mutableStateOf(false) }
+  var selectedGenre by remember { mutableStateOf("Romance") }
 
   // Active author slot data
   val currentSlotEntity = authorSlots.find { it.slotNumber == selectedSlot }
@@ -1020,6 +1022,50 @@ fun OwnerUploadDialog(
             )
           }
 
+          // Bold Line
+          Surface(
+            shape = RoundedCornerShape(6.dp),
+            color = SoftCreamPaper,
+            border = BorderStroke(0.7.dp, SubtleBorder),
+            onClick = {
+              content = content.trimEnd() + "\n\n<b>Bold line</b>\n\n"
+            },
+            modifier = Modifier.testTag("owner_format_bold")
+          ) {
+            Text(
+              text = "<b> Bold </b>",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Serif,
+                color = CharcoalText
+              ),
+              modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
+            )
+          }
+
+          // Italic Line
+          Surface(
+            shape = RoundedCornerShape(6.dp),
+            color = SoftCreamPaper,
+            border = BorderStroke(0.7.dp, SubtleBorder),
+            onClick = {
+              content = content.trimEnd() + "\n\n<i>Italic line</i>\n\n"
+            },
+            modifier = Modifier.testTag("owner_format_italic")
+          ) {
+            Text(
+              text = "<i> Italic </i>",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 8.sp,
+                fontStyle = FontStyle.Italic,
+                fontFamily = FontFamily.Serif,
+                color = CharcoalText
+              ),
+              modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
+            )
+          }
+
           // Dialogue Quotes
           Surface(
             shape = RoundedCornerShape(6.dp),
@@ -1528,6 +1574,50 @@ fun OwnerUploadDialog(
           }
         }
 
+                Spacer(modifier = Modifier.height(16.dp))
+
+        // Novel Genre Tag Selector
+        Column {
+          Text(
+            text = "NOVEL GENRE CATEGORY",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 9.sp,
+              fontWeight = FontWeight.Bold,
+              letterSpacing = 1.sp,
+              color = AntiqueGold
+            )
+          )
+          Spacer(modifier = Modifier.height(6.dp))
+          val availableGenres = listOf("Romance", "Fantasy", "Mystery", "Sci-Fi", "Historical", "Monograph", "Drama", "Adventure")
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+          ) {
+            availableGenres.forEach { genre ->
+              val isSelected = selectedGenre.equals(genre, ignoreCase = true)
+              Surface(
+                onClick = { selectedGenre = genre },
+                shape = RoundedCornerShape(12.dp),
+                color = if (isSelected) AntiqueGold else SoftCreamPaper,
+                border = BorderStroke(1.dp, if (isSelected) AntiqueGold else SubtleBorder),
+                modifier = Modifier.testTag("upload_genre_${genre.lowercase()}")
+              ) {
+                Text(
+                  text = genre,
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                    fontSize = 11.sp,
+                    color = if (isSelected) Color.White else CharcoalText
+                  ),
+                  modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                )
+              }
+            }
+          }
+        }
+
         val emailRegex = Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}")
         val cleanCustomPenName = customPenName.replace(emailRegex, "").trim().let {
           if (it.startsWith("Translator ", ignoreCase = true) || it.startsWith("Author ", ignoreCase = true)) "" else it
@@ -1602,7 +1692,8 @@ fun OwnerUploadDialog(
               coverImageUri,
               cleanOriginalAuthor,
               if (isFinishedNovel) "FINISHED" else "ONGOING",
-              if (isPerVolumeRelease) "VOLUME" else "CHAPTER"
+              if (isPerVolumeRelease) "VOLUME" else "CHAPTER",
+              selectedGenre
             ) { success, message ->
               isPublishing = false
               if (!success) {

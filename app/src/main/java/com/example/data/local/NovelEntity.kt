@@ -28,4 +28,5 @@ data class NovelEntity(
   val novelStatus: String = "ONGOING", // "ONGOING" or "FINISHED"
   val releaseFormat: String = "CHAPTER", // "CHAPTER" or "VOLUME"
   val isR19: Boolean = false, // 19+ age restriction toggle
+  val genre: String = "Romance", // Genre tag for categorization and filtering
 )

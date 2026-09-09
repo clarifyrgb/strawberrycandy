@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -268,6 +269,24 @@ fun HomeScreen(
             .padding(horizontal = 16.dp, vertical = 6.dp)
         )
 
+        val genres = listOf("All", "Romance", "Fantasy", "Mystery", "Sci-Fi", "Historical", "Monograph")
+        val currentGenre = remember(uiState.novelSearchQuery) {
+          val q = uiState.novelSearchQuery.trim()
+          if (q.isBlank()) "All" else genres.firstOrNull { it.equals(q, ignoreCase = true) } ?: q
+        }
+
+        GenreFilterRow(
+          genres = genres,
+          selectedGenre = currentGenre,
+          onSelectGenre = { genre ->
+            if (genre.equals("All", ignoreCase = true)) {
+              viewModel.clearNovelSearchQuery()
+            } else {
+              viewModel.setNovelSearchQuery(genre)
+            }
+          }
+        )
+
       // Real-Time Alert for newly posted novels in APK
       val alertNovel = uiState.newlyPostedNovelAlert
       if (alertNovel != null) {
@@ -437,6 +456,13 @@ fun HomeScreen(
           onResumeReading = { onSelectNovel(continueReadingNovel) },
           onEditNovel = { novelToEdit = continueReadingNovel },
           modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+        )
+      }
+
+      if (uiState.recentlyReadNovels.isNotEmpty() && uiState.novelSearchQuery.isBlank()) {
+        RecentlyReadSection(
+          recentlyReadNovels = uiState.recentlyReadNovels,
+          onSelectNovel = onSelectNovel
         )
       }
 
@@ -879,6 +905,7 @@ fun HomeScreen(
         finishedCount = uiState.finishedCount,
         toBeReadCount = uiState.toBeReadCount,
         isSoleOwner = isSoleOwner,
+        canUpload = canUploadNovel,
         commentsHistory = myCommentsHistory,
         novelsList = allNovelsList,
         onDismiss = { viewModel.closeProfileDialog() },
@@ -897,6 +924,15 @@ fun HomeScreen(
         onOpenAbout = {
           viewModel.closeProfileDialog()
           isAboutModalOpen = true
+        },
+        onOpenUpload = {
+          viewModel.closeProfileDialog()
+          selectedUploadSlot = if (isSoleOwner) 0 else (activeUser.authorSlot ?: 1)
+          viewModel.openUploadDialog()
+        },
+        onOpenAuthorRooms = {
+          viewModel.closeProfileDialog()
+          isAuthorRoomsModalOpen = true
         }
       )
     }
@@ -1135,7 +1171,7 @@ fun HomeScreen(
         onUpdateAuthorSlot = { slot, name, penName, bio ->
           viewModel.updateAuthorSlot(slot, name, penName, bio)
         },
-        onPublishNovel = { title, subtitle, chapterTitle, excerpt, content, coverColor, author, authorSlot, coverImageUri, originalAuthor, novelStatus, releaseFormat, onDone ->
+        onPublishNovel = { title, subtitle, chapterTitle, excerpt, content, coverColor, author, authorSlot, coverImageUri, originalAuthor, novelStatus, releaseFormat, genre, onDone ->
           viewModel.uploadNovel(
             title = title,
             subtitle = subtitle,
@@ -1149,6 +1185,7 @@ fun HomeScreen(
             originalAuthor = originalAuthor,
             novelStatus = novelStatus,
             releaseFormat = releaseFormat,
+            genre = genre,
             onResult = onDone
           )
         }
@@ -1281,37 +1318,7 @@ private fun TopUtilityBar(
       horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
       if (activeUser != null) {
-        // 1. Upload Novel button (Prominently visible for Archive Owner & Authorized Translators)
-        if (isSoleOwner || canUpload) {
-          Surface(
-            onClick = onOpenUpload,
-            shape = RoundedCornerShape(14.dp),
-            color = AntiqueGold,
-            shadowElevation = 2.dp,
-            modifier = Modifier.testTag("owner_upload_button")
-          ) {
-            Row(
-              verticalAlignment = Alignment.CenterVertically,
-              modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
-            ) {
-              Icon(
-                imageVector = Icons.Outlined.Upload,
-                contentDescription = "Upload Novel",
-                tint = Color.White,
-                modifier = Modifier.size(14.dp)
-              )
-              Spacer(modifier = Modifier.width(4.dp))
-              Text(
-                text = "Upload Novel",
-                style = MaterialTheme.typography.labelSmall.copy(
-                  fontWeight = FontWeight.Bold,
-                  fontSize = 11.sp
-                ),
-                color = Color.White
-              )
-            }
-          }
-        }
+
 
         // Profile Pill (Tapping opens Profile modal with reading history, account stats, pen name, and Sign Out)
         Surface(
@@ -2465,71 +2472,85 @@ private fun SelectedNovelSpotlight(
         ) {
           Column {
             // Edition and genre tag
-            val genreTag = when (novel.id) {
-              "nov_crimson" -> "Fantasy Romance"
-              "nov_celestial" -> "Astral Sci-Fi"
-              "nov_whispering_pines" -> "Nordic Mystery"
-              "nov_moonlight" -> "Historical Romance"
-              "nov_schema" -> "Design Monograph"
-              else -> "Curated Novel"
+            val genreTag = if (novel.novel.genre.isNotBlank() && novel.novel.genre != "Curated Novel") {
+              novel.novel.genre
+            } else {
+              when (novel.id) {
+                "nov_crimson" -> "Fantasy Romance"
+                "nov_celestial" -> "Astral Sci-Fi"
+                "nov_whispering_pines" -> "Nordic Mystery"
+                "nov_moonlight" -> "Historical Romance"
+                "nov_schema" -> "Design Monograph"
+                else -> "Romance"
+              }
             }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-              Surface(
-                shape = RoundedCornerShape(6.dp),
-                color = AntiqueGold.copy(alpha = 0.12f),
-                border = BorderStroke(0.6.dp, AntiqueGold.copy(alpha = 0.35f))
+            Column(
+              verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+              Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
               ) {
-                Text(
-                  text = genreTag.uppercase(),
-                  style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 7.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.6.sp
-                  ),
-                  color = AntiqueGold,
-                  modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                )
-              }
-              Spacer(modifier = Modifier.width(5.dp))
-              // Publication Status Badge: Finished vs Ongoing
-              Surface(
-                shape = RoundedCornerShape(6.dp),
-                color = if (novel.isCompletedNovel) Color(0xFF2E7D32).copy(alpha = 0.15f) else Color(0xFFD87D2A).copy(alpha = 0.15f),
-                border = BorderStroke(0.6.dp, if (novel.isCompletedNovel) Color(0xFF2E7D32).copy(alpha = 0.4f) else Color(0xFFD87D2A).copy(alpha = 0.4f))
-              ) {
-                Text(
-                  text = if (novel.isCompletedNovel) "✓ FINISHED" else "• ONGOING",
-                  style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 7.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.5.sp
-                  ),
-                  color = if (novel.isCompletedNovel) Color(0xFF2E7D32) else Color(0xFFD87D2A),
-                  modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                )
-              }
-              Spacer(modifier = Modifier.width(5.dp))
-              Text(
-                text = "${novel.totalPages} pages",
-                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
-                color = CharcoalTertiary
-              )
-              if (novel.isNewRelease) {
-                Spacer(modifier = Modifier.width(5.dp))
                 Surface(
                   shape = RoundedCornerShape(6.dp),
-                  color = AntiqueGold,
+                  color = AntiqueGold.copy(alpha = 0.12f),
+                  border = BorderStroke(0.6.dp, AntiqueGold.copy(alpha = 0.35f))
                 ) {
                   Text(
-                    text = "✨ NEW RELEASE",
+                    text = genreTag.uppercase(),
                     style = MaterialTheme.typography.labelSmall.copy(
-                      fontSize = 7.5.sp,
-                      fontWeight = FontWeight.ExtraBold,
-                      color = DeepBurgundy
+                      fontSize = 7.sp,
+                      fontWeight = FontWeight.Bold,
+                      letterSpacing = 0.5.sp
                     ),
-                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                    color = AntiqueGold,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.5.dp)
                   )
+                }
+                // Publication Status Badge: Finished vs Ongoing
+                Surface(
+                  shape = RoundedCornerShape(6.dp),
+                  color = if (novel.isCompletedNovel) Color(0xFF2E7D32).copy(alpha = 0.15f) else Color(0xFFD87D2A).copy(alpha = 0.15f),
+                  border = BorderStroke(0.6.dp, if (novel.isCompletedNovel) Color(0xFF2E7D32).copy(alpha = 0.4f) else Color(0xFFD87D2A).copy(alpha = 0.4f))
+                ) {
+                  Text(
+                    text = if (novel.isCompletedNovel) "✓ FINISHED" else "• ONGOING",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontSize = 7.sp,
+                      fontWeight = FontWeight.Bold,
+                      letterSpacing = 0.4.sp
+                    ),
+                    color = if (novel.isCompletedNovel) Color(0xFF2E7D32) else Color(0xFFD87D2A),
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.5.dp)
+                  )
+                }
+              }
+
+              Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+              ) {
+                Text(
+                  text = "${novel.totalPages} pages",
+                  style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
+                  color = CharcoalTertiary
+                )
+                if (novel.isNewRelease) {
+                  Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = AntiqueGold,
+                  ) {
+                    Text(
+                      text = "✨ NEW",
+                      style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 7.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = DeepBurgundy
+                      ),
+                      modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.5.dp)
+                    )
+                  }
                 }
               }
             }
@@ -3592,6 +3613,203 @@ private fun LiteraryFeaturePill(text: String) {
       color = AntiqueGold,
       modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp)
     )
+  }
+}
+
+@Composable
+private fun RecentlyReadSection(
+  recentlyReadNovels: List<NovelWithState>,
+  onSelectNovel: (NovelWithState) -> Unit,
+  modifier: Modifier = Modifier
+) {
+  if (recentlyReadNovels.isNotEmpty()) {
+    Column(
+      modifier = modifier
+        .fillMaxWidth()
+        .padding(horizontal = 24.dp, vertical = 6.dp)
+        .testTag("recently_read_section"),
+      verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Box(
+            modifier = Modifier
+              .size(6.dp)
+              .clip(CircleShape)
+              .background(AntiqueGold)
+          )
+          Spacer(modifier = Modifier.width(6.dp))
+          Text(
+            text = "RECENTLY READ (${recentlyReadNovels.size})",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 9.5.sp,
+              fontWeight = FontWeight.Bold,
+              letterSpacing = 1.2.sp,
+              color = CharcoalTertiary
+            )
+          )
+        }
+      }
+
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+      ) {
+        recentlyReadNovels.forEach { novel ->
+          RecentlyReadCard(
+            novel = novel,
+            onClick = { onSelectNovel(novel) }
+          )
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun RecentlyReadCard(
+  novel: NovelWithState,
+  onClick: () -> Unit
+) {
+  Card(
+    onClick = onClick,
+    shape = RoundedCornerShape(12.dp),
+    colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
+    border = BorderStroke(1.dp, SubtleBorder),
+    modifier = Modifier
+      .width(180.dp)
+      .height(72.dp)
+  ) {
+    Row(
+      modifier = Modifier
+        .fillMaxSize()
+        .padding(8.dp),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+      Box(
+        modifier = Modifier
+          .width(42.dp)
+          .height(56.dp)
+          .clip(RoundedCornerShape(6.dp))
+          .background(Color(novel.coverColorHex))
+      ) {
+        if (novel.coverImageUri != null) {
+          AsyncImage(
+            model = File(novel.coverImageUri!!).takeIf { it.exists() } ?: novel.coverImageUri,
+            contentDescription = novel.title,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+          )
+        } else if (novel.coverDrawableRes != 0) {
+          Image(
+            painter = painterResource(id = novel.coverDrawableRes),
+            contentDescription = novel.title,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+          )
+        } else {
+          Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+          ) {
+            Text(
+              text = novel.title.take(3),
+              style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp, fontWeight = FontWeight.Bold),
+              color = AntiqueGold
+            )
+          }
+        }
+      }
+
+      Column(
+        modifier = Modifier
+          .weight(1f)
+          .fillMaxHeight(),
+        verticalArrangement = Arrangement.Center
+      ) {
+        Text(
+          text = novel.title,
+          style = MaterialTheme.typography.titleSmall.copy(
+            fontFamily = FontFamily.Serif,
+            fontWeight = FontWeight.Bold,
+            fontSize = 11.sp,
+            lineHeight = 14.sp
+          ),
+          color = CharcoalText,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+          text = "Page ${novel.currentPage} of ${novel.totalPages}",
+          style = MaterialTheme.typography.labelSmall.copy(
+            fontSize = 9.sp,
+            color = CharcoalSecondary
+          ),
+          maxLines = 1
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        LinearProgressIndicator(
+          progress = { novel.progressFraction },
+          modifier = Modifier
+            .fillMaxWidth()
+            .height(3.dp)
+            .clip(RoundedCornerShape(1.5.dp)),
+          color = AntiqueGold,
+          trackColor = SubtleBorder
+        )
+      }
+    }
+  }
+}
+
+@Composable
+private fun GenreFilterRow(
+  genres: List<String>,
+  selectedGenre: String,
+  onSelectGenre: (String) -> Unit,
+  modifier: Modifier = Modifier
+) {
+  Row(
+    modifier = modifier
+      .fillMaxWidth()
+      .horizontalScroll(rememberScrollState())
+      .padding(horizontal = 16.dp, vertical = 4.dp)
+      .testTag("genre_filter_row"),
+    horizontalArrangement = Arrangement.spacedBy(8.dp),
+    verticalAlignment = Alignment.CenterVertically
+  ) {
+    genres.forEach { genre ->
+      val isSelected = selectedGenre.equals(genre, ignoreCase = true)
+      Surface(
+        onClick = { onSelectGenre(genre) },
+        shape = RoundedCornerShape(16.dp),
+        color = if (isSelected) AntiqueGold else SoftCreamPaper,
+        border = BorderStroke(1.dp, if (isSelected) AntiqueGold else SubtleBorder),
+        modifier = Modifier.testTag("genre_chip_${genre.lowercase()}")
+      ) {
+        Row(
+          modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Text(
+            text = genre,
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+              fontSize = 11.sp,
+              color = if (isSelected) Color.White else CharcoalText
+            )
+          )
+        }
+      }
+    }
   }
 }
 

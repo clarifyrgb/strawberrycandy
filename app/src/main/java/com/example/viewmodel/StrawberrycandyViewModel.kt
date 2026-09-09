@@ -79,6 +79,7 @@ data class StrawberrycandyUiState(
   val isAlreadyCloudPublished: Boolean = false,
   val rememberedAccounts: List<ReaderProfileEntity> = emptyList(),
   val authInitialEmail: String? = null,
+  val recentlyReadNovels: List<NovelWithState> = emptyList(),
 )
 
 class StrawberrycandyViewModel(application: Application) : AndroidViewModel(application) {
@@ -244,6 +245,18 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     } else {
       val tokens = query.split(Regex("""\s+""")).filter { it.isNotBlank() }
       novels.filter { novel ->
+        val genreTag = if (novel.novel.genre.isNotBlank() && novel.novel.genre != "Curated Novel") {
+          novel.novel.genre
+        } else {
+          when (novel.id) {
+            "nov_crimson" -> "Fantasy Romance"
+            "nov_celestial" -> "Astral Sci-Fi"
+            "nov_whispering_pines" -> "Nordic Mystery"
+            "nov_moonlight" -> "Historical Romance"
+            "nov_schema" -> "Design Monograph"
+            else -> "Romance"
+          }
+        }
         val textToSearch = listOf(
           novel.title,
           novel.subtitle,
@@ -251,7 +264,8 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
           novel.originalAuthor,
           novel.excerpt,
           novel.chapterTitle,
-          novel.contentText
+          novel.contentText,
+          genreTag
         ).joinToString(" ").lowercase()
 
         textToSearch.contains(query) || (tokens.isNotEmpty() && tokens.all { textToSearch.contains(it) })
@@ -294,6 +308,11 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
       NovelSortOption.NEWEST -> filteredNovels.sortedByDescending { it.createdAt }
     }
 
+    val recentlyRead = novels
+      .filter { it.lastReadTimestamp > 0 }
+      .sortedByDescending { it.lastReadTimestamp }
+      .take(3)
+
     StrawberrycandyUiState(
       activeUser = user,
       novels = sortedNovels,
@@ -326,6 +345,7 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
       isAlreadyCloudPublished = isAlreadyPublished,
       rememberedAccounts = remembered,
       authInitialEmail = initialAuthEmail,
+      recentlyReadNovels = recentlyRead,
     )
   }.stateIn(
     viewModelScope,
@@ -766,6 +786,7 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     originalAuthor: String = "",
     novelStatus: String = "ONGOING",
     releaseFormat: String = "CHAPTER",
+    genre: String = "Romance",
     onResult: ((Boolean, String) -> Unit)? = null,
   ) {
     viewModelScope.launch {

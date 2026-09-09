@@ -34,6 +34,7 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Logout
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Upload
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -104,6 +105,7 @@ fun ReaderProfileModal(
   finishedCount: Int,
   toBeReadCount: Int,
   isSoleOwner: Boolean,
+  canUpload: Boolean = false,
   commentsHistory: List<ChapterCommentEntity> = emptyList(),
   novelsList: List<NovelWithState> = emptyList(),
   onDismiss: () -> Unit,
@@ -113,6 +115,8 @@ fun ReaderProfileModal(
   onSwitchAccount: () -> Unit,
   onSignOut: () -> Unit,
   onOpenAbout: () -> Unit = {},
+  onOpenUpload: () -> Unit = {},
+  onOpenAuthorRooms: () -> Unit = {},
 ) {
   val emailRegex = remember { Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}") }
   val currentSafeName = remember(activeUser.displayName) {
@@ -667,6 +671,70 @@ fun ReaderProfileModal(
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            if (isSoleOwner || canUpload) {
+              Button(
+                onClick = {
+                  onDismiss()
+                  onOpenUpload()
+                },
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = AntiqueGold),
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .height(44.dp)
+                  .testTag("profile_upload_novel_button")
+              ) {
+                Icon(
+                  imageVector = Icons.Outlined.Upload,
+                  contentDescription = null,
+                  tint = Color.White,
+                  modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                  text = "Upload Novel Manuscript",
+                  style = MaterialTheme.typography.labelMedium.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    fontSize = 12.sp
+                  )
+                )
+              }
+              Spacer(modifier = Modifier.height(16.dp))
+            }
+
+            if (isSoleOwner) {
+              Button(
+                onClick = {
+                  onDismiss()
+                  onOpenAuthorRooms()
+                },
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = CharcoalText),
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .height(44.dp)
+                  .testTag("profile_manage_translators_button")
+              ) {
+                Icon(
+                  imageVector = Icons.Outlined.Person,
+                  contentDescription = null,
+                  tint = SoftCreamPaper,
+                  modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                  text = "Manage Translators & Grant Access",
+                  style = MaterialTheme.typography.labelMedium.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = SoftCreamPaper,
+                    fontSize = 12.sp
+                  )
+                )
+              }
+              Spacer(modifier = Modifier.height(16.dp))
+            }
+
             // Reading Stats Card
             Surface(
               shape = RoundedCornerShape(16.dp),
@@ -912,81 +980,7 @@ fun ReaderProfileModal(
                   )
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
 
-                // About Strawberrycandy & APK Updates Card
-                Card(
-                  shape = RoundedCornerShape(14.dp),
-                  colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
-                  border = BorderStroke(1.dp, SubtleBorder),
-                  modifier = Modifier.fillMaxWidth()
-                ) {
-                  Column(
-                    modifier = Modifier
-                      .fillMaxWidth()
-                      .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                  ) {
-                    Row(
-                      modifier = Modifier.fillMaxWidth(),
-                      horizontalArrangement = Arrangement.SpaceBetween,
-                      verticalAlignment = Alignment.CenterVertically
-                    ) {
-                      Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                          imageVector = Icons.Outlined.Info,
-                          contentDescription = null,
-                          tint = AntiqueGold,
-                          modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                          text = "ABOUT & UPDATES",
-                          style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 8.5.sp,
-                            letterSpacing = 1.2.sp,
-                            fontWeight = FontWeight.Bold
-                          ),
-                          color = AntiqueGold
-                        )
-                      }
-
-                      Text(
-                        text = "v${com.example.BuildConfig.VERSION_NAME}",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                          fontSize = 10.sp,
-                          fontWeight = FontWeight.Bold
-                        ),
-                        color = CharcoalText
-                      )
-                    }
-
-                    Text(
-                      text = "Check current APK release version, view platform capabilities, and query GitHub for app updates.",
-                      style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
-                      color = CharcoalSecondary
-                    )
-
-                    OutlinedButton(
-                      onClick = onOpenAbout,
-                      shape = RoundedCornerShape(10.dp),
-                      border = BorderStroke(1.dp, AntiqueGold),
-                      modifier = Modifier
-                        .fillMaxWidth()
-                        .height(38.dp)
-                        .testTag("profile_open_about_button")
-                    ) {
-                      Text(
-                        text = "About Strawberrycandy & Check Updates",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                          fontSize = 11.sp,
-                          fontWeight = FontWeight.SemiBold
-                        ),
-                        color = AntiqueGold
-                      )
-                    }
-                  }
-                }
               }
             }
           }

@@ -191,7 +191,8 @@ class StrawberrycandyRepository(
         favoritesCount = (doc.getLong("favoritesCount") ?: 0L).toInt(),
         storyImagesJson = doc.getString("storyImagesJson") ?: "[]",
         novelStatus = doc.getString("novelStatus") ?: "ONGOING",
-        releaseFormat = doc.getString("releaseFormat") ?: "MANUSCRIPT"
+        releaseFormat = doc.getString("releaseFormat") ?: "MANUSCRIPT",
+        genre = doc.getString("genre") ?: "Romance"
       )
     } catch (e: Exception) {
       Log.w("StrawberrycandyRepository", "Failed to parse novel from Firestore: ${e.message}")
@@ -227,7 +228,8 @@ class StrawberrycandyRepository(
       "favoritesCount" to novel.favoritesCount,
       "storyImagesJson" to novel.storyImagesJson,
       "isOwnerUploaded" to novel.isOwnerUploaded,
-      "uploaderEmail" to uploaderEmail
+      "uploaderEmail" to uploaderEmail,
+      "genre" to novel.genre
     )
   }
 
@@ -446,6 +448,7 @@ class StrawberrycandyRepository(
     originalAuthor: String = "",
     novelStatus: String = "ONGOING",
     releaseFormat: String = "CHAPTER",
+    genre: String = "Romance",
   ): UploadNovelResult {
     val novelId = "nov_" + UUID.randomUUID().toString().take(8)
     val novel = NovelEntity(
@@ -471,6 +474,7 @@ class StrawberrycandyRepository(
       storyImagesJson = storyImagesJson,
       novelStatus = novelStatus,
       releaseFormat = releaseFormat,
+      genre = genre,
     )
     dao.insertNovel(novel)
 

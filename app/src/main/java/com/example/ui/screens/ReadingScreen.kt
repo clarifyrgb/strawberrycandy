@@ -14,6 +14,8 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -1025,6 +1027,13 @@ fun ReadingScreen(
         modifier = Modifier
           .weight(1f)
           .fillMaxWidth()
+          .pointerInput(Unit) {
+            detectTapGestures(
+              onTap = {
+                isHudVisible = !isHudVisible
+              }
+            )
+          }
       ) {
         val baseFontSize = 17.5f * fontSizeScale
         val baseLineHeight = 30f * fontSizeScale * lineHeightScale
@@ -1324,7 +1333,7 @@ fun ReadingScreen(
                                 )
                               },
                               onClick = {
-                                // Plain tap allows smooth scroll and doesn't interfere with gesture detection
+                                isHudVisible = !isHudVisible
                               }
                             )
                           }
@@ -1987,6 +1996,114 @@ fun ReadingScreen(
               }
 
               Spacer(modifier = Modifier.height(48.dp))
+            }
+          }
+        }
+
+        if (isHudVisible) {
+          Box(
+            modifier = Modifier
+              .align(Alignment.BottomCenter)
+              .padding(16.dp)
+          ) {
+            Surface(
+              shape = RoundedCornerShape(24.dp),
+              color = readerHudBgColor,
+              border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.45f)),
+              shadowElevation = 8.dp,
+              modifier = Modifier.testTag("page_flipping_bar")
+            ) {
+              Row(
+                modifier = Modifier
+                  .padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+              ) {
+                // Previous Chapter Button
+                val hasPrev = currentChapterIndex > 0
+                OutlinedButton(
+                  onClick = {
+                    if (hasPrev) {
+                      val prevCh = novel.chapters[currentChapterIndex - 1]
+                      jumpToChapter(prevCh.index, prevCh.startParagraphIndex)
+                    }
+                  },
+                  enabled = hasPrev,
+                  shape = RoundedCornerShape(16.dp),
+                  contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                  modifier = Modifier.testTag("prev_chapter_button")
+                ) {
+                  Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = if (hasPrev) readerTextColor else readerSecondaryTextColor.copy(alpha = 0.4f)
+                  )
+                  Spacer(modifier = Modifier.width(4.dp))
+                  Text(
+                    text = "Prev",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontSize = 10.sp,
+                      fontWeight = FontWeight.SemiBold
+                    ),
+                    color = if (hasPrev) readerTextColor else readerSecondaryTextColor.copy(alpha = 0.4f)
+                  )
+                }
+
+                // Table of Contents / Chapters button
+                Surface(
+                  onClick = { isChapterModalOpen = true },
+                  shape = RoundedCornerShape(16.dp),
+                  color = AntiqueGold.copy(alpha = 0.15f),
+                  border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.4f)),
+                  modifier = Modifier.testTag("toc_chapters_button")
+                ) {
+                  Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                  ) {
+                    Text(
+                      text = "Ch. ${toRomanNumeral(currentChapter?.number ?: (currentChapterIndex + 1))}",
+                      style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = AntiqueGold
+                      )
+                    )
+                  }
+                }
+
+                // Next Chapter Button
+                val hasNext = currentChapterIndex < novel.chapters.size - 1
+                OutlinedButton(
+                  onClick = {
+                    if (hasNext) {
+                      val nextCh = novel.chapters[currentChapterIndex + 1]
+                      jumpToChapter(nextCh.index, nextCh.startParagraphIndex)
+                    }
+                  },
+                  enabled = hasNext,
+                  shape = RoundedCornerShape(16.dp),
+                  contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                  modifier = Modifier.testTag("next_chapter_button")
+                ) {
+                  Text(
+                    text = "Next",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontSize = 10.sp,
+                      fontWeight = FontWeight.SemiBold
+                    ),
+                    color = if (hasNext) readerTextColor else readerSecondaryTextColor.copy(alpha = 0.4f)
+                  )
+                  Spacer(modifier = Modifier.width(4.dp))
+                  Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.ArrowForward,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = if (hasNext) readerTextColor else readerSecondaryTextColor.copy(alpha = 0.4f)
+                  )
+                }
+              }
             }
           }
         }

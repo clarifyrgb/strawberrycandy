@@ -49,6 +49,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -58,6 +59,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.model.NovelWithState
 import com.example.ui.theme.AntiqueGold
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material.icons.outlined.FormatSize
 import com.example.ui.theme.CharcoalSecondary
 import com.example.ui.theme.CharcoalTertiary
 import com.example.ui.theme.CharcoalText
@@ -80,6 +83,7 @@ fun AddChapterDialog(
     mutableStateOf("Chapter $roman • ")
   }
   var chapterContent by remember { mutableStateOf("") }
+  var selectedFont by remember { mutableStateOf(ManuscriptFont.SERIF) }
   var errorText by remember { mutableStateOf<String?>(null) }
 
   val photoPickerLauncher = rememberLauncherForActivityResult(
@@ -92,6 +96,135 @@ fun AddChapterDialog(
         context.contentResolver.openInputStream(uri)?.use { input ->
           FileOutputStream(destFile).use { output ->
             input.copyTo(output)
+          }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // Manuscript Line Formatting Toolbar: Bold, Italic, Regular, Dialogue, Scene
+        Row(
+          modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+          Text(
+            text = "Format:",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 9.sp,
+              fontWeight = FontWeight.Bold,
+              color = CharcoalTertiary
+            )
+          )
+          // Bold Button
+          Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = SoftCreamPaper,
+            border = BorderStroke(1.dp, SubtleBorder),
+            onClick = {
+              chapterContent = if (chapterContent.isBlank()) "<b>Bold line</b>\n\n"
+              else chapterContent.trimEnd() + "\n\n<b>Bold line</b>\n\n"
+            },
+            modifier = Modifier.testTag("format_bold_button")
+          ) {
+            Text(
+              text = "<b> Bold </b>",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.5.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Serif
+              ),
+              color = CharcoalText,
+              modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+            )
+          }
+
+          // Italic Button
+          Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = SoftCreamPaper,
+            border = BorderStroke(1.dp, SubtleBorder),
+            onClick = {
+              chapterContent = if (chapterContent.isBlank()) "<i>Italic line</i>\n\n"
+              else chapterContent.trimEnd() + "\n\n<i>Italic line</i>\n\n"
+            },
+            modifier = Modifier.testTag("format_italic_button")
+          ) {
+            Text(
+              text = "<i> Italic </i>",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.5.sp,
+                fontStyle = FontStyle.Italic,
+                fontFamily = FontFamily.Serif
+              ),
+              color = CharcoalText,
+              modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+            )
+          }
+
+          // Regular Button
+          Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = SoftCreamPaper,
+            border = BorderStroke(1.dp, SubtleBorder),
+            onClick = {
+              chapterContent = if (chapterContent.isBlank()) "Regular line\n\n"
+              else chapterContent.trimEnd() + "\n\nRegular line\n\n"
+            },
+            modifier = Modifier.testTag("format_regular_button")
+          ) {
+            Text(
+              text = "Regular",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.5.sp,
+                fontWeight = FontWeight.Normal
+              ),
+              color = CharcoalText,
+              modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+            )
+          }
+
+          // Dialogue Quote Button
+          Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = SoftCreamPaper,
+            border = BorderStroke(1.dp, SubtleBorder),
+            onClick = {
+              chapterContent = chapterContent.trimEnd() + "\n\n\"Dialogue line...\"\n\n"
+            },
+            modifier = Modifier.testTag("format_dialogue_button")
+          ) {
+            Text(
+              text = "Dialogue \"\"",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.5.sp,
+                fontWeight = FontWeight.Medium
+              ),
+              color = CharcoalText,
+              modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+            )
+          }
+
+          // Scene Divider Button
+          Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = SoftCreamPaper,
+            border = BorderStroke(1.dp, SubtleBorder),
+            onClick = {
+              chapterContent = chapterContent.trimEnd() + "\n\n❦ ❦ ❦\n\n"
+            },
+            modifier = Modifier.testTag("format_divider_button")
+          ) {
+            Text(
+              text = "Scene ❦",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.5.sp,
+                fontWeight = FontWeight.Bold,
+                color = AntiqueGold
+              ),
+              modifier = Modifier.padding(horizontal = 8.dp, vertical =, 4.dp)
+            )
           }
         }
         val tag = "\n\n[image:${destFile.absolutePath}:Chapter Illustration]\n\n"
@@ -290,17 +423,200 @@ fun AddChapterDialog(
         }
         Spacer(modifier = Modifier.height(6.dp))
 
+        // Manuscript Font Selection
+        Row(
+          modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+          Icon(
+            imageVector = Icons.Outlined.FormatSize,
+            contentDescription = "Font options",
+            tint = AntiqueGold,
+            modifier = Modifier.size(14.dp)
+          )
+          Text(
+            text = "Font:",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 9.sp,
+              fontWeight = FontWeight.Bold,
+              color = CharcoalTertiary
+            )
+          )
+          ManuscriptFont.entries.forEach { fontOption ->
+            val isSelected = selectedFont == fontOption
+            Surface(
+              shape = RoundedCornerShape(8.dp),
+              color = if (isSelected) AntiqueGold else SoftCreamPaper,
+              border = BorderStroke(1.dp, if (isSelected) AntiqueGold else SubtleBorder),
+              onClick = { selectedFont = fontOption },
+              modifier = Modifier.testTag("chapter_font_${fontOption.name.lowercase()}")
+            ) {
+              Text(
+                text = fontOption.shortName,
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 9.sp,
+                  fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                  fontFamily = fontOption.fontFamily
+                ),
+                color = if (isSelected) Color.White else CharcoalText,
+                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+              )
+            }
+          }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // Manuscript Line Formatting Toolbar: Bold, Italic, Regular, Dialogue, Scene
+        Row(
+          modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+          Text(
+            text = "Format:",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 9.sp,
+              fontWeight = FontWeight.Bold,
+              color = CharcoalTertiary
+            )
+          )
+          // Bold Button
+          Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = SoftCreamPaper,
+            border = BorderStroke(1.dp, SubtleBorder),
+            onClick = {
+              chapterContent = if (chapterContent.isBlank()) "<b>Bold line</b>\n\n"
+              else chapterContent.trimEnd() + "\n\n<b>Bold line</b>\n\n"
+            },
+            modifier = Modifier.testTag("format_bold_button")
+          ) {
+            Text(
+              text = "<b> Bold </b>",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.5.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Serif
+              ),
+              color = CharcoalText,
+              modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+            )
+          }
+
+          // Italic Button
+          Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = SoftCreamPaper,
+            border = BorderStroke(1.dp, SubtleBorder),
+            onClick = {
+              chapterContent = if (chapterContent.isBlank()) "<i>Italic line</i>\n\n"
+              else chapterContent.trimEnd() + "\n\n<i>Italic line</i>\n\n"
+            },
+            modifier = Modifier.testTag("format_italic_button")
+          ) {
+            Text(
+              text = "<i> Italic </i>",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.5.sp,
+                fontStyle = FontStyle.Italic,
+                fontFamily = FontFamily.Serif
+              ),
+              color = CharcoalText,
+              modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+            )
+          }
+
+          // Regular Button
+          Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = SoftCreamPaper,
+            border = BorderStroke(1.dp, SubtleBorder),
+            onClick = {
+              chapterContent = if (chapterContent.isBlank()) "Regular line\n\n"
+              else chapterContent.trimEnd() + "\n\nRegular line\n\n"
+            },
+            modifier = Modifier.testTag("format_regular_button")
+          ) {
+            Text(
+              text = "Regular",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.5.sp,
+                fontWeight = FontWeight.Normal
+              ),
+              color = CharcoalText,
+              modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+            )
+          }
+
+          // Dialogue Quote Button
+          Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = SoftCreamPaper,
+            border = BorderStroke(1.dp, SubtleBorder),
+            onClick = {
+              chapterContent = chapterContent.trimEnd() + "\n\n\"Dialogue line...\"\n\n"
+            },
+            modifier = Modifier.testTag("format_dialogue_button")
+          ) {
+            Text(
+              text = "Dialogue \"\"",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.5.sp,
+                fontWeight = FontWeight.Medium
+              ),
+              color = CharcoalText,
+              modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+            )
+          }
+
+          // Scene Divider Button
+          Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = SoftCreamPaper,
+            border = BorderStroke(1.dp, SubtleBorder),
+            onClick = {
+              chapterContent = chapterContent.trimEnd() + "\n\n❦ ❦ ❦\n\n"
+            },
+            modifier = Modifier.testTag("format_divider_button")
+          ) {
+            Text(
+              text = "Scene ❦",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.5.sp,
+                fontWeight = FontWeight.Bold,
+                color = AntiqueGold
+              ),
+              modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+            )
+          }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
         OutlinedTextField(
           value = chapterContent,
           onValueChange = {
             chapterContent = it
             errorText = null
           },
+          label = { Text("Chapter Manuscript (${selectedFont.shortName} font)") },
+          textStyle = TextStyle(
+            fontFamily = selectedFont.fontFamily,
+            fontSize = 14.sp,
+            lineHeight = 22.sp,
+            color = CharcoalText
+          ),
           placeholder = {
             Text(
               "Type or paste this chapter's translated manuscript paragraphs...\n\nParagraphs separated by blank lines will be formatted into continuous scroll reading.",
               style = MaterialTheme.typography.bodySmall.copy(
-                fontFamily = FontFamily.Serif,
+                fontFamily = selectedFont.fontFamily,
                 fontSize = 12.sp,
                 lineHeight = 18.sp
               )
