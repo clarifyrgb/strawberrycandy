@@ -13,7 +13,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -92,13 +96,18 @@ fun CloudPublishModal(
   }
   var isSuccess by remember { mutableStateOf(isAlreadyCloudPublished) }
 
-  Dialog(onDismissRequest = onDismiss) {
+  Dialog(
+    onDismissRequest = onDismiss,
+    properties = DialogProperties(usePlatformDefaultWidth = false)
+  ) {
     Surface(
       shape = RoundedCornerShape(24.dp),
       color = SoftCreamPaper,
       tonalElevation = 6.dp,
       modifier = Modifier
-        .fillMaxWidth()
+        .fillMaxWidth(0.92f)
+        .widthIn(max = 480.dp)
+        .heightIn(max = 720.dp)
         .padding(vertical = 16.dp)
         .testTag("cloud_publish_modal")
     ) {

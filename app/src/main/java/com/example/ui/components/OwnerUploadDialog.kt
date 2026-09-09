@@ -19,7 +19,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -288,15 +292,20 @@ fun OwnerUploadDialog(
     Pair(0xFF292929, "Royal Obsidian")
   )
 
-  Dialog(onDismissRequest = onDismiss) {
+  Dialog(
+    onDismissRequest = onDismiss,
+    properties = DialogProperties(usePlatformDefaultWidth = false)
+  ) {
     Card(
       shape = RoundedCornerShape(24.dp),
       colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
       border = BorderStroke(1.dp, SubtleBorder),
       elevation = CardDefaults.cardElevation(defaultElevation = 14.dp),
       modifier = Modifier
-        .fillMaxWidth()
-        .padding(horizontal = 4.dp, vertical = 20.dp)
+        .fillMaxWidth(0.95f)
+        .widthIn(max = 520.dp)
+        .heightIn(max = 750.dp)
+        .padding(horizontal = 4.dp, vertical = 16.dp)
         .testTag("upload_novel_dialog")
     ) {
       Column(

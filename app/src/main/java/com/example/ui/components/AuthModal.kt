@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -276,8 +278,10 @@ fun AuthModal(
       border = BorderStroke(1.dp, SubtleBorder),
       elevation = CardDefaults.cardElevation(defaultElevation = 10.dp),
       modifier = Modifier
-        .fillMaxWidth()
-        .padding(horizontal = 20.dp, vertical = 24.dp)
+        .fillMaxWidth(0.92f)
+        .widthIn(max = 480.dp)
+        .heightIn(max = 720.dp)
+        .padding(horizontal = 8.dp, vertical = 16.dp)
         .testTag("auth_dialog")
     ) {
       Column(

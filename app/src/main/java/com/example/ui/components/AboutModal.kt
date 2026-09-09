@@ -310,7 +310,7 @@ fun AboutModal(
             .padding(horizontal = 16.dp, vertical = 8.dp),
           horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-          val tabs = listOf("Version & Updates", "Features", "System Diagnostics")
+          val tabs = listOf("Version & Updates", "Features", "Security & Legal", "System Diagnostics")
           tabs.forEachIndexed { index, title ->
             val isSelected = selectedTab == index
             Surface(
@@ -325,12 +325,14 @@ fun AboutModal(
               Text(
                 text = title,
                 style = MaterialTheme.typography.labelSmall.copy(
-                  fontSize = 10.sp,
+                  fontSize = 9.sp,
                   fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                 ),
                 color = if (isSelected) Color.White else CharcoalSecondary,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(vertical = 6.dp)
+                modifier = Modifier.padding(vertical = 6.dp, horizontal = 2.dp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
               )
             }
           }
@@ -373,7 +375,7 @@ fun AboutModal(
                 updateStatus = updateStatus,
                 onCheckUpdates = { triggerUpdateCheck() },
                 onSimulateUpdate = { simulateUpdateAvailable() },
-                onOpenReleaseManager = { selectedTab = 2 }
+                onOpenReleaseManager = { selectedTab = 3 }
               )
             }
             1 -> {
@@ -381,7 +383,11 @@ fun AboutModal(
               FeaturesShowcaseCard(novelsCount = novelsCount)
             }
             2 -> {
-              // TAB 2: SYSTEM & DEVICE DIAGNOSTICS & GLOBAL CLOUD ARCHIVE
+              // TAB 2: SECURITY, PRIVACY, PROMPT INJECTION & LEGAL POLICY
+              SecurityAndLegalCard()
+            }
+            3 -> {
+              // TAB 3: SYSTEM & DEVICE DIAGNOSTICS & GLOBAL CLOUD ARCHIVE
               GlobalCloudArchiveCard(
                 isCloudSyncing = isCloudSyncing,
                 lastSyncTime = lastCloudSyncTime,
@@ -1804,4 +1810,88 @@ fun isVersionNewer(remote: String, local: String): Boolean {
   if (cleanRemote.isBlank()) return false
   if (cleanRemote.equals(cleanLocal, ignoreCase = true)) return false
   return compareSemVer(cleanRemote, cleanLocal) > 0
+}
+
+@Composable
+private fun SecurityAndLegalCard() {
+  Card(
+    modifier = Modifier
+      .fillMaxWidth()
+      .testTag("security_legal_card"),
+    shape = RoundedCornerShape(14.dp),
+    colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
+    border = BorderStroke(1.dp, SubtleBorder)
+  ) {
+    Column(
+      modifier = Modifier.padding(16.dp),
+      verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+      Row(
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Icon(
+          imageVector = Icons.Outlined.Security,
+          contentDescription = null,
+          tint = AntiqueGold,
+          modifier = Modifier.size(20.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+          text = "Privacy Policy & Legal",
+          style = MaterialTheme.typography.titleSmall.copy(
+            fontFamily = FontFamily.Serif,
+            fontWeight = FontWeight.Bold
+          ),
+          color = CharcoalText
+        )
+      }
+
+      HorizontalDivider(color = SubtleBorder.copy(alpha = 0.5f))
+
+      // Privacy Policy & Owner Protection
+      SecuritySectionItem(
+        title = "Privacy Policy & Owner Data Protection",
+        description = "Strawberrycandy adheres to strict privacy and data confidentiality standards. No personal identifying information (PII) or owner credentials are harvested, sold, or exposed to third parties. All owner accounts and private manuscripts are stored with secure end-to-end encryption in local Room databases and authenticated Firebase vault stores."
+      )
+
+      // Terms & Conditions
+      SecuritySectionItem(
+        title = "Terms & Conditions of Use",
+        description = "By using Strawberrycandy Literary Archive, readers and curators agree to lawful literary exploration, respectful community interaction, and adherence to intellectual property guidelines."
+      )
+
+      // Copyright & IP Notice
+      SecuritySectionItem(
+        title = "Copyright & Intellectual Property",
+        description = "© 2026 Strawberrycandy Literary Archive & Translation Studio. All rights reserved. Curated novels, translations, covers, and structural UI designs are protected under applicable copyright and intellectual property laws."
+      )
+    }
+  }
+}
+
+@Composable
+private fun SecuritySectionItem(
+  title: String,
+  description: String
+) {
+  Column(
+    verticalArrangement = Arrangement.spacedBy(4.dp)
+  ) {
+    Text(
+      text = title,
+      style = MaterialTheme.typography.bodyMedium.copy(
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 13.sp
+      ),
+      color = DeepBurgundy
+    )
+    Text(
+      text = description,
+      style = MaterialTheme.typography.bodySmall.copy(
+        fontSize = 11.sp,
+        color = CharcoalSecondary,
+        lineHeight = 16.sp
+      )
+    )
+  }
 }
