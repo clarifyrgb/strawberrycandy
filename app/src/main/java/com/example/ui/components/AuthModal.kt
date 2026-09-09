@@ -420,7 +420,7 @@ fun AuthModal(
                     contentAlignment = Alignment.Center
                   ) {
                     Text(
-                      text = "Create Account (Sign Up)",
+                      text = "Sign Up",
                       style = MaterialTheme.typography.labelMedium.copy(
                         fontWeight = if (isSignUpMode) FontWeight.Bold else FontWeight.Medium,
                         fontSize = 12.sp
