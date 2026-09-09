@@ -42,11 +42,21 @@ import com.example.viewmodel.StrawberrycandyViewModel
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
-    enableEdgeToEdge()
-    setContent {
-      MyApplicationTheme {
-        StrawberrycandyApp()
+    try {
+      android.util.Log.d("MainActivity", "MainActivity onCreate started safely.")
+      enableEdgeToEdge()
+      setContent {
+        MyApplicationTheme {
+          StrawberrycandyApp()
+        }
       }
+    } catch (e: Exception) {
+      android.util.Log.e("MainActivity", "Critical crash caught during MainActivity onCreate", e)
+      setContentView(android.widget.TextView(this).apply {
+        text = "App Initialization Error: ${e.message}\nPlease check Logcat for details."
+        textSize = 16f
+        setPadding(32, 32, 32, 32)
+      })
     }
   }
 }

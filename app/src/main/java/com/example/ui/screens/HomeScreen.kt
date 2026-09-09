@@ -245,11 +245,8 @@ fun HomeScreen(
         activeTranslatorsCount = activeTranslators.size
       )
 
-      // 2. Literary Hero Masthead (Enriches the top of the homepage with warm salon ambiance)
-      HomeHeroMasthead(
-        novelCount = allNovelsList.size,
-        modifier = Modifier.padding(top = 2.dp, bottom = 4.dp)
-      )
+      // 2. Literary Hero Masthead removed per user request
+
 
       if (activeUser == null) {
         // Guest mode: Novels are hidden until user logs in
