@@ -27,4 +27,5 @@ data class NovelEntity(
   val storyImagesJson: String = "",
   val novelStatus: String = "ONGOING", // "ONGOING" or "FINISHED"
   val releaseFormat: String = "CHAPTER", // "CHAPTER" or "VOLUME"
+  val isR19: Boolean = false, // 19+ age restriction toggle
 )

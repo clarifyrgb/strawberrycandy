@@ -141,6 +141,8 @@ fun OwnerUploadDialog(
   var isFinishedNovel by remember { mutableStateOf(false) }
   // Release format: Per Chapter vs Per Volume
   var isPerVolumeRelease by remember { mutableStateOf(false) }
+  // R19 18+/19+ Mature Content Toggle
+  var isR19Novel by remember { mutableStateOf(false) }
 
   // Active author slot data
   val currentSlotEntity = authorSlots.find { it.slotNumber == selectedSlot }
@@ -1439,6 +1441,84 @@ fun OwnerUploadDialog(
                       fontSize = 11.sp
                     ),
                     color = if (isPerVolumeRelease) SoftCreamPaper else CharcoalSecondary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(vertical = 7.dp)
+                  )
+                }
+              }
+            }
+
+            // 3. R19 Age Restriction Toggle (Turns red when active)
+            Column {
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Text(
+                  text = "MATURE CONTENT RATING",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    color = if (isR19Novel) Color(0xFFD32F2F) else AntiqueGold
+                  )
+                )
+                Text(
+                  text = if (isR19Novel) "⚠ R19 Restricted Content" else "General Audience",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isR19Novel) Color(0xFFD32F2F) else CharcoalSecondary
+                  )
+                )
+              }
+              Spacer(modifier = Modifier.height(6.dp))
+              Row(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .clip(RoundedCornerShape(10.dp))
+                  .background(SoftCreamPaper)
+                  .border(
+                    BorderStroke(
+                      1.dp,
+                      if (isR19Novel) Color(0xFFEF5350) else SubtleBorder
+                    ),
+                    shape = RoundedCornerShape(10.dp)
+                  )
+                  .padding(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+              ) {
+                Surface(
+                  onClick = { isR19Novel = false },
+                  shape = RoundedCornerShape(8.dp),
+                  color = if (!isR19Novel) CharcoalText else Color.Transparent,
+                  modifier = Modifier.weight(1f).testTag("r19_toggle_standard")
+                ) {
+                  Text(
+                    text = "Standard (All Ages)",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontWeight = if (!isR19Novel) FontWeight.Bold else FontWeight.Normal,
+                      fontSize = 10.sp
+                    ),
+                    color = if (!isR19Novel) SoftCreamPaper else CharcoalSecondary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(vertical = 7.dp)
+                  )
+                }
+                Surface(
+                  onClick = { isR19Novel = true },
+                  shape = RoundedCornerShape(8.dp),
+                  color = if (isR19Novel) Color(0xFFD32F2F) else Color.Transparent,
+                  modifier = Modifier.weight(1f).testTag("r19_toggle_active")
+                ) {
+                  Text(
+                    text = "🔴 R19 Mature",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontWeight = if (isR19Novel) FontWeight.Bold else FontWeight.Normal,
+                      fontSize = 10.sp
+                    ),
+                    color = if (isR19Novel) Color.White else Color(0xFFD32F2F),
                     textAlign = TextAlign.Center,
                     modifier = Modifier.padding(vertical = 7.dp)
                   )

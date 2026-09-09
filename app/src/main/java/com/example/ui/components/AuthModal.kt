@@ -354,11 +354,78 @@ fun AuthModal(
         Spacer(modifier = Modifier.height(10.dp))
 
         if (!isForgotPasswordMode) {
-          // -------------------------------------------------------------
-          // NORMAL SIGN IN SCREEN WITH REMEMBERED ACCOUNTS RECOGNITION
-          // -------------------------------------------------------------
+          // Mode Toggle: Sign Up vs Sign In
+          var isSignUpMode by remember { mutableStateOf(false) }
+
+          Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = SoftCreamPaper,
+            border = BorderStroke(1.dp, SubtleBorder),
+            modifier = Modifier.fillMaxWidth()
+          ) {
+            Box(
+              modifier = Modifier.padding(4.dp)
+            ) {
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+              ) {
+                Surface(
+                  onClick = { isSignUpMode = false; localError = null; onClearError() },
+                  shape = RoundedCornerShape(10.dp),
+                  color = if (!isSignUpMode) Color.White else Color.Transparent,
+                  shadowElevation = if (!isSignUpMode) 2.dp else 0.dp,
+                  modifier = Modifier
+                    .weight(1f)
+                    .testTag("tab_sign_in")
+                ) {
+                  Box(
+                    modifier = Modifier.padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                  ) {
+                    Text(
+                      text = "Sign In",
+                      style = MaterialTheme.typography.labelMedium.copy(
+                        fontWeight = if (!isSignUpMode) FontWeight.Bold else FontWeight.Medium,
+                        fontSize = 12.sp
+                      ),
+                      color = if (!isSignUpMode) CharcoalText else CharcoalSecondary
+                    )
+                  }
+                }
+
+                Surface(
+                  onClick = { isSignUpMode = true; localError = null; onClearError() },
+                  shape = RoundedCornerShape(10.dp),
+                  color = if (isSignUpMode) AntiqueGold else Color.Transparent,
+                  shadowElevation = if (isSignUpMode) 2.dp else 0.dp,
+                  modifier = Modifier
+                    .weight(1f)
+                    .testTag("tab_sign_up")
+                ) {
+                  Box(
+                    modifier = Modifier.padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                  ) {
+                    Text(
+                      text = "Create Account (Sign Up)",
+                      style = MaterialTheme.typography.labelMedium.copy(
+                        fontWeight = if (isSignUpMode) FontWeight.Bold else FontWeight.Medium,
+                        fontSize = 12.sp
+                      ),
+                      color = if (isSignUpMode) Color.White else CharcoalSecondary
+                    )
+                  }
+                }
+              }
+            }
+          }
+
+          Spacer(modifier = Modifier.height(14.dp))
+
+          // Normal Sign In / Sign Up Screen
           Text(
-            text = "Welcome Back",
+            text = if (isSignUpMode) "Create Your Account" else "Welcome Back",
             style = MaterialTheme.typography.headlineSmall.copy(
               fontFamily = FontFamily.Serif,
               fontWeight = FontWeight.Bold,
@@ -371,7 +438,10 @@ fun AuthModal(
           Spacer(modifier = Modifier.height(4.dp))
 
           Text(
-            text = "Sign in to access your personal reading library, favorites, or translator tools.",
+            text = if (isSignUpMode)
+              "Sign up with your email and password to start your personal reading archive."
+            else
+              "Sign in with your saved account to access your personal reading library and bookmarks.",
             style = MaterialTheme.typography.bodySmall.copy(
               fontSize = 12.sp,
               lineHeight = 16.sp

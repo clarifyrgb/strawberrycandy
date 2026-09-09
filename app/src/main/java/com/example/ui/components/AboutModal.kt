@@ -454,7 +454,7 @@ private fun VersionOverviewCard(
   ) {
     Column(
       modifier = Modifier.padding(16.dp),
-      verticalArrangement = Arrangement.spacedBy(10.dp)
+      verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
       Row(
         modifier = Modifier.fillMaxWidth(),
@@ -507,6 +507,28 @@ private fun VersionOverviewCard(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
           )
         }
+      }
+
+      HorizontalDivider(color = SubtleBorder.copy(alpha = 0.5f))
+
+      Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+          text = "UPCOMING UPDATES & RELEASE NOTES",
+          style = MaterialTheme.typography.labelSmall.copy(
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp
+          ),
+          color = AntiqueGold
+        )
+        Text(
+          text = "• v1.0.2 (Upcoming): Enhanced typography rendering, offline EPUB chapter caching, and smoother page transitions.\n• v1.0.3: Expanded cloud sync manuscript backup capabilities and custom reading theme palettes.\n• Seamless In-Place Upgrades: All future updates install directly over your current app without data loss.",
+          style = MaterialTheme.typography.bodySmall.copy(
+            fontSize = 11.sp,
+            lineHeight = 16.sp,
+            color = CharcoalSecondary
+          )
+        )
       }
     }
   }
