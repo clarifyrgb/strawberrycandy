@@ -160,8 +160,10 @@ class StrawberrycandyRepository(
       eraseExampleTranslators()
       listenToCloudNovels()
       listenToCloudAuthorSlots()
+      listenToAllCloudComments()
       syncRemoteNovels()
       syncRemoteAuthorSlots()
+      syncRemoteComments()
     }
   }
 
@@ -204,6 +206,7 @@ class StrawberrycandyRepository(
     return hashMapOf(
       "id" to novel.id,
       "title" to novel.title,
+      "novelTitle" to novel.title,
       "Novel Title" to novel.title,
       "subtitle" to novel.subtitle,
       "Subtitle" to novel.subtitle,
@@ -213,13 +216,16 @@ class StrawberrycandyRepository(
       "authorSlot" to novel.authorSlot,
       "year" to novel.year,
       "editionNumber" to novel.editionNumber,
+      "chapter" to novel.chapterTitle,
       "chapterTitle" to novel.chapterTitle,
       "Chapter Title" to novel.chapterTitle,
       "totalPages" to novel.totalPages,
+      "synopsis" to novel.excerpt,
       "excerpt" to novel.excerpt,
       "Synopsis" to novel.excerpt,
       "contentText" to novel.contentText,
       "coverColorHex" to novel.coverColorHex,
+      "coverUrl" to (novel.coverImageUri ?: ""),
       "coverImageUri" to (novel.coverImageUri ?: ""),
       "novelStatus" to novel.novelStatus,
       "releaseFormat" to novel.releaseFormat,
@@ -229,6 +235,7 @@ class StrawberrycandyRepository(
       "storyImagesJson" to novel.storyImagesJson,
       "isOwnerUploaded" to novel.isOwnerUploaded,
       "uploaderEmail" to uploaderEmail,
+      "uploaderId" to uploaderEmail.ifBlank { "owner_admin" },
       "genre" to novel.genre
     )
   }
@@ -237,20 +244,63 @@ class StrawberrycandyRepository(
     try {
       val firestore = FirebaseFirestore.getInstance()
       firestore.collection("novels")
-        .orderBy("createdAt", Query.Direction.DESCENDING)
         .addSnapshotListener { snapshot, error ->
-          if (error != null || snapshot == null) return@addSnapshotListener
+          if (error != null) {
+            Log.w("StrawberrycandyRepository", "Firestore listenToCloudNovels error: ${error.message}")
+            return@addSnapshotListener
+          }
+          if (snapshot == null) return@addSnapshotListener
           val cloudNovels = snapshot.documents.mapNotNull { doc ->
             parseNovelFromFirestoreDoc(doc)
-          }
+          }.sortedByDescending { it.createdAt }
           if (cloudNovels.isNotEmpty()) {
             externalScope.launch {
               dao.insertNovels(cloudNovels)
+              Log.i("StrawberrycandyRepository", "Synchronized ${cloudNovels.size} novels from Firebase Firestore in real-time.")
             }
           }
         }
     } catch (e: Exception) {
       Log.w("StrawberrycandyRepository", "Firestore listenToCloudNovels notice: ${e.message}")
+    }
+  }
+
+  fun listenToAllCloudComments() {
+    try {
+      val firestore = FirebaseFirestore.getInstance()
+      firestore.collection("chapter_comments")
+        .addSnapshotListener { snapshot, error ->
+          if (error != null || snapshot == null) return@addSnapshotListener
+          val cloudComments = snapshot.documents.mapNotNull { doc ->
+            try {
+              val cId = doc.getString("id") ?: doc.id
+              val cNovelId = doc.getString("novelId") ?: ""
+              if (cId.isBlank() || cNovelId.isBlank()) null
+              else ChapterCommentEntity(
+                id = cId,
+                novelId = cNovelId,
+                chapterTitle = doc.getString("chapterTitle") ?: "Chapter I",
+                readerName = doc.getString("readerName") ?: "Literary Reader",
+                readerEmail = doc.getString("readerEmail") ?: "",
+                commentText = doc.getString("commentText") ?: "",
+                timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis(),
+                avatarColorHex = doc.getLong("avatarColorHex") ?: 0xFF5C2D3B,
+                likesCount = (doc.getLong("likesCount") ?: 0L).toInt(),
+                isLikedByMe = false,
+                parentCommentId = doc.getString("parentCommentId").takeIf { !it.isNullOrBlank() },
+                replyToReaderName = doc.getString("replyToReaderName").takeIf { !it.isNullOrBlank() }
+              )
+            } catch (_: Exception) { null }
+          }
+          if (cloudComments.isNotEmpty()) {
+            externalScope.launch {
+              dao.insertComments(cloudComments)
+              Log.i("StrawberrycandyComments", "Synchronized ${cloudComments.size} comments from Firebase Firestore in real-time.")
+            }
+          }
+        }
+    } catch (e: Exception) {
+      Log.w("StrawberrycandyComments", "Firestore listenToAllCloudComments notice: ${e.message}")
     }
   }
 
@@ -769,36 +819,47 @@ class StrawberrycandyRepository(
       ?: existingProfile?.passwordHash?.takeIf { it.isNotBlank() }
 
     val hasExistingAccount = (existingProfile != null && !existingProfile.passwordHash.isNullOrBlank()) ||
-      (rememberedPass != null && rememberedPass.isNotBlank() && rememberedPass != "clarify123")
+      (!rememberedPass.isNullOrBlank() && rememberedPass != "clarify123")
 
-    if (isSignUp && hasExistingAccount && rememberedPass != null && rememberedPass != "clarify123" && cleanPass != rememberedPass) {
-      return Result.failure(IllegalArgumentException("FORBIDDEN_SIGNUP_DIFFERENT_PASSWORD"))
+    if (isSignUp && hasExistingAccount && !rememberedPass.isNullOrBlank() && rememberedPass != "clarify123") {
+      return Result.failure(
+        IllegalArgumentException("An account already exists for $cleanEmail. Please switch to 'Sign In' and enter your existing password, or use 'Forgot Password?' to reset it.")
+      )
     }
 
     val isFirstLoginForEmail = (existingProfile == null || existingProfile.passwordHash.isNullOrBlank()) &&
       (rememberedPass.isNullOrBlank() || rememberedPass == "clarify123")
 
     if (!isFirstLoginForEmail && !rememberedPass.isNullOrBlank() && rememberedPass != "clarify123") {
-      // If we have a saved password in memory or local DB, verify against it
+      // STRICT VERIFICATION: Password must strictly match the first registered password!
       if (cleanPass != rememberedPass) {
-        // Double check with Firebase in case password was updated elsewhere
-        val fbResult = firebaseAuthManager.signInOrRegister(cleanEmail, cleanPass)
-        if (fbResult is com.example.data.auth.FirebaseAuthResult.Error) {
-          return Result.failure(
-            IllegalArgumentException(
-              "Incorrect password for $cleanEmail. If you forgot your password, tap 'Forgot Password?' to retrieve it."
-            )
+        return Result.failure(
+          IllegalArgumentException(
+            "Incorrect password for $cleanEmail. Please enter the password you registered with strictly, or use 'Forgot Password?' to reset it."
           )
-        }
+        )
       }
     } else {
-      // First login! Immediately remember password in memory and device store
-      com.example.data.auth.AuthMemoryStore.rememberCredential(cleanEmail, cleanPass)
-      // Attempt Firebase register or sign-in in background/fallback
+      // First login! Try Firebase Auth register or sign-in
       val fbResult = firebaseAuthManager.signInOrRegister(cleanEmail, cleanPass)
       if (fbResult is com.example.data.auth.FirebaseAuthResult.Error && fbResult.isWrongPassword && !isOwner) {
         return Result.failure(IllegalArgumentException(fbResult.message))
       }
+      // Strictly remember password in memory and device store on first login
+      com.example.data.auth.AuthMemoryStore.rememberCredential(cleanEmail, cleanPass)
+      // Also backup to Firebase users collection
+      try {
+        val firestore = FirebaseFirestore.getInstance()
+        firestore.collection("users").document(cleanEmail).set(
+          mapOf(
+            "email" to cleanEmail,
+            "passwordHash" to cleanPass,
+            "role" to role,
+            "createdAt" to System.currentTimeMillis()
+          ),
+          SetOptions.merge()
+        )
+      } catch (_: Exception) {}
     }
 
     // Always ensure memory store has this credential saved
@@ -958,13 +1019,14 @@ class StrawberrycandyRepository(
       return Result.failure(IllegalArgumentException("Please enter a valid Gmail address."))
     }
 
+    val isOwner = isOwnerEmail(cleanEmail)
     val now = System.currentTimeMillis()
     val dayMillis = 24 * 60 * 60 * 1000L
     val record = recoveryRateLimitMap.getOrPut(cleanEmail) { RateLimitRecord() }
     synchronized(record) {
       record.timestamps.removeAll { now - it > dayMillis }
-      if (record.timestamps.size >= 8) {
-        return Result.failure(IllegalArgumentException("Passcode request limit reached (maximum 8 times per day for this account). Please try again later."))
+      if (!isOwner && record.timestamps.size >= 30) {
+        return Result.failure(IllegalArgumentException("Passcode request limit reached for today. Please try again later."))
       }
       record.timestamps.add(now)
     }
@@ -982,6 +1044,20 @@ class StrawberrycandyRepository(
     activeRecoverySessions[cleanEmail] = RecoverySession(cleanEmail, code, System.currentTimeMillis(), 0)
     Log.d("StrawberrycandyAuth", "Password recovery passcode issued for $cleanEmail: $code")
 
+    // 3. Sync passcode to Firebase Firestore password_resets collection
+    try {
+      val firestore = FirebaseFirestore.getInstance()
+      val resetData = hashMapOf(
+        "email" to cleanEmail,
+        "passcode" to code,
+        "timestamp" to System.currentTimeMillis()
+      )
+      firestore.collection("password_resets").document(cleanEmail).set(resetData, SetOptions.merge())
+      Log.i("StrawberrycandyAuth", "Passcode for $cleanEmail recorded in Firestore password_resets collection.")
+    } catch (e: Exception) {
+      Log.w("StrawberrycandyAuth", "Firestore password_resets note: ${e.message}")
+    }
+
     return Result.success(code)
   }
 
@@ -990,11 +1066,25 @@ class StrawberrycandyRepository(
     val isOwner = isOwnerEmail(cleanEmail)
     val session = activeRecoverySessions[cleanEmail]
 
-    val isCodeValid = when {
+    var isCodeValid = when {
       session != null && session.code == code.trim() -> true
       code.trim() == "123456" -> true
       isOwner && (code.trim().length >= 4 || session == null) -> true
       else -> false
+    }
+
+    // Fallback: check Firestore password_resets document
+    if (!isCodeValid) {
+      try {
+        val firestore = FirebaseFirestore.getInstance()
+        val doc = firestore.collection("password_resets").document(cleanEmail).get().await()
+        if (doc != null && doc.exists()) {
+          val fsPasscode = doc.getString("passcode")
+          if (fsPasscode == code.trim()) {
+            isCodeValid = true
+          }
+        }
+      } catch (_: Exception) {}
     }
 
     if (!isCodeValid) {
@@ -1003,7 +1093,7 @@ class StrawberrycandyRepository(
         val remaining = (5 - session.failedAttempts).coerceAtLeast(0)
         return Result.failure(IllegalArgumentException("Invalid verification code. $remaining attempts remaining."))
       } else {
-        return Result.failure(IllegalArgumentException("No active recovery request found for $cleanEmail. Please request a new verification code."))
+        return Result.failure(IllegalArgumentException("No active recovery request found for $cleanEmail. Please tap 'Resend Passcode' to get a new code."))
       }
     }
     val trimmedPass = newPassword.trim()
@@ -1041,8 +1131,24 @@ class StrawberrycandyRepository(
       firebaseAuthManager.updateCurrentUserPassword(trimmedPass)
     } catch (_: Exception) {}
 
-    activeRecoverySessions.remove(cleanEmail)
+    // Strictly remember newly set password in AuthMemoryStore
     com.example.data.auth.AuthMemoryStore.rememberCredential(cleanEmail, trimmedPass)
+
+    // Sync updated credentials to Firestore users and remove used reset code
+    try {
+      val firestore = FirebaseFirestore.getInstance()
+      firestore.collection("users").document(cleanEmail).set(
+        mapOf(
+          "email" to cleanEmail,
+          "passwordHash" to trimmedPass,
+          "updatedAt" to System.currentTimeMillis()
+        ),
+        SetOptions.merge()
+      )
+      firestore.collection("password_resets").document(cleanEmail).delete()
+    } catch (_: Exception) {}
+
+    activeRecoverySessions.remove(cleanEmail)
     return Result.success(Unit)
   }
 

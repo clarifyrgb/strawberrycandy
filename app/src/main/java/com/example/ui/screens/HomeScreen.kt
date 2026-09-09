@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.HorizontalDivider
@@ -233,14 +234,14 @@ fun HomeScreen(
           if (isSoleOwner) {
             selectedUploadSlot = 0
             viewModel.openUploadDialog()
-          } else if (canUploadNovel && activeUser != null) {
+          } else if (activeUser != null && (activeUser.role.equals("TRANSLATOR", ignoreCase = true) || canUploadNovel)) {
             selectedUploadSlot = activeUser.authorSlot ?: 1
             viewModel.openUploadDialog()
           } else if (activeUser == null) {
             viewModel.openAuthDialog()
-            viewModel.showSnackbar("Please sign in to access the archive")
+            viewModel.showSnackbar("Please sign in as Translator or Archive Owner to publish manuscripts")
           } else {
-            viewModel.showSnackbar("Publishing requires translator permission granted by the Archive Owner")
+            viewModel.showSnackbar("Publishing manuscripts is reserved for the Archive Owner and Translators")
           }
         },
         activeTranslatorsCount = activeTranslators.size
@@ -1301,7 +1302,7 @@ private fun TopUtilityBar(
           modifier = Modifier.testTag("app_brand_title")
         )
         Text(
-          text = "NOVEL ARCHIVE",
+          text = "NOVEL STUDIO",
           style = MaterialTheme.typography.labelSmall.copy(
             letterSpacing = 1.4.sp,
             fontSize = 8.5.sp,
@@ -1353,12 +1354,15 @@ private fun TopUtilityBar(
               .trim()
               .ifBlank { if (activeUser.role == "TRANSLATOR") "Translator" else "Reader" }
             Text(
-              text = safeDisplayName.take(10),
+              text = safeDisplayName,
               style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 10.5.sp,
+                fontSize = 10.sp,
                 fontWeight = FontWeight.Medium
               ),
-              color = CharcoalText
+              color = CharcoalText,
+              maxLines = 1,
+              overflow = TextOverflow.Ellipsis,
+              modifier = Modifier.widthIn(max = 75.dp)
             )
             Spacer(modifier = Modifier.width(4.dp))
             Surface(

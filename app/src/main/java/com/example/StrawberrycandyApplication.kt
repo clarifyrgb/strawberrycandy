@@ -8,7 +8,7 @@ class StrawberrycandyApplication : Application() {
     super.onCreate()
     try {
       Log.d("StrawberrycandyApp", "Initializing application and services...")
-      // Perform any necessary safety checks or initializations here safely
+      com.example.data.auth.AuthMemoryStore.init(this)
     } catch (e: Exception) {
       Log.e("StrawberrycandyApp", "Critical error during Application onCreate initialization", e)
     }

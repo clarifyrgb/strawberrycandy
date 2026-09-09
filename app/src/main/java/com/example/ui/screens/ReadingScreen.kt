@@ -337,13 +337,12 @@ fun ReadingScreen(
   val bookmarksList by (bookmarksFlow?.collectAsState(initial = emptyList())
     ?: remember { mutableStateOf(emptyList()) })
 
-  val activeUser by (viewModel?.activeUser?.collectAsState()
-    ?: remember { mutableStateOf(null) })
-  val canAddChapter = activeUser?.role == "OWNER" || activeUser?.authorSlot == 0 || (activeUser?.role == "TRANSLATOR" && activeUser?.authorSlot == novel.authorSlot)
-
   val uiState by (viewModel?.uiState?.collectAsState()
     ?: remember { mutableStateOf(null) })
   val authorSlots = uiState?.authorSlots ?: emptyList()
+  val activeUser by (viewModel?.activeUser?.collectAsState()
+    ?: remember { mutableStateOf(null) })
+  val canAddChapter = activeUser?.role == "OWNER" || activeUser?.authorSlot == 0 || activeUser?.role == "TRANSLATOR" || (activeUser != null && viewModel?.canUploadNovel(activeUser, authorSlots) == true)
   val allNovelsList = uiState?.novels ?: listOf(novel)
   var viewingTranslatorSlot by remember { mutableStateOf<AuthorSlotEntity?>(null) }
 

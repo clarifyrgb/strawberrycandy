@@ -39,6 +39,7 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Mail
 import androidx.compose.material.icons.outlined.MarkEmailRead
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.outlined.WorkspacePremium
@@ -225,8 +226,14 @@ fun AuthModal(
       }
     }
 
-    if (!isSignUpMode && matchedAccount == null && !StrawberrycandyRepository.isOwnerEmail(trimmedEmail)) {
-      localError = "Account not found. Please click 'Create Account (Sign Up)' first."
+    val cleanEmail = trimmedEmail.lowercase()
+    val savedPass = rememberedAccounts.firstOrNull { it.email.lowercase() == cleanEmail }?.passwordHash?.takeIf { it.isNotBlank() }
+      ?: AuthMemoryStore.getPassword(cleanEmail)
+
+    val hasKnownAccount = matchedAccount != null || savedPass != null || StrawberrycandyRepository.isOwnerEmail(trimmedEmail)
+
+    if (!isSignUpMode && !hasKnownAccount) {
+      localError = "Account not found for $cleanEmail. Please click 'Sign Up' tab first to create your account."
       return
     }
     if (passwordInput.trim().length < 4) {
@@ -234,15 +241,13 @@ fun AuthModal(
       return
     }
 
-    val cleanEmail = trimmedEmail.lowercase()
-    val savedPass = rememberedAccounts.firstOrNull { it.email.lowercase() == cleanEmail }?.passwordHash?.takeIf { it.isNotBlank() }
-      ?: AuthMemoryStore.getPassword(cleanEmail)
+    if (isSignUpMode && savedPass != null && savedPass.isNotBlank() && savedPass != "clarify123") {
+      localError = "An account already exists for $cleanEmail. Please switch to 'Sign In' to enter your password, or use 'Forgot Password?' to reset it."
+      return
+    }
 
-    if (isSignUpMode && savedPass != null && savedPass.isNotBlank() && savedPass != "clarify123" && passwordInput.trim() != savedPass) {
-      isSignUpMode = false
-      passwordInput = ""
-      localError = null
-      onClearError()
+    if (!isSignUpMode && savedPass != null && savedPass.isNotBlank() && savedPass != "clarify123" && passwordInput.trim() != savedPass) {
+      localError = "Incorrect password for $cleanEmail. Please enter the password you registered strictly, or use 'Forgot Password?' to retrieve it."
       return
     }
 
@@ -271,8 +276,6 @@ fun AuthModal(
     }
 
     val assignedSlot: Int? = if (isOwner) 0 else null
-
-    AuthMemoryStore.rememberCredential(trimmedEmail, passwordInput)
 
     if (provider == "GOOGLE") {
       onSignInWithGoogle(trimmedEmail, passwordInput, finalName, effectiveRole, assignedSlot, isSignUpMode)
@@ -1142,7 +1145,7 @@ fun AuthModal(
                   )
                   Spacer(modifier = Modifier.height(2.dp))
                   Text(
-                    text = "A 6-digit verification passcode was sent to ${recoveryEmailInput.trim()}. Check your inbox or Spam folder and enter the code below.",
+                    text = recoveryMessage ?: "A 6-digit verification passcode was sent to ${recoveryEmailInput.trim()}. Check your inbox or Spam folder and enter the code below.",
                     fontSize = 11.5.sp,
                     color = CharcoalText,
                     lineHeight = 15.sp
@@ -1358,20 +1361,57 @@ fun AuthModal(
               }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             OutlinedButton(
               onClick = {
-                recoveryStep = 1
+                val cleanEmail = recoveryEmailInput.trim().lowercase()
+                if (cleanEmail.isBlank()) {
+                  recoveryStep = 1
+                  return@OutlinedButton
+                }
+                isSendingCode = true
                 recoveryError = null
+                onRequestPasswordResetCode(cleanEmail) { result ->
+                  isSendingCode = false
+                  result.onSuccess {
+                    recoveryMessage = "✓ A new 6-digit passcode has been resent to $cleanEmail! Please check your Gmail inbox and Spam folder."
+                    recoveryError = null
+                  }.onFailure { err ->
+                    recoveryError = err.message ?: "Failed to resend passcode to Gmail."
+                  }
+                }
               },
+              enabled = !isSendingCode && !isSubmittingReset,
               shape = RoundedCornerShape(12.dp),
-              border = BorderStroke(0.8.dp, AntiqueGold),
+              border = BorderStroke(1.dp, AntiqueGold),
               modifier = Modifier
                 .fillMaxWidth()
-                .height(38.dp)
+                .height(40.dp)
+                .testTag("resend_passcode_button")
             ) {
-              Text("Request New 2FA Verification Code", fontSize = 11.5.sp, color = AntiqueGold)
+              if (isSendingCode) {
+                CircularProgressIndicator(modifier = Modifier.size(15.dp), color = AntiqueGold, strokeWidth = 1.8.dp)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Resending Passcode...", fontSize = 11.5.sp, color = AntiqueGold, fontWeight = FontWeight.Bold)
+              } else {
+                Icon(Icons.Outlined.Refresh, contentDescription = null, tint = AntiqueGold, modifier = Modifier.size(15.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Resend Passcode to Gmail", fontSize = 11.5.sp, color = AntiqueGold, fontWeight = FontWeight.Bold)
+              }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            TextButton(
+              onClick = {
+                recoveryStep = 1
+                recoveryError = null
+                recoveryMessage = null
+              },
+              modifier = Modifier.align(Alignment.CenterHorizontally)
+            ) {
+              Text("Change Gmail address", fontSize = 11.5.sp, color = CharcoalSecondary)
             }
           }
 

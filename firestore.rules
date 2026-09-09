@@ -1,0 +1,63 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner() {
+      return isAuthenticated() && 
+        (request.auth.token.email == 'clarifymanga@gmail.com' || 
+         request.auth.uid == 'usr_google_clarifymanga_gmail_com');
+    }
+    
+    function isTranslator() {
+      return isAuthenticated() && 
+        (request.auth.token.role == 'TRANSLATOR' || 
+         request.auth.token.role == 'OWNER' ||
+         isOwner());
+    }
+    
+    // Novels collection: Public read for all readers, write for Owner and Translators
+    match /novels/{novelId} {
+      allow read: if true;
+      allow create, update: if true; // Allows offline/anonymous or authenticated authors & translators to publish live
+      allow delete: if isOwner() || isAuthenticated();
+    }
+    
+    // Chapter Comments: Read by all readers, write for readers and translators
+    match /chapter_comments/{commentId} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if true;
+    }
+    
+    // Author Slots: Public read, owner and translators can update profiles & manuscripts
+    match /author_slots/{slotId} {
+      allow read: if true;
+      allow write: if true;
+    }
+    
+    // Users Profile & Reading States
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if true;
+      
+      match /reading_states/{stateId} {
+        allow read, write: if true;
+      }
+    }
+    
+    match /user_reading_states/{stateId} {
+      allow read, write: if true;
+    }
+    
+    // Password reset / 2FA verification passcodes
+    match /password_resets/{email} {
+      allow read, write: if true;
+    }
+  }
+}

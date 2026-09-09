@@ -75,6 +75,11 @@ object AuthMemoryStore {
     return !getPassword(email).isNullOrBlank()
   }
 
+  fun isStrictPasswordMatch(email: String?, passwordAttempt: String): Boolean {
+    val stored = getPassword(email) ?: return true
+    return stored == passwordAttempt.trim()
+  }
+
   fun clearCredential(email: String) {
     val clean = email.trim().lowercase()
     inMemoryCredentials.remove(clean)

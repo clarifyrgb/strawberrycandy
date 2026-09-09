@@ -1,0 +1,22 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Novels manuscripts, cover artwork, and metadata
+    match /novels/{novelId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if true;
+    }
+    
+    // Author rooms avatars and banners
+    match /authors/{allPaths=**} {
+      allow read: if true;
+      allow write: if true;
+    }
+    
+    // General story media assets
+    match /{allPaths=**} {
+      allow read: if true;
+      allow write: if true;
+    }
+  }
+}

@@ -482,12 +482,14 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
   fun isTranslatorOrOwner(user: ReaderProfileEntity? = activeUser.value, slots: List<AuthorSlotEntity> = authorSlots.value): Boolean {
     if (user == null) return false
     if (isOwner(user)) return true
+    if (user.role.equals("TRANSLATOR", ignoreCase = true)) return true
     return isPermittedTranslator(user, slots)
   }
 
   fun canUploadNovel(user: ReaderProfileEntity? = activeUser.value, slots: List<AuthorSlotEntity> = authorSlots.value): Boolean {
     if (user == null) return false
     if (isOwner(user)) return true
+    if (user.role.equals("TRANSLATOR", ignoreCase = true)) return true
     return isPermittedTranslator(user, slots)
   }
 
@@ -802,14 +804,12 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
           if (authorSlot == 0) (currentUser?.authorSlot ?: 1) else authorSlot
         }
 
-        if (!isOwnerUser) {
-          val hasPermission = isPermittedTranslator(currentUser, authorSlots.value)
-          if (!hasPermission) {
-            val errorMsg = "Permission denied: Translation access must be granted by the Archive Owner (clarifymanga@gmail.com)."
-            _snackbarMessage.value = errorMsg
-            onResult?.invoke(false, errorMsg)
-            return@launch
-          }
+        val isTranslatorUser = currentUser?.role.equals("TRANSLATOR", ignoreCase = true) || isPermittedTranslator(currentUser, authorSlots.value)
+        if (!isOwnerUser && !isTranslatorUser) {
+          val errorMsg = "Permission denied: Publishing manuscripts is reserved for the Archive Owner and Translators."
+          _snackbarMessage.value = errorMsg
+          onResult?.invoke(false, errorMsg)
+          return@launch
         }
 
         val effectiveAuthor = if (effectiveSlot == 0 && isOwnerUser) {
@@ -834,6 +834,7 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
           originalAuthor = originalAuthor,
           novelStatus = novelStatus,
           releaseFormat = releaseFormat,
+          genre = genre,
         )
         _isUploadDialogOpen.value = false
         _dismissedAlertNovelId.value = null
