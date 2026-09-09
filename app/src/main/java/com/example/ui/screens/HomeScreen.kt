@@ -2529,6 +2529,24 @@ private fun SelectedNovelSpotlight(
                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.5.dp)
                   )
                 }
+                if (novel.isR19 || genreTag.contains("R19", ignoreCase = true)) {
+                  Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = Color(0xFFC62828).copy(alpha = 0.15f),
+                    border = BorderStroke(0.6.dp, Color(0xFFC62828).copy(alpha = 0.4f))
+                  ) {
+                    Text(
+                      text = "R19",
+                      style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 7.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.4.sp
+                      ),
+                      color = Color(0xFFC62828),
+                      modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.5.dp)
+                    )
+                  }
+                }
               }
 
               Row(
@@ -2570,7 +2588,7 @@ private fun SelectedNovelSpotlight(
                 lineHeight = 17.sp
               ),
               color = CharcoalText,
-              maxLines = 1,
+              maxLines = 2,
               overflow = TextOverflow.Ellipsis
             )
 

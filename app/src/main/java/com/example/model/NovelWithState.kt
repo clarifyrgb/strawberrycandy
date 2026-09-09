@@ -190,6 +190,7 @@ data class NovelWithState(
   val storyImagesJson: String get() = novel.storyImagesJson
   val novelStatus: String get() = novel.novelStatus
   val releaseFormat: String get() = novel.releaseFormat
+  val isR19: Boolean get() = novel.isR19
 
   val isCompletedNovel: Boolean get() = novel.novelStatus.equals("FINISHED", ignoreCase = true)
   val novelStatusLabel: String get() = if (isCompletedNovel) "Finished" else "Ongoing"
