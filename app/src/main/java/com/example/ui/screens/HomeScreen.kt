@@ -2729,30 +2729,6 @@ private fun SelectedNovelSpotlight(
 
       Spacer(modifier = Modifier.height(6.dp))
 
-      // Excerpt Quote
-      Surface(
-        shape = RoundedCornerShape(8.dp),
-        color = CreamBackground.copy(alpha = 0.6f),
-        border = BorderStroke(0.6.dp, SubtleBorder.copy(alpha = 0.5f)),
-        modifier = Modifier.fillMaxWidth()
-      ) {
-        Text(
-          text = "“${novel.excerpt}”",
-          style = MaterialTheme.typography.bodySmall.copy(
-            fontFamily = FontFamily.Serif,
-            fontStyle = FontStyle.Italic,
-            fontSize = 11.sp,
-            lineHeight = 14.sp
-          ),
-          color = CharcoalSecondary,
-          maxLines = 1,
-          overflow = TextOverflow.Ellipsis,
-          modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
-        )
-      }
-
-      Spacer(modifier = Modifier.height(6.dp))
-
       // Action Buttons
       Row(
         modifier = Modifier.fillMaxWidth(),

@@ -267,17 +267,7 @@ fun AuthorRoomsModal(
 
         Spacer(modifier = Modifier.height(4.dp))
 
-        Text(
-          text = if (activeRoleView == UserRoleView.READER || !isOwnerUser) {
-            "An exclusive archive featuring $totalCurators curators: strawberrycandy (Founder) and ${permittedTranslators.size} permitted translators who publish translated manuscripts."
-          } else {
-            "Founder (strawberrycandy) plus 10 configurable translator slots. Readers and translators only view the $totalCurators active curators."
-          },
-          style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 16.sp),
-          color = CharcoalSecondary
-        )
 
-        Spacer(modifier = Modifier.height(12.dp))
 
         // Role View Mode Switcher (ONLY shown if Owner, completely HIDDEN for readers and translators)
         if (isOwnerUser) {

@@ -1409,7 +1409,7 @@ class StrawberrycandyRepository(
         slotNumber = 0,
         authorName = "Clarify",
         penName = "Strawberrycandy",
-        bio = "Founder & Sole Owner at Strawberrycandy Archive. Oversees manuscript acquisitions, translator permissions, and curation.",
+        bio = "",
         avatarColorHex = 0xFF8C2D48,
         accessCode = "ARCHIVE-OWNER-0",
         isClaimed = true,
@@ -1533,7 +1533,7 @@ class StrawberrycandyRepository(
         currentSlot0.copy(
           authorName = "Clarify",
           penName = "Strawberrycandy",
-          bio = "Founder & Sole Owner at Strawberrycandy Archive. Oversees manuscript acquisitions, translator permissions, and curation.",
+          bio = "",
           isPermissionGranted = true
         )
       )
