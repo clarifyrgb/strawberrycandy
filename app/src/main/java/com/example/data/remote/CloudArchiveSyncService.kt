@@ -26,7 +26,7 @@ class CloudArchiveSyncService(private val context: Context) {
     const val KEY_LAST_SYNC_ERROR = "last_sync_error"
 
     const val DEFAULT_CLOUD_ARCHIVE_URL =
-      "https://api.restful-api.dev/objects/ff808181a067127101a07b2efb503348"
+      "https://strawberrycandy-default-rtdb.asia-southeast1.firebasedatabase.app/archive.json"
     const val DEFAULT_READ_URL =
       "https://raw.githubusercontent.com/clarifyrgb/strawberrycandy/refs/heads/main/novels.json"
     const val FALLBACK_READ_URL =

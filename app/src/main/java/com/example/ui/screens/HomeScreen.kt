@@ -39,6 +39,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.constraintlayout.compose.ConstraintLayout
+import androidx.constraintlayout.compose.Dimension
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
@@ -215,7 +217,6 @@ fun HomeScreen(
     Column(
       modifier = Modifier
         .fillMaxSize()
-        .verticalScroll(rememberScrollState())
         .navigationBarsPadding()
         .padding(bottom = 70.dp),
       horizontalAlignment = Alignment.CenterHorizontally
@@ -1327,40 +1328,38 @@ private fun TopUtilityBar(
     // Right: Action Buttons + User Profile
     Row(
       verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(6.dp)
+      horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-      // Translators & Owner Profiles Button (Visible to everyone)
-      Surface(
-        onClick = onOpenAuthorRooms,
-        shape = RoundedCornerShape(16.dp),
-        color = SoftCreamPaper,
-        border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.5f)),
-        modifier = Modifier.testTag("top_utility_translators_button")
-      ) {
-        Row(
-          verticalAlignment = Alignment.CenterVertically,
-          modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
-        ) {
-          Icon(
-            imageVector = Icons.Outlined.WorkspacePremium,
-            contentDescription = "Translators & Owners",
-            tint = AntiqueGold,
-            modifier = Modifier.size(13.dp)
-          )
-          Spacer(modifier = Modifier.width(3.dp))
-          Text(
-            text = "Translators",
-            style = MaterialTheme.typography.labelSmall.copy(
-              fontWeight = FontWeight.Bold,
-              fontSize = 10.sp,
-              color = CharcoalText
-            )
-          )
-        }
-      }
-
       if (activeUser != null) {
-
+        // Translators & Owner Profiles Button (Visible only when signed in)
+        Surface(
+          onClick = onOpenAuthorRooms,
+          shape = RoundedCornerShape(16.dp),
+          color = SoftCreamPaper,
+          border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.5f)),
+          modifier = Modifier.testTag("top_utility_translators_button")
+        ) {
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+          ) {
+            Icon(
+              imageVector = Icons.Outlined.WorkspacePremium,
+              contentDescription = "Translators & Owners",
+              tint = AntiqueGold,
+              modifier = Modifier.size(12.dp)
+            )
+            Spacer(modifier = Modifier.width(2.dp))
+            Text(
+              text = "Translators",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = FontWeight.Bold,
+                fontSize = 9.5.sp,
+                color = CharcoalText
+              )
+            )
+          }
+        }
 
         // Profile Pill (Tapping opens Profile modal with reading history, account stats, pen name, and Sign Out)
         Surface(
@@ -1372,11 +1371,11 @@ private fun TopUtilityBar(
         ) {
           Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
           ) {
             Box(
               modifier = Modifier
-                .size(18.dp)
+                .size(16.dp)
                 .clip(CircleShape)
                 .background(if (activeUser.provider == "GOOGLE") Color(0xFF4285F4) else Color(0xFF1E1D1B)),
               contentAlignment = Alignment.Center
@@ -1384,11 +1383,11 @@ private fun TopUtilityBar(
               Text(
                 text = if (activeUser.provider == "GOOGLE") "G" else "",
                 color = Color.White,
-                fontSize = 9.sp,
+                fontSize = 8.sp,
                 fontWeight = FontWeight.Bold
               )
             }
-            Spacer(modifier = Modifier.width(5.dp))
+            Spacer(modifier = Modifier.width(4.dp))
             val safeDisplayName = activeUser.displayName
               .replace(Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"), "")
               .substringBefore("@")
@@ -1397,15 +1396,15 @@ private fun TopUtilityBar(
             Text(
               text = safeDisplayName,
               style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 10.sp,
+                fontSize = 9.5.sp,
                 fontWeight = FontWeight.Medium
               ),
               color = CharcoalText,
               maxLines = 1,
               overflow = TextOverflow.Ellipsis,
-              modifier = Modifier.widthIn(max = 75.dp)
+              modifier = Modifier.widthIn(max = 65.dp)
             )
-            Spacer(modifier = Modifier.width(4.dp))
+            Spacer(modifier = Modifier.width(3.dp))
             Surface(
               shape = RoundedCornerShape(6.dp),
               color = AntiqueGold.copy(alpha = 0.15f),
@@ -1415,11 +1414,11 @@ private fun TopUtilityBar(
               Text(
                 text = "${activeUser.penNamePoints}pt",
                 style = MaterialTheme.typography.labelSmall.copy(
-                  fontSize = 8.5.sp,
+                  fontSize = 8.sp,
                   fontWeight = FontWeight.Bold
                 ),
                 color = AntiqueGold,
-                modifier = Modifier.padding(horizontal = 3.5.dp, vertical = 1.dp)
+                modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
               )
             }
           }
@@ -1435,54 +1434,27 @@ private fun TopUtilityBar(
         ) {
           Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
           ) {
             Icon(
               imageVector = Icons.Outlined.Info,
               contentDescription = "About",
               tint = AntiqueGold,
-              modifier = Modifier.size(13.dp)
+              modifier = Modifier.size(12.dp)
             )
-            Spacer(modifier = Modifier.width(3.dp))
+            Spacer(modifier = Modifier.width(2.dp))
             Text(
               text = "About",
               style = MaterialTheme.typography.labelSmall.copy(
                 fontWeight = FontWeight.Bold,
-                fontSize = 10.sp,
+                fontSize = 9.5.sp,
                 color = CharcoalText
               )
             )
           }
         }
 
-        Surface(
-          onClick = onOpenAuth,
-          shape = RoundedCornerShape(16.dp),
-          color = AntiqueGold,
-          border = BorderStroke(1.dp, AntiqueGold),
-          modifier = Modifier.testTag("top_utility_sign_in_button")
-        ) {
-          Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-          ) {
-            Icon(
-              imageVector = Icons.Outlined.Person,
-              contentDescription = "Sign In",
-              tint = Color.White,
-              modifier = Modifier.size(13.dp)
-            )
-            Spacer(modifier = Modifier.width(4.dp))
-            Text(
-              text = "Sign In",
-              style = MaterialTheme.typography.labelSmall.copy(
-                fontWeight = FontWeight.Bold,
-                fontSize = 10.5.sp,
-                color = Color.White
-              )
-            )
-          }
-        }
+
       }
     }
   }

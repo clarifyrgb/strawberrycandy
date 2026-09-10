@@ -57,6 +57,7 @@ import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.LightMode
@@ -367,6 +368,13 @@ fun ReadingScreen(
       else -> FontFamily.Serif
     }
   }
+
+  // Page flip animation state
+  var isPageTurning by remember { mutableStateOf(false) }
+  val pageAlpha by androidx.compose.animation.core.animateFloatAsState(
+    targetValue = if (isPageTurning) 0.15f else 1f,
+    animationSpec = tween(durationMillis = 160)
+  )
 
   // Initial sync to saved reading progress
   var hasInitialSynced by remember(novel.id) { mutableStateOf(false) }
@@ -1042,6 +1050,7 @@ fun ReadingScreen(
           state = lazyListState,
           modifier = Modifier
             .fillMaxSize()
+            .graphicsLayer(alpha = pageAlpha)
             .padding(horizontal = 26.dp, vertical = 8.dp)
             .testTag("reading_lazy_column"),
           horizontalAlignment = Alignment.CenterHorizontally,
@@ -2022,8 +2031,11 @@ fun ReadingScreen(
                 OutlinedButton(
                   onClick = {
                     coroutineScope.launch {
+                      isPageTurning = true
+                      delay(80)
                       val targetIndex = (lazyListState.firstVisibleItemIndex - 6).coerceAtLeast(0)
                       lazyListState.animateScrollToItem(targetIndex)
+                      isPageTurning = false
                     }
                   },
                   shape = RoundedCornerShape(16.dp),
@@ -2074,8 +2086,11 @@ fun ReadingScreen(
                 OutlinedButton(
                   onClick = {
                     coroutineScope.launch {
+                      isPageTurning = true
+                      delay(80)
                       val targetIndex = (lazyListState.firstVisibleItemIndex + 6).coerceAtMost(novel.storyItems.size)
                       lazyListState.animateScrollToItem(targetIndex)
+                      isPageTurning = false
                     }
                   },
                   shape = RoundedCornerShape(16.dp),
