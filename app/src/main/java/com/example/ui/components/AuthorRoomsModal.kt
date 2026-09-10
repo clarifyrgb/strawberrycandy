@@ -29,6 +29,13 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.AdminPanelSettings
 import androidx.compose.material.icons.outlined.CheckCircle
@@ -118,6 +125,8 @@ fun AuthorRoomsModal(
   onGrantPermissionByEmail: ((email: String, slotNumber: Int?) -> Unit)? = null,
   onUpdateSlotByOwner: ((slotNumber: Int, translatorEmail: String?, penName: String, bio: String, isPermissionGranted: Boolean) -> Unit)? = null,
   onOpenAuth: (() -> Unit)? = null,
+  onSelectNovel: ((NovelWithState) -> Unit)? = null,
+  onEditNovel: ((NovelWithState) -> Unit)? = null,
 ) {
   val context = LocalContext.current
   val isOwnerUser = currentUser != null && StrawberrycandyViewModel.isOwnerEmail(currentUser.email)
@@ -628,7 +637,10 @@ fun AuthorRoomsModal(
           onViewArchive = {
             onDismiss()
             onViewTranslatorArchive(ownerSlot)
-          }
+          },
+          slotNovels = ownerNovels,
+          onSelectNovel = onSelectNovel,
+          onEditNovel = onEditNovel
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -765,7 +777,10 @@ fun AuthorRoomsModal(
             onViewArchive = {
               onDismiss()
               onViewTranslatorArchive(slot)
-            }
+            },
+            slotNovels = slotNovels,
+            onSelectNovel = onSelectNovel,
+            onEditNovel = onEditNovel
           )
 
           Spacer(modifier = Modifier.height(10.dp))
@@ -1043,9 +1058,13 @@ private fun TranslatorCardItem(
   onTogglePermission: (Boolean) -> Unit,
   onOpenUpload: () -> Unit,
   onViewArchive: () -> Unit,
+  slotNovels: List<NovelWithState> = emptyList(),
+  onSelectNovel: ((NovelWithState) -> Unit)? = null,
+  onEditNovel: ((NovelWithState) -> Unit)? = null,
 ) {
   val isReader = roleView == UserRoleView.READER || isReaderUser
   val canManage = !isReader && !isReaderUser && (isOwnerUser || (isTranslatorUser && isMyOwnRoom && (slot.isPermissionGranted || isOwner)))
+  var isNovelsExpanded by remember { mutableStateOf(false) }
 
   Card(
     shape = RoundedCornerShape(18.dp),
@@ -1611,6 +1630,166 @@ private fun TranslatorCardItem(
             )
             Spacer(modifier = Modifier.width(3.dp))
             Text("Upload Novel", fontSize = 10.sp, color = CharcoalText)
+          }
+        }
+      }
+
+      // Managed Room Novels Section
+      Spacer(modifier = Modifier.height(10.dp))
+      HorizontalDivider(color = SubtleBorder, thickness = 0.5.dp)
+      Spacer(modifier = Modifier.height(8.dp))
+
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .clickable { isNovelsExpanded = !isNovelsExpanded }
+          .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Icon(
+            imageVector = Icons.AutoMirrored.Outlined.MenuBook,
+            contentDescription = null,
+            tint = AntiqueGold,
+            modifier = Modifier.size(14.dp)
+          )
+          Spacer(modifier = Modifier.width(6.dp))
+          Text(
+            text = "Room Manuscripts (${slotNovels.size})",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontWeight = FontWeight.Bold,
+              fontSize = 11.sp,
+              color = CharcoalText
+            )
+          )
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          if (canManage) {
+            OutlinedButton(
+              onClick = onOpenUpload,
+              shape = RoundedCornerShape(8.dp),
+              contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+              modifier = Modifier.height(26.dp)
+            ) {
+              Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = "Upload Manuscript",
+                tint = AntiqueGold,
+                modifier = Modifier.size(12.dp)
+              )
+              Spacer(modifier = Modifier.width(2.dp))
+              Text(
+                text = "Publish",
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = AntiqueGold)
+              )
+            }
+            Spacer(modifier = Modifier.width(6.dp))
+          }
+          Icon(
+            imageVector = if (isNovelsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+            contentDescription = null,
+            tint = CharcoalSecondary,
+            modifier = Modifier.size(16.dp)
+          )
+        }
+      }
+
+      if (isNovelsExpanded) {
+        Spacer(modifier = Modifier.height(6.dp))
+        if (slotNovels.isEmpty()) {
+          Text(
+            text = "No manuscripts published in this room yet. Use 'Publish' to upload stories here.",
+            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp, color = CharcoalSecondary),
+            modifier = Modifier.padding(vertical = 4.dp)
+          )
+        } else {
+          Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            slotNovels.forEach { novel ->
+              Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = SoftCreamPaper,
+                border = BorderStroke(0.5.dp, SubtleBorder),
+                modifier = Modifier.fillMaxWidth()
+              ) {
+                Row(
+                  modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp),
+                  verticalAlignment = Alignment.CenterVertically,
+                  horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                  Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                      .weight(1f)
+                      .clickable { onSelectNovel?.invoke(novel) }
+                  ) {
+                    Box(
+                      modifier = Modifier
+                        .size(28.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(AntiqueGold.copy(alpha = 0.15f)),
+                      contentAlignment = Alignment.Center
+                    ) {
+                      Icon(
+                        imageVector = Icons.Default.Book,
+                        contentDescription = null,
+                        tint = AntiqueGold,
+                        modifier = Modifier.size(14.dp)
+                      )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                      Text(
+                        text = novel.title,
+                        style = MaterialTheme.typography.labelMedium.copy(
+                          fontWeight = FontWeight.Bold,
+                          fontSize = 11.sp,
+                          color = CharcoalText
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                      )
+                      Text(
+                        text = "${novel.paragraphs.size} paragraphs • ${novel.author}",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                          fontSize = 9.5.sp,
+                          color = CharcoalSecondary
+                        )
+                      )
+                    }
+                  }
+
+                  Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    IconButton(
+                      onClick = { onSelectNovel?.invoke(novel) },
+                      modifier = Modifier.size(24.dp)
+                    ) {
+                      Icon(
+                        imageVector = Icons.AutoMirrored.Outlined.MenuBook,
+                        contentDescription = "Read Novel",
+                        tint = AntiqueGold,
+                        modifier = Modifier.size(13.dp)
+                      )
+                    }
+                    if (canManage) {
+                      IconButton(
+                        onClick = { onEditNovel?.invoke(novel) },
+                        modifier = Modifier.size(24.dp)
+                      ) {
+                        Icon(
+                          imageVector = Icons.Default.Edit,
+                          contentDescription = "Edit Novel",
+                          tint = CharcoalText,
+                          modifier = Modifier.size(13.dp)
+                        )
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }

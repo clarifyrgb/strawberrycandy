@@ -2018,25 +2018,23 @@ fun ReadingScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
               ) {
-                // Previous Chapter Button
-                val hasPrev = currentChapterIndex > 0
+                // Previous Page Button
                 OutlinedButton(
                   onClick = {
-                    if (hasPrev) {
-                      val prevCh = novel.chapters[currentChapterIndex - 1]
-                      jumpToChapter(prevCh.index, prevCh.startParagraphIndex)
+                    coroutineScope.launch {
+                      val targetIndex = (lazyListState.firstVisibleItemIndex - 6).coerceAtLeast(0)
+                      lazyListState.animateScrollToItem(targetIndex)
                     }
                   },
-                  enabled = hasPrev,
                   shape = RoundedCornerShape(16.dp),
                   contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                  modifier = Modifier.testTag("prev_chapter_button")
+                  modifier = Modifier.testTag("prev_page_button")
                 ) {
                   Icon(
                     imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
                     contentDescription = null,
                     modifier = Modifier.size(14.dp),
-                    tint = if (hasPrev) readerTextColor else readerSecondaryTextColor.copy(alpha = 0.4f)
+                    tint = readerTextColor
                   )
                   Spacer(modifier = Modifier.width(4.dp))
                   Text(
@@ -2045,7 +2043,7 @@ fun ReadingScreen(
                       fontSize = 10.sp,
                       fontWeight = FontWeight.SemiBold
                     ),
-                    color = if (hasPrev) readerTextColor else readerSecondaryTextColor.copy(alpha = 0.4f)
+                    color = readerTextColor
                   )
                 }
 
@@ -2072,19 +2070,17 @@ fun ReadingScreen(
                   }
                 }
 
-                // Next Chapter Button
-                val hasNext = currentChapterIndex < novel.chapters.size - 1
+                // Next Page Button
                 OutlinedButton(
                   onClick = {
-                    if (hasNext) {
-                      val nextCh = novel.chapters[currentChapterIndex + 1]
-                      jumpToChapter(nextCh.index, nextCh.startParagraphIndex)
+                    coroutineScope.launch {
+                      val targetIndex = (lazyListState.firstVisibleItemIndex + 6).coerceAtMost(novel.storyItems.size)
+                      lazyListState.animateScrollToItem(targetIndex)
                     }
                   },
-                  enabled = hasNext,
                   shape = RoundedCornerShape(16.dp),
                   contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                  modifier = Modifier.testTag("next_chapter_button")
+                  modifier = Modifier.testTag("next_page_button")
                 ) {
                   Text(
                     text = "Next",
@@ -2092,14 +2088,14 @@ fun ReadingScreen(
                       fontSize = 10.sp,
                       fontWeight = FontWeight.SemiBold
                     ),
-                    color = if (hasNext) readerTextColor else readerSecondaryTextColor.copy(alpha = 0.4f)
+                    color = readerTextColor
                   )
                   Spacer(modifier = Modifier.width(4.dp))
                   Icon(
                     imageVector = Icons.AutoMirrored.Outlined.ArrowForward,
                     contentDescription = null,
                     modifier = Modifier.size(14.dp),
-                    tint = if (hasNext) readerTextColor else readerSecondaryTextColor.copy(alpha = 0.4f)
+                    tint = readerTextColor
                   )
                 }
               }

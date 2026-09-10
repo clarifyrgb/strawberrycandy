@@ -995,6 +995,14 @@ fun HomeScreen(
             viewModel.setSlotPermission(slot, isGranted)
           }
         },
+        onSelectNovel = { novel ->
+          isAuthorRoomsModalOpen = false
+          onSelectNovel(novel)
+        },
+        onEditNovel = { novel ->
+          isAuthorRoomsModalOpen = false
+          novelToEdit = novel
+        },
         onViewTranslatorArchive = { slot ->
           selectedTranslatorForDetail = slot
         },
@@ -1321,6 +1329,36 @@ private fun TopUtilityBar(
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
+      // Translators & Owner Profiles Button (Visible to everyone)
+      Surface(
+        onClick = onOpenAuthorRooms,
+        shape = RoundedCornerShape(16.dp),
+        color = SoftCreamPaper,
+        border = BorderStroke(1.dp, AntiqueGold.copy(alpha = 0.5f)),
+        modifier = Modifier.testTag("top_utility_translators_button")
+      ) {
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+        ) {
+          Icon(
+            imageVector = Icons.Outlined.WorkspacePremium,
+            contentDescription = "Translators & Owners",
+            tint = AntiqueGold,
+            modifier = Modifier.size(13.dp)
+          )
+          Spacer(modifier = Modifier.width(3.dp))
+          Text(
+            text = "Translators",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontWeight = FontWeight.Bold,
+              fontSize = 10.sp,
+              color = CharcoalText
+            )
+          )
+        }
+      }
+
       if (activeUser != null) {
 
 
