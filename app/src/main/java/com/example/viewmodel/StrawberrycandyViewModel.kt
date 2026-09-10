@@ -466,13 +466,16 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     // 1. Archive owner has universal edit access across all novels
     if (isOwner(user)) return true
 
-    // 2. Translators can only edit novels in their own room if permission is granted
+    // 2. Permitted translators can edit novels in their author slot or imported/authored novels
     if (isPermittedTranslator(user, slots)) {
       val userSlot = user.authorSlot ?: slots.find {
         it.isPermissionGranted && StrawberrycandyRepository.isUserMatchedToSlot(user.email, user.displayName, it)
       }?.slotNumber
 
-      if (userSlot != null && userSlot > 0 && novel.authorSlot == userSlot) {
+      if (userSlot != null && userSlot > 0 && (novel.authorSlot == userSlot || novel.author.equals(user.displayName, ignoreCase = true))) {
+        return true
+      }
+      if (novel.authorSlot == 0 || novel.author.equals(user.displayName, ignoreCase = true)) {
         return true
       }
     }

@@ -46,8 +46,10 @@ import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.Bookmark
@@ -456,6 +458,7 @@ fun HomeScreen(
           isTranslatorOrOwner = canEditContinue,
           onResumeReading = { onSelectNovel(continueReadingNovel) },
           onEditNovel = { novelToEdit = continueReadingNovel },
+          onRemoveFromReading = { viewModel.toggleReadingList(continueReadingNovel.id) },
           modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
         )
       }
@@ -1501,6 +1504,7 @@ private fun ContinueReadingBanner(
   isTranslatorOrOwner: Boolean = false,
   onResumeReading: () -> Unit,
   onEditNovel: () -> Unit,
+  onRemoveFromReading: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
   val haptic = LocalHapticFeedback.current
@@ -1607,19 +1611,36 @@ private fun ContinueReadingBanner(
           }
         }
 
-        Surface(
-          shape = RoundedCornerShape(14.dp),
-          color = CharcoalText,
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(4.dp),
           modifier = Modifier.padding(start = 8.dp)
         ) {
-          Text(
-            text = "Resume",
-            style = MaterialTheme.typography.labelSmall.copy(
-              color = SoftCreamPaper,
-              fontWeight = FontWeight.SemiBold
-            ),
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-          )
+          IconButton(
+            onClick = onRemoveFromReading,
+            modifier = Modifier.size(32.dp).testTag("delete_continue_reading_button")
+          ) {
+            Icon(
+              imageVector = Icons.Default.Close,
+              contentDescription = "Remove from Continue Reading",
+              tint = CharcoalSecondary,
+              modifier = Modifier.size(16.dp)
+            )
+          }
+
+          Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = CharcoalText
+          ) {
+            Text(
+              text = "Resume",
+              style = MaterialTheme.typography.labelSmall.copy(
+                color = SoftCreamPaper,
+                fontWeight = FontWeight.SemiBold
+              ),
+              modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+            )
+          }
         }
       }
 

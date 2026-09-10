@@ -2367,17 +2367,17 @@ fun buildReadingParagraphAnnotatedString(
   var isRight = false
   var isQuote = false
 
-  if (cleanText.startsWith("[align:center]") && cleanText.endsWith("[/align]")) {
+  if (cleanText.contains("[align:center]")) {
     isCenter = true
-    cleanText = cleanText.removePrefix("[align:center]").removeSuffix("[/align]").trim()
-  } else if (cleanText.startsWith("[align:right]") && cleanText.endsWith("[/align]")) {
+    cleanText = cleanText.replace("[align:center]", "").replace("[/align]", "").trim()
+  } else if (cleanText.contains("[align:right]")) {
     isRight = true
-    cleanText = cleanText.removePrefix("[align:right]").removeSuffix("[/align]").trim()
+    cleanText = cleanText.replace("[align:right]", "").replace("[/align]", "").trim()
   }
 
-  if (cleanText.startsWith("[quote]") && cleanText.endsWith("[/quote]")) {
+  if (cleanText.contains("[quote]")) {
     isQuote = true
-    cleanText = cleanText.removePrefix("[quote]").removeSuffix("[/quote]").trim()
+    cleanText = cleanText.replace("[quote]", "").replace("[/quote]", "").trim()
   }
 
   // Parse inline tags <b>, <strong>, <i>, <em>, <u>, <ins>, <s>, <del>, <strike>
@@ -2487,17 +2487,5 @@ fun buildReadingParagraphAnnotatedString(
 }
 
 fun toRomanNumeral(n: Int): String {
-  return when (n) {
-    1 -> "I"
-    2 -> "II"
-    3 -> "III"
-    4 -> "IV"
-    5 -> "V"
-    6 -> "VI"
-    7 -> "VII"
-    8 -> "VIII"
-    9 -> "IX"
-    10 -> "X"
-    else -> n.toString()
-  }
+  return n.toString()
 }
