@@ -50,7 +50,9 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
@@ -175,6 +177,7 @@ fun HomeScreen(
   var novelToEdit by remember { mutableStateOf<NovelWithState?>(null) }
   var isCoverGalleryMode by remember { mutableStateOf(false) }
   var isSortMenuOpen by remember { mutableStateOf(false) }
+  var currentBottomTab by remember { mutableStateOf("home") }
 
   val safeIndex = if (novels.isNotEmpty()) selectedIndex.coerceIn(0, novels.size - 1) else 0
 
@@ -219,7 +222,7 @@ fun HomeScreen(
         .fillMaxSize()
         .verticalScroll(rememberScrollState())
         .navigationBarsPadding()
-        .padding(bottom = 70.dp),
+        .padding(bottom = 90.dp),
       horizontalAlignment = Alignment.CenterHorizontally
     ) {
       // 1. Top Utility Header: Reader Sign-in, Author Rooms & Upload actions
@@ -1253,6 +1256,120 @@ fun HomeScreen(
         }
       )
     }
+
+    // Wattpad-style Pinned Bottom Navigation Bar (stays fixed at bottom, never scrolls away)
+    Surface(
+      modifier = Modifier
+        .align(Alignment.BottomCenter)
+        .fillMaxWidth()
+        .testTag("pinned_bottom_nav_bar"),
+      color = Color(0xFFFAF8F5),
+      tonalElevation = 8.dp,
+      shadowElevation = 16.dp
+    ) {
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .navigationBarsPadding()
+          .padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceAround,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        WattpadNavButton(
+          icon = Icons.Default.Home,
+          label = "Home",
+          isSelected = currentBottomTab == "home",
+          onClick = {
+            currentBottomTab = "home"
+            viewModel.clearNovelSearchQuery()
+          }
+        )
+        WattpadNavButton(
+          icon = Icons.Default.Search,
+          label = "Search",
+          isSelected = currentBottomTab == "search",
+          onClick = {
+            currentBottomTab = "search"
+          }
+        )
+        WattpadNavButton(
+          icon = Icons.Default.MenuBook,
+          label = "Library",
+          isSelected = currentBottomTab == "library",
+          onClick = {
+            currentBottomTab = "library"
+            viewModel.setNovelSearchQuery("Romance")
+          }
+        )
+        val hasTranslatorAccess = isSoleOwner || canUploadNovel || (activeUser != null && (activeUser.role.equals("TRANSLATOR", ignoreCase = true) || viewModel.canUploadNovel(activeUser, uiState.authorSlots)))
+        if (hasTranslatorAccess) {
+          WattpadNavButton(
+            icon = Icons.Default.Add,
+            label = "Write",
+            isSelected = currentBottomTab == "write",
+            onClick = {
+              currentBottomTab = "write"
+              if (isSoleOwner || canUploadNovel) {
+                selectedUploadSlot = if (isSoleOwner) 0 else (activeUser?.authorSlot ?: 1)
+                viewModel.openUploadDialog()
+              } else if (activeUser == null) {
+                viewModel.openAuthDialog()
+                viewModel.showSnackbar("Please sign in as Translator or Archive Owner to publish manuscripts")
+              } else {
+                viewModel.showSnackbar("Publishing manuscripts is reserved for the Archive Owner and Translators")
+              }
+            }
+          )
+        }
+        WattpadNavButton(
+          icon = Icons.Default.Notifications,
+          label = "Me",
+          isSelected = currentBottomTab == "me",
+          onClick = {
+            currentBottomTab = "me"
+            if (activeUser != null) {
+              viewModel.openProfileDialog()
+            } else {
+              viewModel.openAuthDialog()
+            }
+          }
+        )
+      }
+    }
+  }
+}
+
+@Composable
+private fun WattpadNavButton(
+  icon: androidx.compose.ui.graphics.vector.ImageVector,
+  label: String,
+  isSelected: Boolean,
+  onClick: () -> Unit
+) {
+  val tint = if (isSelected) AntiqueGold else CharcoalSecondary
+  Column(
+    modifier = Modifier
+      .clickable(onClick = onClick)
+      .padding(4.dp)
+      .testTag("nav_button_${label.lowercase()}"),
+    horizontalAlignment = Alignment.CenterHorizontally,
+    verticalArrangement = Arrangement.Center
+  ) {
+    Icon(
+      imageVector = icon,
+      contentDescription = label,
+      tint = tint,
+      modifier = Modifier.size(24.dp)
+    )
+    Spacer(modifier = Modifier.height(2.dp))
+    Text(
+      text = label,
+      style = MaterialTheme.typography.labelSmall.copy(
+        fontSize = 10.sp,
+        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+      ),
+      color = tint
+    )
   }
 }
 
@@ -1362,68 +1479,7 @@ private fun TopUtilityBar(
           }
         }
 
-        // Profile Pill (Tapping opens Profile modal with reading history, account stats, pen name, and Sign Out)
-        Surface(
-          onClick = onOpenProfile,
-          shape = RoundedCornerShape(16.dp),
-          color = SoftCreamPaper,
-          border = BorderStroke(1.dp, if (isSoleOwner) AntiqueGold.copy(alpha = 0.7f) else SubtleBorder),
-          modifier = Modifier.testTag("reader_profile_pill")
-        ) {
-          Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
-          ) {
-            Box(
-              modifier = Modifier
-                .size(16.dp)
-                .clip(CircleShape)
-                .background(if (activeUser.provider == "GOOGLE") Color(0xFF4285F4) else Color(0xFF1E1D1B)),
-              contentAlignment = Alignment.Center
-            ) {
-              Text(
-                text = if (activeUser.provider == "GOOGLE") "G" else "",
-                color = Color.White,
-                fontSize = 8.sp,
-                fontWeight = FontWeight.Bold
-              )
-            }
-            Spacer(modifier = Modifier.width(4.dp))
-            val safeDisplayName = activeUser.displayName
-              .replace(Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"), "")
-              .substringBefore("@")
-              .trim()
-              .ifBlank { if (activeUser.role == "TRANSLATOR") "Translator" else "Reader" }
-            Text(
-              text = safeDisplayName,
-              style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 9.5.sp,
-                fontWeight = FontWeight.Medium
-              ),
-              color = CharcoalText,
-              maxLines = 1,
-              overflow = TextOverflow.Ellipsis,
-              modifier = Modifier.widthIn(max = 65.dp)
-            )
-            Spacer(modifier = Modifier.width(3.dp))
-            Surface(
-              shape = RoundedCornerShape(6.dp),
-              color = AntiqueGold.copy(alpha = 0.15f),
-              border = BorderStroke(0.5.dp, AntiqueGold.copy(alpha = 0.5f)),
-              modifier = Modifier.testTag("user_points_indicator")
-            ) {
-              Text(
-                text = "${activeUser.penNamePoints}pt",
-                style = MaterialTheme.typography.labelSmall.copy(
-                  fontSize = 8.sp,
-                  fontWeight = FontWeight.Bold
-                ),
-                color = AntiqueGold,
-                modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
-              )
-            }
-          }
-        }
+
       } else {
         // Guest mode: About + Sign In (Translators room hidden when not signed in)
         Surface(

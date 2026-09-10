@@ -562,7 +562,18 @@ class StrawberrycandyRepository(
         try {
           val fbRes = firebaseStorageService.uploadNovelPackage(novel)
           if (fbRes.isSuccess) {
-            Log.d("StrawberrycandyRepository", "Uploaded novel ${novel.id} package to Firebase Cloud Storage (${fbRes.getOrNull()?.storageBucket})")
+            val summary = fbRes.getOrNull()
+            if (!summary?.coverUrl.isNullOrBlank()) {
+              val cloudCoverUrl = summary!!.coverUrl!!
+              dao.updateNovelCover(novel.id, cloudCoverUrl)
+              try {
+                val firestore = FirebaseFirestore.getInstance()
+                firestore.collection("novels").document(novel.id)
+                  .update(hashMapOf<String, Any>("coverImageUri" to cloudCoverUrl, "coverUrl" to cloudCoverUrl))
+                  .await()
+              } catch (_: Exception) {}
+            }
+            Log.d("StrawberrycandyRepository", "Uploaded novel ${novel.id} package to Firebase Cloud Storage (${summary?.storageBucket}) with coverUrl: ${summary?.coverUrl}")
           } else {
             Log.w("StrawberrycandyRepository", "Firebase Cloud Storage backup note: ${fbRes.exceptionOrNull()?.message}")
           }
