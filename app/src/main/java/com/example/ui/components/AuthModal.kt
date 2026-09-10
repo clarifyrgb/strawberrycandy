@@ -1375,10 +1375,11 @@ fun AuthModal(
                 onRequestPasswordResetCode(cleanEmail) { result ->
                   isSendingCode = false
                   result.onSuccess {
-                    recoveryMessage = "✓ A new 6-digit passcode has been resent to $cleanEmail! Please check your Gmail inbox and Spam folder."
+                    recoveryCodeInput = ""
+                    recoveryMessage = "✓ An official password reset email has been resent to $cleanEmail! Please check your Gmail inbox and Spam folder."
                     recoveryError = null
                   }.onFailure { err ->
-                    recoveryError = err.message ?: "Failed to resend passcode to Gmail."
+                    recoveryError = err.message ?: "Failed to resend password reset email to Gmail."
                   }
                 }
               },

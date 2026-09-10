@@ -1794,14 +1794,14 @@ private fun HorizontalNovelCard(
           AsyncImage(
             model = File(novel.coverImageUri!!).takeIf { it.exists() } ?: novel.coverImageUri,
             contentDescription = novel.title,
-            contentScale = ContentScale.Crop,
+            contentScale = ContentScale.Fit,
             modifier = Modifier.fillMaxSize()
           )
         } else if (novel.coverDrawableRes != 0) {
           Image(
             painter = painterResource(id = novel.coverDrawableRes),
             contentDescription = novel.title,
-            contentScale = ContentScale.Crop,
+            contentScale = ContentScale.Fit,
             modifier = Modifier.fillMaxSize()
           )
         } else {
@@ -2039,7 +2039,7 @@ private fun HorizontalNovelCard(
       ),
       color = if (isFocused) CharcoalText else CharcoalSecondary,
       textAlign = TextAlign.Center,
-      maxLines = 1,
+      maxLines = 2,
       overflow = TextOverflow.Ellipsis
     )
 
@@ -2952,14 +2952,14 @@ private fun CuratedCoverGridCard(
           AsyncImage(
             model = File(novel.coverImageUri!!).takeIf { it.exists() } ?: novel.coverImageUri,
             contentDescription = novel.title,
-            contentScale = ContentScale.Crop,
+            contentScale = ContentScale.Fit,
             modifier = Modifier.fillMaxSize()
           )
         } else if (novel.coverDrawableRes != 0) {
           Image(
             painter = painterResource(id = novel.coverDrawableRes),
             contentDescription = novel.title,
-            contentScale = ContentScale.Crop,
+            contentScale = ContentScale.Fit,
             modifier = Modifier.fillMaxSize()
           )
         } else {
@@ -3066,7 +3066,7 @@ private fun CuratedCoverGridCard(
             lineHeight = 15.sp
           ),
           color = CharcoalText,
-          maxLines = 1,
+          maxLines = 2,
           overflow = TextOverflow.Ellipsis
         )
         Spacer(modifier = Modifier.height(1.dp))
@@ -3233,14 +3233,14 @@ private fun NewReleaseCard(
           AsyncImage(
             model = File(novel.coverImageUri!!).takeIf { it.exists() } ?: novel.coverImageUri,
             contentDescription = novel.title,
-            contentScale = ContentScale.Crop,
+            contentScale = ContentScale.Fit,
             modifier = Modifier.fillMaxSize()
           )
         } else if (novel.coverDrawableRes != 0) {
           Image(
             painter = painterResource(id = novel.coverDrawableRes),
             contentDescription = novel.title,
-            contentScale = ContentScale.Crop,
+            contentScale = ContentScale.Fit,
             modifier = Modifier.fillMaxSize()
           )
         } else {
@@ -3302,7 +3302,7 @@ private fun NewReleaseCard(
           fontFamily = FontFamily.Serif
         ),
         color = CharcoalText,
-        maxLines = 1,
+        maxLines = 2,
         overflow = TextOverflow.Ellipsis
       )
 

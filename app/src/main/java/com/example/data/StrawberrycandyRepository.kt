@@ -1028,40 +1028,21 @@ class StrawberrycandyRepository(
     val record = recoveryRateLimitMap.getOrPut(cleanEmail) { RateLimitRecord() }
     synchronized(record) {
       record.timestamps.removeAll { now - it > dayMillis }
-      if (!isOwner && record.timestamps.size >= 30) {
+      if (!isOwner && record.timestamps.size >= 100) {
         return Result.failure(IllegalArgumentException("Passcode request limit reached for today. Please try again later."))
       }
       record.timestamps.add(now)
     }
 
-    // 1. Trigger Firebase Auth Password Reset Email to user's real inbox
-    try {
-      firebaseAuthManager.sendPasswordResetEmail(cleanEmail)
-      Log.i("StrawberrycandyAuth", "Firebase password reset email dispatched for $cleanEmail")
-    } catch (e: Exception) {
-      Log.w("StrawberrycandyAuth", "Firebase reset email notice: ${e.message}")
+    // Trigger official Firebase Auth Password Reset Email directly to user's Gmail inbox
+    val fbResult = firebaseAuthManager.sendPasswordResetEmail(cleanEmail)
+    if (fbResult.isFailure && !isOwner) {
+      val err = fbResult.exceptionOrNull()
+      return Result.failure(IllegalArgumentException(err?.message ?: "Failed to send password reset email to $cleanEmail."))
     }
 
-    // 2. Generate secure 6-digit recovery passcode for instant verification & fallback
-    val code = (100000..999999).random().toString()
-    activeRecoverySessions[cleanEmail] = RecoverySession(cleanEmail, code, System.currentTimeMillis(), 0)
-    Log.d("StrawberrycandyAuth", "Password recovery passcode issued for $cleanEmail: $code")
-
-    // 3. Sync passcode to Firebase Firestore password_resets collection
-    try {
-      val firestore = FirebaseFirestore.getInstance()
-      val resetData = hashMapOf(
-        "email" to cleanEmail,
-        "passcode" to code,
-        "timestamp" to System.currentTimeMillis()
-      )
-      firestore.collection("password_resets").document(cleanEmail).set(resetData, SetOptions.merge())
-      Log.i("StrawberrycandyAuth", "Passcode for $cleanEmail recorded in Firestore password_resets collection.")
-    } catch (e: Exception) {
-      Log.w("StrawberrycandyAuth", "Firestore password_resets note: ${e.message}")
-    }
-
-    return Result.success(code)
+    Log.i("StrawberrycandyAuth", "Official Firebase password reset email successfully dispatched to Gmail for $cleanEmail")
+    return Result.success("OK")
   }
 
   suspend fun resetPasswordWithCode(email: String, code: String, newPassword: String): Result<Unit> {
