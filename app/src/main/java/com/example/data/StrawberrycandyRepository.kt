@@ -817,20 +817,32 @@ class StrawberrycandyRepository(
     val userId = "usr_" + provider.lowercase() + "_" + cleanEmail.replace(Regex("[^a-z0-9]"), "_")
     val isOwner = isOwnerEmail(cleanEmail)
 
+    var remotePasswordHash: String? = null
+    try {
+      val firestore = FirebaseFirestore.getInstance()
+      val userDoc = firestore.collection("users").document(cleanEmail).get().await()
+      if (userDoc != null && userDoc.exists()) {
+        remotePasswordHash = userDoc.getString("passwordHash")?.takeIf { it.isNotBlank() }
+      }
+    } catch (_: Exception) {}
+
     val existingProfile = dao.getReaderProfileByEmail(cleanEmail) ?: dao.getReaderProfile(userId)
     val rememberedPass = com.example.data.auth.AuthMemoryStore.getPassword(cleanEmail)
       ?: existingProfile?.passwordHash?.takeIf { it.isNotBlank() }
+      ?: remotePasswordHash
 
     val hasExistingAccount = (existingProfile != null && !existingProfile.passwordHash.isNullOrBlank()) ||
+      (!remotePasswordHash.isNullOrBlank()) ||
       (!rememberedPass.isNullOrBlank() && rememberedPass != "clarify123")
 
-    if (isSignUp && hasExistingAccount && !rememberedPass.isNullOrBlank() && rememberedPass != "clarify123") {
+    if (isSignUp && hasExistingAccount) {
       return Result.failure(
         IllegalArgumentException("An account already exists for $cleanEmail. Please switch to 'Sign In' and enter your existing password, or use 'Forgot Password?' to reset it.")
       )
     }
 
     val isFirstLoginForEmail = (existingProfile == null || existingProfile.passwordHash.isNullOrBlank()) &&
+      remotePasswordHash.isNullOrBlank() &&
       (rememberedPass.isNullOrBlank() || rememberedPass == "clarify123")
 
     if (!isFirstLoginForEmail && !rememberedPass.isNullOrBlank() && rememberedPass != "clarify123") {

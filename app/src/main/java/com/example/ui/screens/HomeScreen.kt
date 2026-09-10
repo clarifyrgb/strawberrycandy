@@ -217,6 +217,7 @@ fun HomeScreen(
     Column(
       modifier = Modifier
         .fillMaxSize()
+        .verticalScroll(rememberScrollState())
         .navigationBarsPadding()
         .padding(bottom = 70.dp),
       horizontalAlignment = Alignment.CenterHorizontally
