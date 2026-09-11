@@ -49,6 +49,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MenuBook
@@ -75,6 +76,7 @@ import androidx.compose.material.icons.outlined.Sort
 import androidx.compose.material.icons.outlined.Upload
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.WorkspacePremium
+import androidx.compose.ui.window.Dialog
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -178,7 +180,9 @@ fun HomeScreen(
   var novelToEdit by remember { mutableStateOf<NovelWithState?>(null) }
   var isCoverGalleryMode by remember { mutableStateOf(false) }
   var isSortMenuOpen by remember { mutableStateOf(false) }
+  var isManageTranslationsDialogOpen by remember { mutableStateOf(false) }
   var currentBottomTab by remember { mutableStateOf("home") }
+  val myComments by viewModel.myCommentsHistory.collectAsState(initial = emptyList())
 
   val safeIndex = if (novels.isNotEmpty()) selectedIndex.coerceIn(0, novels.size - 1) else 0
 
@@ -692,7 +696,7 @@ fun HomeScreen(
                     ) {
                       Icon(imageVector = Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                       Spacer(modifier = Modifier.width(6.dp))
-                      Text("Upload / Manage My Manuscripts", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+                      Text("Manage Translations (Edit / Delete)", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
                     }
                   }
 
@@ -706,6 +710,78 @@ fun HomeScreen(
                       Icon(imageVector = Icons.Default.Star, contentDescription = null, modifier = Modifier.size(16.dp))
                       Spacer(modifier = Modifier.width(6.dp))
                       Text("Grant & Manage Translator Permissions", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+                    }
+                  }
+
+                  Spacer(modifier = Modifier.height(16.dp))
+
+                  Text(
+                    text = "MY REFLECTIONS & COMMENTS HISTORY (${myCommentsHistory.size})",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      letterSpacing = 1.2.sp,
+                      fontWeight = FontWeight.Bold,
+                      color = AntiqueGold
+                    )
+                  )
+
+                  Spacer(modifier = Modifier.height(8.dp))
+
+                  if (myCommentsHistory.isEmpty()) {
+                    Text(
+                      text = "No reflections or comments recorded yet. Leave notes while reading chapters to see them here.",
+                      style = MaterialTheme.typography.bodySmall,
+                      color = CharcoalSecondary,
+                      textAlign = TextAlign.Center
+                    )
+                  } else {
+                    Column(
+                      modifier = Modifier.fillMaxWidth(),
+                      verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                      myCommentsHistory.forEach { comment ->
+                        val novelTitle = allNovelsList.find { it.id == comment.novelId }?.title ?: "Archival Novel"
+                        Card(
+                          shape = RoundedCornerShape(12.dp),
+                          colors = CardDefaults.cardColors(containerColor = Color.White),
+                          border = BorderStroke(1.dp, SubtleBorder),
+                          modifier = Modifier.fillMaxWidth()
+                        ) {
+                          Column(
+                            modifier = Modifier.padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                          ) {
+                            Row(
+                              modifier = Modifier.fillMaxWidth(),
+                              horizontalArrangement = Arrangement.SpaceBetween,
+                              verticalAlignment = Alignment.CenterVertically
+                            ) {
+                              Text(
+                                text = novelTitle,
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = AntiqueGold),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                              )
+                              IconButton(
+                                onClick = { viewModel.deleteComment(comment.id) },
+                                modifier = Modifier.size(24.dp)
+                              ) {
+                                Icon(
+                                  imageVector = Icons.Default.Delete,
+                                  contentDescription = "Delete comment",
+                                  tint = Color(0xFFC62828),
+                                  modifier = Modifier.size(14.dp)
+                                )
+                              }
+                            }
+                            Text(
+                              text = comment.commentText,
+                              style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                              color = CharcoalText
+                            )
+                          }
+                        }
+                      }
                     }
                   }
                 }
@@ -808,7 +884,7 @@ fun HomeScreen(
                             Box(
                               modifier = Modifier
                                 .fillMaxWidth()
-                                .height(130.dp)
+                                .height(185.dp)
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(Color(novel.coverColorHex))
                             ) {
@@ -816,7 +892,7 @@ fun HomeScreen(
                                 AsyncImage(
                                   model = File(novel.coverImageUri!!).takeIf { it.exists() } ?: novel.coverImageUri,
                                   contentDescription = novel.title,
-                                  contentScale = ContentScale.Crop,
+                                  contentScale = ContentScale.Fit,
                                   modifier = Modifier.fillMaxSize()
                                 )
                               } else {
@@ -844,6 +920,26 @@ fun HomeScreen(
                                     text = "NEW",
                                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color.White),
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                  )
+                                }
+                              }
+
+                              Surface(
+                                onClick = { viewModel.toggleFavorite(novel.id) },
+                                shape = CircleShape,
+                                color = Color.Black.copy(alpha = 0.45f),
+                                modifier = Modifier
+                                  .align(Alignment.TopStart)
+                                  .padding(6.dp)
+                                  .size(30.dp)
+                                  .testTag("card_favorite_button_${novel.id}")
+                              ) {
+                                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                  Icon(
+                                    imageVector = if (novel.isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                                    contentDescription = "Favorite",
+                                    tint = if (novel.isFavorite) Color(0xFFEF5350) else Color.White,
+                                    modifier = Modifier.size(16.dp)
                                   )
                                 }
                               }
@@ -1032,6 +1128,130 @@ fun HomeScreen(
           viewModel.updateAuthorSlotByOwner(slot, email, penName, bio, isGranted)
         } else null
       )
+    }
+
+    if (isManageTranslationsDialogOpen && activeUser != null) {
+      val userSlot = activeUser.authorSlot ?: 0
+      val myUploadedNovels = allNovelsList.filter { novel ->
+        if (isSoleOwner) true
+        else novel.authorSlot == userSlot || novel.novel.author.equals(activeUser.displayName, ignoreCase = true) || novel.novel.author.equals(activeUser.email, ignoreCase = true)
+      }
+
+      Dialog(onDismissRequest = { isManageTranslationsDialogOpen = false }) {
+        Card(
+          shape = RoundedCornerShape(20.dp),
+          colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
+          border = BorderStroke(1.dp, SubtleBorder),
+          modifier = Modifier.fillMaxWidth().fillMaxHeight(0.85f).padding(16.dp)
+        ) {
+          Column(
+            modifier = Modifier.fillMaxSize().padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+          ) {
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.SpaceBetween,
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              Text(
+                text = "MANAGE TRANSLATIONS (${myUploadedNovels.size})",
+                style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold),
+                color = CharcoalText
+              )
+              IconButton(onClick = { isManageTranslationsDialogOpen = false }) {
+                Icon(imageVector = Icons.Default.Close, contentDescription = "Close", tint = CharcoalText)
+              }
+            }
+
+            Text(
+              text = "Novels uploaded by you or assigned to your translator slot. You can edit manuscript metadata or delete them from the archive.",
+              style = MaterialTheme.typography.bodySmall,
+              color = CharcoalSecondary
+            )
+
+            if (myUploadedNovels.isEmpty()) {
+              Box(modifier = Modifier.fillMaxSize().weight(1f), contentAlignment = Alignment.Center) {
+                Text(
+                  text = "No manuscripts uploaded yet. Tap Upload to publish your first translation.",
+                  style = MaterialTheme.typography.bodySmall,
+                  color = CharcoalSecondary,
+                  textAlign = TextAlign.Center
+                )
+              }
+            } else {
+              Column(
+                modifier = Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+              ) {
+                myUploadedNovels.forEach { novel ->
+                  Card(
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = BorderStroke(1.dp, SubtleBorder),
+                    modifier = Modifier.fillMaxWidth()
+                  ) {
+                    Row(
+                      modifier = Modifier.fillMaxWidth().padding(12.dp),
+                      horizontalArrangement = Arrangement.SpaceBetween,
+                      verticalAlignment = Alignment.CenterVertically
+                    ) {
+                      Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                          text = novel.title,
+                          style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, fontFamily = FontFamily.Serif),
+                          color = CharcoalText
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                          text = "Genre: ${novel.genre} • R19: ${if (novel.novel.isR19) "Yes" else "No"}",
+                          style = MaterialTheme.typography.labelSmall,
+                          color = CharcoalSecondary
+                        )
+                      }
+                      Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        OutlinedButton(
+                          onClick = {
+                            isManageTranslationsDialogOpen = false
+                            novelToEdit = novel
+                          },
+                          shape = RoundedCornerShape(8.dp),
+                          contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                          Text("Edit", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = AntiqueGold))
+                        }
+                        Button(
+                          onClick = {
+                            viewModel.deleteNovel(novel.id)
+                          },
+                          colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC62828)),
+                          shape = RoundedCornerShape(8.dp),
+                          contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                          Text("Delete", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = Color.White))
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+
+            Button(
+              onClick = {
+                isManageTranslationsDialogOpen = false
+                selectedUploadSlot = if (isSoleOwner) 0 else (activeUser.authorSlot ?: 1)
+                viewModel.openUploadDialog()
+              },
+              colors = ButtonDefaults.buttonColors(containerColor = AntiqueGold),
+              modifier = Modifier.fillMaxWidth()
+            ) {
+              Icon(imageVector = Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+              Spacer(modifier = Modifier.width(6.dp))
+              Text("Upload New Manuscript", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+            }
+          }
+        }
+      }
     }
 
     // Dedicated Personal Archive Page for a Translator (accessible to anyone)
