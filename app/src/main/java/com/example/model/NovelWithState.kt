@@ -28,6 +28,8 @@ data class NovelWithState(
   val contentText: String get() = novel.contentText
   val totalPages: Int get() = novel.totalPages
   val excerpt: String get() = novel.excerpt
+  val genre: String get() = novel.genre
+  val synopsis: String get() = novel.subtitle
   val paragraphs: List<String> get() = novel.contentText.split("\n\n").filter {
     it.isNotBlank() && !it.contains("Monastic Stone Arcades") && !it.contains("Deep Limestone Splay")
   }

@@ -947,39 +947,7 @@ fun AuthModal(
 
           Spacer(modifier = Modifier.height(8.dp))
 
-          // Apple Sign-In: Reserved for future iOS release (App Store license pending)
-          Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = Color(0xFF1E1815).copy(alpha = 0.35f),
-            border = BorderStroke(0.8.dp, Color(0xFF1E1815).copy(alpha = 0.2f)),
-            modifier = Modifier
-              .fillMaxWidth()
-              .testTag("sign_in_apple_button_disabled")
-          ) {
-            Row(
-              modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 11.dp),
-              verticalAlignment = Alignment.CenterVertically,
-              horizontalArrangement = Arrangement.Center
-            ) {
-              Text(
-                text = "",
-                color = CharcoalSecondary,
-                fontSize = 15.sp,
-                modifier = Modifier.padding(bottom = 1.dp)
-              )
-              Spacer(modifier = Modifier.width(8.dp))
-              Text(
-                text = "Sign in with Apple (Coming on iOS)",
-                style = MaterialTheme.typography.labelLarge.copy(
-                  fontWeight = FontWeight.Normal,
-                  fontSize = 12.5.sp
-                ),
-                color = CharcoalSecondary
-              )
-            }
-          }
+
         } else {
           // -------------------------------------------------------------
           // FORGOT PASSWORD / GMAIL CODE RETRIEVAL & RESET SCREEN
