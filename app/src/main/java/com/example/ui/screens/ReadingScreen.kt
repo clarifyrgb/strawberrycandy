@@ -117,6 +117,7 @@ import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.example.data.local.AuthorSlotEntity
 import com.example.data.local.BookmarkHighlightEntity
 import com.example.model.NovelWithState
@@ -138,9 +139,9 @@ import com.example.ui.theme.CharcoalText
 import com.example.ui.theme.SoftCreamPaper
 import com.example.ui.theme.SubtleBorder
 import com.example.util.formatStatCount
+import java.io.File
 import com.example.viewmodel.StrawberrycandyViewModel
 import kotlinx.coroutines.launch
-import java.io.File
 
 data class HighlightColorOption(
   val name: String,
@@ -216,6 +217,9 @@ fun ReadingScreen(
   }
   var isItalic by remember {
     mutableStateOf(typographyPrefs.getBoolean("is_italic", false))
+  }
+  var pageTurnMode by remember {
+    mutableStateOf(typographyPrefs.getString("page_turn_mode", "flip") ?: "flip")
   }
   val readerFontWeight = if (isBold) FontWeight.Bold else FontWeight.Normal
   val readerFontStyle = if (isItalic) FontStyle.Italic else FontStyle.Normal
@@ -1341,7 +1345,17 @@ fun ReadingScreen(
                                 )
                               },
                               onClick = {
-                                isHudVisible = !isHudVisible
+                                if (hasHighlights) {
+                                  val sentences = splitParagraphIntoSentences(paragraph)
+                                  activeParagraphSelection = ActiveParagraphSelection(
+                                    paragraphIndex = index,
+                                    paragraphText = paragraph,
+                                    sentences = sentences,
+                                    selectedSentenceIndex = if (sentences.size > 1) 0 else -1
+                                  )
+                                } else {
+                                  isHudVisible = !isHudVisible
+                                }
                               }
                             )
                           }
@@ -2171,7 +2185,7 @@ fun ReadingScreen(
         customFontName = customFontName,
         fontSizeScale = fontSizeScale,
         lineHeightScale = lineHeightScale,
-        pageTurnMode = "scroll",
+        pageTurnMode = pageTurnMode,
         paragraphSpacingScale = paragraphSpacingScale,
         isJustified = isJustified,
         isFirstLineIndent = isFirstLineIndent,
@@ -2201,7 +2215,10 @@ fun ReadingScreen(
           lineHeightScale = scale
           typographyPrefs.edit().putFloat("line_height_scale", scale).apply()
         },
-        onSelectPageTurnMode = {},
+        onSelectPageTurnMode = { mode ->
+          pageTurnMode = mode
+          typographyPrefs.edit().putString("page_turn_mode", mode).apply()
+        },
         onUpdateParagraphSpacingScale = { scale ->
           paragraphSpacingScale = scale
           typographyPrefs.edit().putFloat("paragraph_spacing_scale", scale).apply()

@@ -1039,7 +1039,7 @@ fun HomeScreen(
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(Color(novel.coverColorHex))
                             ) {
-                              if (novel.coverImageUri != null) {
+                              if (!novel.coverImageUri.isNullOrBlank() && novel.coverImageUri != "null") {
                                 AsyncImage(
                                   model = File(novel.coverImageUri!!).takeIf { it.exists() } ?: novel.coverImageUri,
                                   contentDescription = novel.title,
@@ -1074,26 +1074,6 @@ fun HomeScreen(
                                   )
                                 }
                               }
-
-                              Surface(
-                                onClick = { viewModel.toggleFavorite(novel.id) },
-                                shape = CircleShape,
-                                color = Color.Black.copy(alpha = 0.45f),
-                                modifier = Modifier
-                                  .align(Alignment.TopStart)
-                                  .padding(6.dp)
-                                  .size(30.dp)
-                                  .testTag("card_favorite_button_${novel.id}")
-                              ) {
-                                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                                  Icon(
-                                    imageVector = if (novel.isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                                    contentDescription = "Favorite",
-                                    tint = if (novel.isFavorite) Color(0xFFEF5350) else Color.White,
-                                    modifier = Modifier.size(16.dp)
-                                  )
-                                }
-                              }
                             }
 
                             Spacer(modifier = Modifier.height(8.dp))
@@ -1118,6 +1098,27 @@ fun HomeScreen(
                               style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                               color = CharcoalSecondary,
                               textAlign = TextAlign.Center
+                            )
+                          }
+                        }
+
+                        // Favorite Button sibling placed on top of Card
+                        Surface(
+                          onClick = { viewModel.toggleFavorite(novel.id) },
+                          shape = CircleShape,
+                          color = Color.Black.copy(alpha = 0.5f),
+                          modifier = Modifier
+                            .padding(14.dp)
+                            .size(34.dp)
+                            .align(Alignment.TopStart)
+                            .testTag("card_favorite_button_${novel.id}")
+                        ) {
+                          Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Icon(
+                              imageVector = if (novel.isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                              contentDescription = "Favorite",
+                              tint = if (novel.isFavorite) Color(0xFFEF5350) else Color.White,
+                              modifier = Modifier.size(17.dp)
                             )
                           }
                         }
@@ -2153,7 +2154,7 @@ private fun HorizontalNovelCard(
         )
     ) {
       Box(modifier = Modifier.fillMaxSize()) {
-        if (novel.coverImageUri != null) {
+        if (!novel.coverImageUri.isNullOrBlank() && novel.coverImageUri != "null") {
           AsyncImage(
             model = File(novel.coverImageUri!!).takeIf { it.exists() } ?: novel.coverImageUri,
             contentDescription = novel.title,
@@ -2602,7 +2603,7 @@ private fun SearchResultNovelCard(
           .height(76.dp)
       ) {
         Box(modifier = Modifier.fillMaxSize()) {
-          if (novel.coverImageUri != null) {
+          if (!novel.coverImageUri.isNullOrBlank() && novel.coverImageUri != "null") {
             AsyncImage(
               model = File(novel.coverImageUri!!).takeIf { it.exists() } ?: novel.coverImageUri,
               contentDescription = novel.title,
@@ -2774,7 +2775,7 @@ private fun SelectedNovelSpotlight(
               .shadow(4.dp, RoundedCornerShape(topStart = 3.dp, bottomStart = 3.dp, topEnd = 8.dp, bottomEnd = 8.dp))
           ) {
             Box(modifier = Modifier.fillMaxSize()) {
-              if (novel.coverImageUri != null) {
+              if (!novel.coverImageUri.isNullOrBlank() && novel.coverImageUri != "null") {
                 AsyncImage(
                   model = File(novel.coverImageUri!!).takeIf { it.exists() } ?: novel.coverImageUri,
                   contentDescription = novel.title,
@@ -3174,6 +3175,7 @@ private fun CuratedCoverShowcase(
   selectedNovelId: String,
   canEditSpecificNovel: (NovelWithState) -> Boolean = { false },
   onSelectNovel: (NovelWithState) -> Unit,
+  onToggleFavorite: (String) -> Unit = {},
   onEditNovel: ((NovelWithState) -> Unit)? = null,
   modifier: Modifier = Modifier,
 ) {
@@ -3230,6 +3232,7 @@ private fun CuratedCoverShowcase(
           isSelected = novel.id == selectedNovelId,
           canEdit = canEdit,
           onClick = { onSelectNovel(novel) },
+          onToggleFavorite = { onToggleFavorite(novel.id) },
           onEdit = if (canEdit && onEditNovel != null) { { onEditNovel(novel) } } else null,
           modifier = Modifier.width(172.dp)
         )
@@ -3244,6 +3247,7 @@ private fun CuratedCoverGridCard(
   isSelected: Boolean,
   canEdit: Boolean = false,
   onClick: () -> Unit,
+  onToggleFavorite: () -> Unit = {},
   onEdit: (() -> Unit)? = null,
   modifier: Modifier = Modifier,
 ) {
@@ -3311,7 +3315,7 @@ private fun CuratedCoverGridCard(
             .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
             .background(Color(novel.coverColorHex))
         ) {
-        if (novel.coverImageUri != null) {
+        if (!novel.coverImageUri.isNullOrBlank() && novel.coverImageUri != "null") {
           AsyncImage(
             model = File(novel.coverImageUri!!).takeIf { it.exists() } ?: novel.coverImageUri,
             contentDescription = novel.title,
@@ -3387,6 +3391,8 @@ private fun CuratedCoverGridCard(
           }
         }
 
+
+
         // Bottom gradient overlay for title legibility
         Box(
           modifier = Modifier
@@ -3441,6 +3447,27 @@ private fun CuratedCoverGridCard(
           color = AntiqueGold,
           maxLines = 1,
           overflow = TextOverflow.Ellipsis
+        )
+      }
+    }
+
+    // Favorite Button sibling placed on top of Card
+    Surface(
+      onClick = { onToggleFavorite() },
+      shape = CircleShape,
+      color = Color.Black.copy(alpha = 0.5f),
+      modifier = Modifier
+        .align(Alignment.TopEnd)
+        .padding(8.dp)
+        .size(34.dp)
+        .testTag("gallery_favorite_${novel.id}")
+    ) {
+      Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+        Icon(
+          imageVector = if (novel.isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+          contentDescription = "Favorite",
+          tint = if (novel.isFavorite) Color(0xFFEF5350) else Color.White,
+          modifier = Modifier.size(17.dp)
         )
       }
     }
@@ -3592,7 +3619,7 @@ private fun NewReleaseCard(
           .clip(RoundedCornerShape(topStart = 3.dp, bottomStart = 3.dp, topEnd = 8.dp, bottomEnd = 8.dp))
           .background(Color(novel.coverColorHex))
       ) {
-        if (novel.coverImageUri != null) {
+        if (!novel.coverImageUri.isNullOrBlank() && novel.coverImageUri != "null") {
           AsyncImage(
             model = File(novel.coverImageUri!!).takeIf { it.exists() } ?: novel.coverImageUri,
             contentDescription = novel.title,
@@ -4092,7 +4119,7 @@ private fun RecentlyReadCard(
           .clip(RoundedCornerShape(6.dp))
           .background(Color(novel.coverColorHex))
       ) {
-        if (novel.coverImageUri != null) {
+        if (!novel.coverImageUri.isNullOrBlank() && novel.coverImageUri != "null") {
           AsyncImage(
             model = File(novel.coverImageUri!!).takeIf { it.exists() } ?: novel.coverImageUri,
             contentDescription = novel.title,
@@ -4261,6 +4288,26 @@ fun HorizontalNovelCard(
               text = "NEW",
               style = MaterialTheme.typography.labelSmall.copy(fontSize = 7.sp, fontWeight = FontWeight.Bold, color = Color.White),
               modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+            )
+          }
+        }
+
+        Surface(
+          onClick = { onToggleFavorite() },
+          shape = CircleShape,
+          color = Color.Black.copy(alpha = 0.45f),
+          modifier = Modifier
+            .align(Alignment.TopStart)
+            .padding(4.dp)
+            .size(28.dp)
+            .testTag("horizontal_favorite_${novel.id}")
+        ) {
+          Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+            Icon(
+              imageVector = if (novel.isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+              contentDescription = "Favorite",
+              tint = if (novel.isFavorite) Color(0xFFEF5350) else Color.White,
+              modifier = Modifier.size(14.dp)
             )
           }
         }

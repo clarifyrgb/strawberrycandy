@@ -744,15 +744,22 @@ class StrawberrycandyRepository(
   }
 
   suspend fun deleteNovel(id: String) {
+    dao.deleteNovelById(id)
+    dao.deleteAllReadingStatesForNovel(id)
+    dao.deleteCommentsForNovel(id)
+    dao.deleteBookmarksForNovel(id)
     externalScope.launch {
       try {
         val firestore = FirebaseFirestore.getInstance()
         firestore.collection("novel").document(id).delete().await()
+        val commentsSnap = firestore.collection("chapter_comments").whereEqualTo("novelId", id).get().await()
+        for (doc in commentsSnap.documents) {
+          doc.reference.delete()
+        }
       } catch (e: Exception) {
         Log.w("StrawberrycandyRepository", "Firebase Firestore deleteNovel error: ${e.message}")
       }
     }
-    dao.deleteNovelById(id)
   }
 
   suspend fun updateNovel(

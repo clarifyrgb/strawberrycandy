@@ -911,6 +911,76 @@ fun TypographyCustomizerModal(
 
           Spacer(modifier = Modifier.height(18.dp))
 
+          // 3.5. SECTION: PAGE TURNING STYLE
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Text(
+              text = "PAGE TURNING STYLE",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.sp,
+                letterSpacing = 1.4.sp,
+                fontWeight = FontWeight.Bold
+              ),
+              color = modalTertiaryTextColor
+            )
+            Icon(
+              imageVector = Icons.Outlined.AutoStories,
+              contentDescription = null,
+              tint = modalSecondaryTextColor,
+              modifier = Modifier.size(14.dp)
+            )
+          }
+          Spacer(modifier = Modifier.height(8.dp))
+
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+          ) {
+            listOf(
+              Triple("flip", "Page Flipping", "Tap left/right or swipe"),
+              Triple("scroll", "Continuous Scroll", "Smooth vertical reading")
+            ).forEach { (mode, label, desc) ->
+              val isSelected = pageTurnMode == mode
+              Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = if (isSelected) AntiqueGold.copy(alpha = 0.15f) else Color(0x0C000000),
+                border = BorderStroke(1.dp, if (isSelected) AntiqueGold else modalBorderColor),
+                modifier = Modifier
+                  .weight(1f)
+                  .clickable { onSelectPageTurnMode(mode) }
+                  .testTag("page_turn_mode_$mode")
+              ) {
+                Column(
+                  modifier = Modifier.padding(10.dp),
+                  horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                  Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontSize = 11.sp,
+                      fontWeight = FontWeight.Bold
+                    ),
+                    color = if (isSelected) AntiqueGold else modalTextColor
+                  )
+                  Spacer(modifier = Modifier.height(2.dp))
+                  Text(
+                    text = desc,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontSize = 8.5.sp
+                    ),
+                    color = modalSecondaryTextColor,
+                    textAlign = TextAlign.Center
+                  )
+                }
+              }
+            }
+          }
+
+          Spacer(modifier = Modifier.height(18.dp))
+
           // 4. SECTION: PARAGRAPH LINING (LINE SPACING)
           Row(
             modifier = Modifier.fillMaxWidth(),

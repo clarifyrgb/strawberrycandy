@@ -1137,7 +1137,7 @@ private fun TranslatorCardItem(
               color = AntiqueGold
             )
 
-            if (isOwner) {
+            if (isOwner && isOwnerUser) {
               Surface(
                 shape = RoundedCornerShape(6.dp),
                 color = AntiqueGold.copy(alpha = 0.15f)

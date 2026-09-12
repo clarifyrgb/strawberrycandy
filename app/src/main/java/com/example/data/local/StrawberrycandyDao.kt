@@ -208,6 +208,9 @@ interface StrawberrycandyDao {
   @Query("DELETE FROM chapter_comments WHERE id = :commentId OR parentCommentId = :commentId")
   suspend fun deleteComment(commentId: String)
 
+  @Query("DELETE FROM chapter_comments WHERE novelId = :novelId")
+  suspend fun deleteCommentsForNovel(novelId: String)
+
   @Query("DELETE FROM chapter_comments")
   suspend fun clearAllComments()
 
@@ -220,6 +223,9 @@ interface StrawberrycandyDao {
 
   @Query("DELETE FROM chapter_bookmarks WHERE id = :id")
   suspend fun deleteBookmark(id: String)
+
+  @Query("DELETE FROM chapter_bookmarks WHERE novelId = :novelId")
+  suspend fun deleteBookmarksForNovel(novelId: String)
 
   @Query("DELETE FROM chapter_bookmarks WHERE novelId = :novelId AND quoteText = :quoteText")
   suspend fun deleteBookmarkByQuote(novelId: String, quoteText: String)
