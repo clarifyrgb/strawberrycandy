@@ -244,36 +244,38 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
       novels
     } else {
       val tokens = query.split(Regex("""\s+""")).filter { it.isNotBlank() }
-      novels.filter { novel ->
-        val genreTag = if (novel.novel.genre.isNotBlank() && novel.novel.genre != "Curated Novel") {
-          novel.novel.genre
-        } else {
-          when (novel.id) {
-            "nov_crimson" -> "Fantasy Romance"
-            "nov_celestial" -> "Astral Sci-Fi"
-            "nov_whispering_pines" -> "Nordic Mystery"
-            "nov_moonlight" -> "Historical Romance"
-            "nov_schema" -> "Design Monograph"
-            else -> "Romance"
+      if (tokens.isEmpty()) {
+        emptyList()
+      } else {
+        novels.filter { novel ->
+          val genreTag = if (novel.novel.genre.isNotBlank() && novel.novel.genre != "Curated Novel") {
+            novel.novel.genre
+          } else {
+            when (novel.id) {
+              "nov_crimson" -> "Fantasy Romance"
+              "nov_celestial" -> "Astral Sci-Fi"
+              "nov_whispering_pines" -> "Nordic Mystery"
+              "nov_moonlight" -> "Historical Romance"
+              "nov_schema" -> "Design Monograph"
+              else -> "Romance"
+            }
           }
-        }
-        val textToSearch = listOf(
-          novel.title,
-          novel.subtitle,
-          novel.author,
-          novel.originalAuthor,
-          novel.excerpt,
-          novel.chapterTitle,
-          novel.contentText,
-          genreTag
-        ).joinToString(" ").lowercase()
+          val textToSearch = listOf(
+            novel.title,
+            novel.subtitle,
+            novel.author,
+            novel.originalAuthor,
+            novel.chapterTitle,
+            genreTag
+          ).joinToString(" ").lowercase()
 
-        textToSearch.contains(query) || (tokens.isNotEmpty() && tokens.all { textToSearch.contains(it) })
-      }.sortedWith(
-        compareByDescending<NovelWithState> { it.title.lowercase().contains(query) }
-          .thenByDescending { it.author.lowercase().contains(query) }
-          .thenByDescending { it.createdAt }
-      )
+          textToSearch.contains(query) || tokens.all { textToSearch.contains(it) }
+        }.sortedWith(
+          compareByDescending<NovelWithState> { it.title.lowercase().contains(query) }
+            .thenByDescending { it.author.lowercase().contains(query) }
+            .thenByDescending { it.createdAt }
+        )
+      }
     }
 
     val filteredNovels = if (query.isNotEmpty()) {
@@ -359,6 +361,14 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
 
   fun clearNovelSearchQuery() {
     _novelSearchQuery.value = ""
+  }
+
+  fun removeFromLibrary(novelId: String) {
+    val userId = activeUser.value?.userId ?: "guest_reader"
+    viewModelScope.launch {
+      repository.removeNovelFromLibrary(userId, novelId)
+      _snackbarMessage.value = "Removed novel from library"
+    }
   }
 
   fun setFilter(filter: ShelfFilter) {

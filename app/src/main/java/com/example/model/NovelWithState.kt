@@ -181,7 +181,7 @@ data class NovelWithState(
   val inReadingList: Boolean get() = userState?.inReadingList ?: false
   val isFinished: Boolean get() = userState?.isFinished == true || (totalPages > 0 && currentPage >= totalPages)
   val inTbrList: Boolean get() = userState?.inTbrList == true
-  val isReading: Boolean get() = !isFinished && (currentPage > 1 || (inReadingList && !inTbrList))
+  val isReading: Boolean get() = !isFinished && (currentPage > 1 || inReadingList || lastReadTimestamp > 0)
   val isToBeRead: Boolean get() = !isFinished && (inTbrList || (inReadingList && currentPage <= 1))
   val pointsAwarded: Boolean get() = userState?.pointsAwarded == true
   val progressFraction: Float get() = if (totalPages > 0) (currentPage.toFloat() / totalPages.toFloat()).coerceIn(0f, 1f) else 0f
@@ -213,8 +213,11 @@ data class NovelWithState(
   }
 
   val isNewRelease: Boolean get() {
+    if (userState != null && (userState.currentPage > 1 || userState.isFinished || userState.lastReadTimestamp > 0)) {
+      return false
+    }
     val diff = System.currentTimeMillis() - novel.createdAt
-    return diff in 0..(7L * 24 * 3600 * 1000L) // Active new release for 7 days
+    return diff in 0..(1L * 24 * 3600 * 1000L) // Active new release for 1 day
   }
 
   val readButtonLabel: String get() {

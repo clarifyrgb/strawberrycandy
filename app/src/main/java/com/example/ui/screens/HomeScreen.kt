@@ -367,7 +367,7 @@ fun HomeScreen(
             }
           }
           "library" -> {
-            val libraryNovels = remember(allNovelsList) { allNovelsList.filter { it.isFavorite } }
+            val libraryNovels = remember(allNovelsList) { allNovelsList.filter { it.isFavorite || it.isReading || it.isFinished || it.inReadingList || it.lastReadTimestamp > 0 } }
             Column(
               modifier = Modifier
                 .fillMaxWidth()
@@ -380,7 +380,7 @@ fun HomeScreen(
                 verticalAlignment = Alignment.CenterVertically
               ) {
                 Text(
-                  text = "FAVORITED LIBRARY (${libraryNovels.size})",
+                  text = "MY LIBRARY & FAVORITES (${libraryNovels.size})",
                   style = MaterialTheme.typography.labelSmall.copy(
                     fontSize = 9.5.sp,
                     fontWeight = FontWeight.Bold,
@@ -496,6 +496,17 @@ fun HomeScreen(
                             )
                           }
                         }
+                      }
+                      IconButton(
+                        onClick = { viewModel.removeFromLibrary(favNovel.id) },
+                        modifier = Modifier.size(36.dp).testTag("remove_library_novel_${favNovel.id}")
+                      ) {
+                        Icon(
+                          imageVector = Icons.Default.Delete,
+                          contentDescription = "Remove from library",
+                          tint = CharcoalSecondary.copy(alpha = 0.7f),
+                          modifier = Modifier.size(18.dp)
+                        )
                       }
                     }
                   }
@@ -681,6 +692,18 @@ fun HomeScreen(
                       )
                     }
                   }
+
+                  Spacer(modifier = Modifier.height(8.dp))
+                  Text(
+                    text = "About: " + when {
+                      isSoleOwner -> "Sole Owner & Curator of the Strawberrycandy Literary Archive."
+                      activeUser.role.equals("TRANSLATOR", ignoreCase = true) -> "Contributing Translator and Author Room Contributor."
+                      else -> "Literary Archive Reader and Chapter Contributor."
+                    },
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic),
+                    color = CharcoalSecondary,
+                    textAlign = TextAlign.Center
+                  )
 
                   Spacer(modifier = Modifier.height(16.dp))
 

@@ -137,6 +137,9 @@ interface StrawberrycandyDao {
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun insertOrUpdateReadingState(state: UserReadingStateEntity)
 
+  @Query("DELETE FROM user_reading_state WHERE userId = :userId AND novelId = :novelId")
+  suspend fun deleteReadingState(userId: String, novelId: String)
+
   // 4-Author Rooms & Access Slots
   @Query("SELECT * FROM author_slots ORDER BY slotNumber ASC")
   fun getAllAuthorSlots(): Flow<List<AuthorSlotEntity>>

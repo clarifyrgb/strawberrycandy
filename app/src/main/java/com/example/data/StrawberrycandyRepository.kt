@@ -842,9 +842,7 @@ class StrawberrycandyRepository(
       ?: existingProfile?.passwordHash?.takeIf { it.isNotBlank() }
       ?: remotePasswordHash
 
-    val hasExistingAccount = (existingProfile != null && !existingProfile.passwordHash.isNullOrBlank()) ||
-      (!remotePasswordHash.isNullOrBlank()) ||
-      (!rememberedPass.isNullOrBlank() && rememberedPass != "clarify123")
+    val hasExistingAccount = !rememberedPass.isNullOrBlank()
 
     if (isSignUp && hasExistingAccount) {
       return Result.failure(
@@ -852,28 +850,9 @@ class StrawberrycandyRepository(
       )
     }
 
-    val isFirstLoginForEmail = (existingProfile == null || existingProfile.passwordHash.isNullOrBlank()) &&
-      remotePasswordHash.isNullOrBlank() &&
-      (rememberedPass.isNullOrBlank() || rememberedPass == "clarify123")
-
-    if (!isFirstLoginForEmail && !rememberedPass.isNullOrBlank() && rememberedPass != "clarify123") {
-      // STRICT VERIFICATION: Password must strictly match the first registered password!
-      if (cleanPass != rememberedPass) {
-        return Result.failure(
-          IllegalArgumentException(
-            "Incorrect password for $cleanEmail. Please enter the password you registered with strictly, or use 'Forgot Password?' to reset it."
-          )
-        )
-      }
-    } else {
-      // First login! Try Firebase Auth register or sign-in
-      val fbResult = firebaseAuthManager.signInOrRegister(cleanEmail, cleanPass)
-      if (fbResult is com.example.data.auth.FirebaseAuthResult.Error && fbResult.isWrongPassword && !isOwner) {
-        return Result.failure(IllegalArgumentException(fbResult.message))
-      }
-      // Strictly remember password in memory and device store on first login
+    if (!hasExistingAccount) {
+      // First time using this email! Register this password as the account password.
       com.example.data.auth.AuthMemoryStore.rememberCredential(cleanEmail, cleanPass)
-      // Also backup to Firebase users collection
       try {
         val firestore = FirebaseFirestore.getInstance()
         firestore.collection("users").document(cleanEmail).set(
@@ -886,6 +865,15 @@ class StrawberrycandyRepository(
           SetOptions.merge()
         )
       } catch (_: Exception) {}
+    } else {
+      // Account exists! Strictly verify that cleanPass matches rememberedPass.
+      if (cleanPass != rememberedPass) {
+        return Result.failure(
+          IllegalArgumentException(
+            "Incorrect password for $cleanEmail. Please enter the password you registered with strictly, or use 'Forgot Password?' to reset it."
+          )
+        )
+      }
     }
 
     // Always ensure memory store has this credential saved
@@ -1213,6 +1201,15 @@ class StrawberrycandyRepository(
       dao.insertOrUpdateReadingState(newState)
       syncReadingStateToFirestore(newState)
     }
+  }
+
+  suspend fun removeNovelFromLibrary(userId: String, novelId: String) {
+    dao.deleteReadingState(userId, novelId)
+    try {
+      val firestore = FirebaseFirestore.getInstance()
+      firestore.collection("users").document(userId).collection("reading_states").document("${userId}_${novelId}").delete().await()
+    } catch (_: Exception) {}
+    dao.syncRealFavoritesForNovel(novelId)
   }
 
   suspend fun markNovelAsFinished(userId: String, novelId: String): Boolean {
@@ -1580,7 +1577,7 @@ class StrawberrycandyRepository(
       // Sync memory store with existing profiles if present
       for (ownerEmail in OWNER_EMAILS) {
         val ownerProfile = dao.getReaderProfileByEmail(ownerEmail)
-        val pass = ownerProfile?.passwordHash?.takeIf { it.isNotBlank() && it != "clarify123" }
+        val pass = ownerProfile?.passwordHash?.takeIf { it.isNotBlank() }
         if (pass != null) {
           com.example.data.auth.AuthMemoryStore.rememberCredential(ownerEmail, pass)
         }

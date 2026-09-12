@@ -230,7 +230,7 @@ fun AuthModal(
     val savedPass = rememberedAccounts.firstOrNull { it.email.lowercase() == cleanEmail }?.passwordHash?.takeIf { it.isNotBlank() }
       ?: AuthMemoryStore.getPassword(cleanEmail)
 
-    val hasKnownAccount = matchedAccount != null || savedPass != null || StrawberrycandyRepository.isOwnerEmail(trimmedEmail)
+    val hasKnownAccount = matchedAccount != null || savedPass != null
 
     if (!isSignUpMode && !hasKnownAccount) {
       localError = "Account not found for $cleanEmail. Please click 'Sign Up' tab first to create your account."
@@ -241,12 +241,12 @@ fun AuthModal(
       return
     }
 
-    if (isSignUpMode && savedPass != null && savedPass.isNotBlank() && savedPass != "clarify123") {
+    if (isSignUpMode && savedPass != null && savedPass.isNotBlank()) {
       localError = "An account already exists for $cleanEmail. Please switch to 'Sign In' to enter your password, or use 'Forgot Password?' to reset it."
       return
     }
 
-    if (!isSignUpMode && savedPass != null && savedPass.isNotBlank() && savedPass != "clarify123" && passwordInput.trim() != savedPass) {
+    if (!isSignUpMode && savedPass != null && savedPass.isNotBlank() && passwordInput.trim() != savedPass) {
       localError = "Incorrect password for $cleanEmail. Please enter the password you registered strictly, or use 'Forgot Password?' to retrieve it."
       return
     }
