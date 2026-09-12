@@ -53,6 +53,8 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MenuBook
@@ -185,6 +187,10 @@ fun HomeScreen(
   var isSortMenuOpen by remember { mutableStateOf(false) }
   var isManageTranslationsDialogOpen by remember { mutableStateOf(false) }
   var currentBottomTab by remember { mutableStateOf("home") }
+  var novelToAddChapterToId by remember { mutableStateOf<String?>(null) }
+  var newChapterTitleInput by remember { mutableStateOf("") }
+  var newChapterContentInput by remember { mutableStateOf("") }
+  var isReflectionsExpanded by remember { mutableStateOf(false) }
   val myComments by viewModel.myCommentsHistory.collectAsState(initial = emptyList())
 
   val safeIndex = if (novels.isNotEmpty()) selectedIndex.coerceIn(0, novels.size - 1) else 0
@@ -218,6 +224,13 @@ fun HomeScreen(
   val isTranslatorOrOwner = viewModel.canEditNovel(activeUser, uiState.authorSlots)
   val canUploadNovel = viewModel.canUploadNovel(activeUser, uiState.authorSlots)
   val hasTranslatorAccess = isSoleOwner || canUploadNovel || (activeUser != null && (activeUser.role.equals("TRANSLATOR", ignoreCase = true) || viewModel.canUploadNovel(activeUser, uiState.authorSlots)))
+  val avatarPickerLauncher = rememberLauncherForActivityResult(
+    contract = ActivityResultContracts.PickVisualMedia()
+  ) { uri ->
+    if (uri != null) {
+      viewModel.updateReaderAvatar(uri.toString())
+    }
+  }
 
   Scaffold(
     modifier = modifier
@@ -290,6 +303,15 @@ fun HomeScreen(
               )
             }
             WattpadNavButton(
+              icon = Icons.Outlined.History,
+              label = "Updates",
+              isSelected = currentBottomTab == "updates",
+              onClick = {
+                currentBottomTab = "updates"
+                viewModel.clearNovelSearchQuery()
+              }
+            )
+            WattpadNavButton(
               icon = Icons.Default.Notifications,
               label = "Me",
               isSelected = currentBottomTab == "me",
@@ -351,6 +373,56 @@ fun HomeScreen(
       } else {
         // Logged-in mode tab routing
         when (currentBottomTab) {
+          "updates" -> {
+            val updatedNovels = remember(allNovelsList) { allNovelsList.filter { it.isUpdated || it.lastUpdatedTimestamp > 0 } }
+            Column(
+              modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 8.dp),
+              verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+              Text(
+                text = "RECENT CHAPTER UPDATES (${updatedNovels.size})",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 9.5.sp,
+                  fontWeight = FontWeight.Bold,
+                  letterSpacing = 1.2.sp,
+                  color = AntiqueGold
+                )
+              )
+              if (updatedNovels.isEmpty()) {
+                Card(
+                  shape = RoundedCornerShape(16.dp),
+                  colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
+                  border = BorderStroke(1.dp, SubtleBorder),
+                  modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
+                ) {
+                  Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                  ) {
+                    Text(
+                      text = "No Recent Updates",
+                      style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Serif),
+                      color = CharcoalText
+                    )
+                  }
+                }
+              } else {
+                updatedNovels.forEach { upNovel ->
+                  SearchResultNovelCard(
+                    novel = upNovel,
+                    query = "",
+                    onSelect = {
+                      viewModel.markNovelAsViewed(upNovel.id)
+                      onSelectNovel(upNovel)
+                    },
+                    onToggleFavorite = { viewModel.toggleFavorite(upNovel.id) }
+                  )
+                }
+              }
+            }
+          }
           "search" -> {
             Column(
               modifier = Modifier
@@ -667,20 +739,71 @@ fun HomeScreen(
 
                   Spacer(modifier = Modifier.height(16.dp))
 
-                  Box(
-                    modifier = Modifier
-                      .size(64.dp)
-                      .clip(CircleShape)
-                      .background(Color(0xFF1E1D1B)),
-                    contentAlignment = Alignment.Center
-                  ) {
-                    Text(
-                      text = activeUser.avatarInitial,
-                      color = Color.White,
-                      style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-                      fontSize = 24.sp
-                    )
-                  }
+
+
+                   Box(
+                     modifier = Modifier
+                       .size(72.dp)
+                       .clip(CircleShape)
+                       .background(Color(0xFF1E1D1B))
+                       .clickable {
+                         avatarPickerLauncher.launch(
+                           PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                         )
+                       },
+                     contentAlignment = Alignment.Center
+                   ) {
+                     if (!activeUser.avatarUri.isNullOrBlank()) {
+                       AsyncImage(
+                         model = activeUser.avatarUri,
+                         contentDescription = "Profile Picture",
+                         contentScale = ContentScale.Crop,
+                         modifier = Modifier.fillMaxSize()
+                       )
+                     } else {
+                       Text(
+                         text = activeUser.avatarInitial,
+                         color = Color.White,
+                         style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                         fontSize = 24.sp
+                       )
+                     }
+                     Box(
+                       modifier = Modifier
+                         .fillMaxSize()
+                         .background(Color.Black.copy(alpha = 0.35f)),
+                       contentAlignment = Alignment.Center
+                     ) {
+                       Icon(
+                         imageVector = Icons.Outlined.AddPhotoAlternate,
+                         contentDescription = "Change Profile Picture",
+                         tint = Color.White,
+                         modifier = Modifier.size(24.dp)
+                       )
+                     }
+                   }
+
+                   Spacer(modifier = Modifier.height(2.dp))
+                   TextButton(
+                     onClick = {
+                       avatarPickerLauncher.launch(
+                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                       )
+                     },
+                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                   ) {
+                     Icon(
+                       imageVector = Icons.Outlined.AddPhotoAlternate,
+                       contentDescription = null,
+                       tint = AntiqueGold,
+                       modifier = Modifier.size(13.dp)
+                     )
+                     Spacer(modifier = Modifier.width(4.dp))
+                     Text(
+                       text = "Change Profile Picture",
+                       style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = AntiqueGold)
+                     )
+                   }
 
                   Spacer(modifier = Modifier.height(10.dp))
 
@@ -778,48 +901,138 @@ fun HomeScreen(
                     shape = RoundedCornerShape(12.dp),
                     border = BorderStroke(1.dp, AntiqueGold),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = AntiqueGold),
-                    modifier = Modifier.fillMaxWidth().testTag("me_about_button")
+                    modifier = Modifier.widthIn(max = 240.dp).height(34.dp).testTag("me_about_button"),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
                   ) {
                     Icon(
                       imageVector = Icons.Outlined.Info,
                       contentDescription = "About App & Updates",
-                      modifier = Modifier.size(16.dp)
+                      modifier = Modifier.size(14.dp)
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
                       text = "About App, Updates & Policy",
-                      style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, color = CharcoalText)
+                      style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = CharcoalText)
                     )
                   }
 
                   Spacer(modifier = Modifier.height(16.dp))
 
-                  val isTranslatorOrOwnerUser = isSoleOwner || canUploadNovel || activeUser.role.equals("TRANSLATOR", ignoreCase = true)
-                  if (isTranslatorOrOwnerUser) {
-                    Button(
-                      onClick = {
-                        selectedUploadSlot = if (isSoleOwner) 0 else (activeUser.authorSlot ?: 1)
-                        viewModel.openUploadDialog()
-                      },
-                      colors = ButtonDefaults.buttonColors(containerColor = AntiqueGold),
-                      modifier = Modifier.fillMaxWidth()
-                    ) {
-                      Icon(imageVector = Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                      Spacer(modifier = Modifier.width(6.dp))
-                      Text("Manage Translations (Edit / Delete)", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+
+                  val myUploadedNovels = remember(allNovelsList, activeUser) {
+                    allNovelsList.filter { novel ->
+                      viewModel.canEditSpecificNovel(novel, activeUser)
                     }
                   }
 
-                  if (isSoleOwner) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(
-                      onClick = { isAuthorRoomsModalOpen = true },
-                      colors = ButtonDefaults.buttonColors(containerColor = CharcoalText),
-                      modifier = Modifier.fillMaxWidth()
+                  Text(
+                    text = "MY UPLOADED MANUSCRIPTS (${myUploadedNovels.size})",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      letterSpacing = 1.2.sp,
+                      fontWeight = FontWeight.Bold,
+                      color = AntiqueGold
+                    )
+                  )
+
+                  Spacer(modifier = Modifier.height(8.dp))
+
+                  if (myUploadedNovels.isEmpty()) {
+                    Text(
+                      text = "You haven't uploaded any manuscripts yet. Use the Write tab to publish your novels.",
+                      style = MaterialTheme.typography.bodySmall,
+                      color = CharcoalSecondary,
+                      textAlign = TextAlign.Center
+                    )
+                  } else {
+                    Column(
+                      modifier = Modifier.fillMaxWidth(),
+                      verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                      Icon(imageVector = Icons.Default.Star, contentDescription = null, modifier = Modifier.size(16.dp))
-                      Spacer(modifier = Modifier.width(6.dp))
-                      Text("Grant & Manage Translator Permissions", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+                      myUploadedNovels.forEach { novel ->
+                        Card(
+                          shape = RoundedCornerShape(12.dp),
+                          colors = CardDefaults.cardColors(containerColor = Color.White),
+                          border = BorderStroke(1.dp, SubtleBorder),
+                          modifier = Modifier.fillMaxWidth()
+                        ) {
+                          Column(modifier = Modifier.padding(12.dp)) {
+                            Row(
+                              modifier = Modifier.fillMaxWidth(),
+                              horizontalArrangement = Arrangement.SpaceBetween,
+                              verticalAlignment = Alignment.CenterVertically
+                            ) {
+                              Text(
+                                text = novel.title,
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                  fontFamily = FontFamily.Serif,
+                                  fontWeight = FontWeight.Bold
+                                ),
+                                color = CharcoalText,
+                                modifier = Modifier.weight(1f).clickable {
+                                  viewModel.markNovelAsViewed(novel.id)
+                                  onSelectNovel(novel)
+                                }
+                              )
+                              if (novel.isUpdated) {
+                                Surface(
+                                  shape = RoundedCornerShape(4.dp),
+                                  color = Color(0xFFC62828).copy(alpha = 0.15f)
+                                ) {
+                                  Text(
+                                    text = "UPDATED",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color(0xFFC62828)),
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                  )
+                                }
+                              }
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                              text = "Chapters: ${novel.paragraphs.count { it.contains("[chapter:") || it.startsWith("#") }.coerceAtLeast(1)} • Pages: ${novel.totalPages}",
+                              style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                              color = CharcoalSecondary
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                              modifier = Modifier.fillMaxWidth(),
+                              horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                              OutlinedButton(
+                                onClick = {
+                                  selectedUploadSlot = novel.authorSlot
+                                  novelToAddChapterToId = novel.id
+                                },
+                                modifier = Modifier.weight(1f).height(32.dp),
+                                contentPadding = PaddingValues(0.dp)
+                              ) {
+                                Icon(
+                                  imageVector = Icons.Default.Add,
+                                  contentDescription = null,
+                                  modifier = Modifier.size(14.dp),
+                                  tint = AntiqueGold
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Add Chapter", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp))
+                              }
+                              OutlinedButton(
+                                onClick = {
+                                  viewModel.deleteNovel(novel.id)
+                                },
+                                modifier = Modifier.height(32.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFC62828)),
+                                border = BorderStroke(1.dp, Color(0xFFE57373)),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                              ) {
+                                Icon(
+                                  imageVector = Icons.Default.Delete,
+                                  contentDescription = "Delete",
+                                  modifier = Modifier.size(14.dp)
+                                )
+                              }
+                            }
+                          }
+                        }
+                      }
                     }
                   }
 
@@ -1447,6 +1660,51 @@ fun HomeScreen(
           selectedTranslatorForDetail = null
           novelToEdit = novel
         } else null
+      )
+    }
+
+    if (novelToAddChapterToId != null) {
+      AlertDialog(
+        onDismissRequest = { novelToAddChapterToId = null },
+        title = { Text("Publish New Chapter", fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold) },
+        text = {
+          Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(
+              value = newChapterTitleInput,
+              onValueChange = { newChapterTitleInput = it },
+              label = { Text("Chapter Title (e.g. Chapter II)") },
+              singleLine = true,
+              modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+              value = newChapterContentInput,
+              onValueChange = { newChapterContentInput = it },
+              label = { Text("Chapter Content / Text") },
+              modifier = Modifier.fillMaxWidth().height(150.dp)
+            )
+          }
+        },
+        confirmButton = {
+          Button(
+            onClick = {
+              val nId = novelToAddChapterToId!!
+              val title = newChapterTitleInput.ifBlank { "New Chapter" }
+              val content = newChapterContentInput.ifBlank { "Chapter text..." }
+              viewModel.addChapterToNovel(nId, title, content)
+              novelToAddChapterToId = null
+              newChapterTitleInput = ""
+              newChapterContentInput = ""
+            },
+            colors = ButtonDefaults.buttonColors(containerColor = AntiqueGold)
+          ) {
+            Text("Publish Chapter")
+          }
+        },
+        dismissButton = {
+          OutlinedButton(onClick = { novelToAddChapterToId = null }) {
+            Text("Cancel")
+          }
+        }
       )
     }
 
@@ -2663,6 +2921,23 @@ private fun SearchResultNovelCard(
                   fontWeight = FontWeight.Bold
                 ),
                 color = AntiqueGold,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+              )
+            }
+          }
+          if (novel.isUpdated) {
+            Spacer(modifier = Modifier.width(4.dp))
+            Surface(
+              shape = RoundedCornerShape(4.dp),
+              color = Color(0xFFC62828).copy(alpha = 0.15f)
+            ) {
+              Text(
+                text = "UPDATED",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 7.5.sp,
+                  fontWeight = FontWeight.Bold
+                ),
+                color = Color(0xFFC62828),
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
               )
             }

@@ -29,6 +29,15 @@ data class NovelWithState(
   val totalPages: Int get() = novel.totalPages
   val excerpt: String get() = novel.excerpt
   val genre: String get() = novel.genre
+  val lastUpdatedTimestamp: Long get() = novel.lastUpdatedTimestamp
+  val lastViewedTimestamp: Long get() = novel.lastViewedTimestamp
+  val isUpdated: Boolean get() {
+    val now = System.currentTimeMillis()
+    val sevenDaysMillis = 7L * 24 * 60 * 60 * 1000L
+    return novel.lastUpdatedTimestamp > 0 &&
+           (now - novel.lastUpdatedTimestamp < sevenDaysMillis) &&
+           (novel.lastViewedTimestamp < novel.lastUpdatedTimestamp)
+  }
   val synopsis: String get() = novel.subtitle
   val paragraphs: List<String> get() = novel.contentText.split("\n\n").filter {
     it.isNotBlank() && !it.contains("Monastic Stone Arcades") && !it.contains("Deep Limestone Splay")

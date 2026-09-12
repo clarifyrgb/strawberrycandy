@@ -124,6 +124,9 @@ interface StrawberrycandyDao {
   @Query("UPDATE reader_profiles SET displayName = :newDisplayName WHERE userId = :userId")
   suspend fun updateReaderDisplayName(userId: String, newDisplayName: String): Int
 
+  @Query("UPDATE reader_profiles SET avatarUri = :avatarUri WHERE userId = :userId")
+  suspend fun updateReaderAvatarUri(userId: String, avatarUri: String): Int
+
   @Query("UPDATE author_slots SET penName = :penName WHERE slotNumber = :slotNumber")
   suspend fun updateSlotPenName(slotNumber: Int, penName: String)
 

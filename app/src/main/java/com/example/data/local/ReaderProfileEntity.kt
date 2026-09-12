@@ -10,6 +10,7 @@ data class ReaderProfileEntity(
   val email: String,
   val provider: String, // "GOOGLE" or "APPLE"
   val avatarInitial: String = displayName.take(1).uppercase(),
+  val avatarUri: String? = null,
   val role: String = "TRANSLATOR", // "OWNER", "TRANSLATOR", or "READER"
   val authorSlot: Int? = null, // Optional slot number (0 for owner, 1..10 for translator)
   val lastLoginTimestamp: Long = System.currentTimeMillis(),

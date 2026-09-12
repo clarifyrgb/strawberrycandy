@@ -476,16 +476,13 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     // 1. Archive owner has universal edit access across all novels
     if (isOwner(user)) return true
 
-    // 2. Permitted translators can edit novels in their author slot or imported/authored novels
+    // 2. Permitted translators can ONLY edit novels in their exact author slot
     if (isPermittedTranslator(user, slots)) {
       val userSlot = user.authorSlot ?: slots.find {
         it.isPermissionGranted && StrawberrycandyRepository.isUserMatchedToSlot(user.email, user.displayName, it)
       }?.slotNumber
 
-      if (userSlot != null && userSlot > 0 && (novel.authorSlot == userSlot || novel.author.equals(user.displayName, ignoreCase = true))) {
-        return true
-      }
-      if (novel.authorSlot == 0 || novel.author.equals(user.displayName, ignoreCase = true)) {
+      if (userSlot != null && userSlot > 0 && novel.authorSlot == userSlot) {
         return true
       }
     }
@@ -675,6 +672,12 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     }
   }
 
+  fun markNovelAsViewed(novelId: String) {
+    viewModelScope.launch {
+      repository.markNovelAsViewed(novelId)
+    }
+  }
+
   fun toggleFavorite(novelId: String) {
     val userId = activeUser.value?.userId ?: "guest_reader"
     viewModelScope.launch {
@@ -779,6 +782,22 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
         _snackbarMessage.value = "Reader name updated to '$cleanName' ✨"
       } else {
         _snackbarMessage.value = "Please enter a valid display name."
+      }
+    }
+  }
+
+  fun updateReaderAvatar(uri: String) {
+    val user = activeUser.value
+    if (user == null) {
+      _snackbarMessage.value = "Please sign in to update profile picture."
+      return
+    }
+    viewModelScope.launch {
+      val success = repository.updateReaderAvatarUri(user.userId, uri)
+      if (success) {
+        _snackbarMessage.value = "Profile picture updated successfully ✨"
+      } else {
+        _snackbarMessage.value = "Failed to update profile picture."
       }
     }
   }

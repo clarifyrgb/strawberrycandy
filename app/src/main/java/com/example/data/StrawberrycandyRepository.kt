@@ -194,7 +194,9 @@ class StrawberrycandyRepository(
         storyImagesJson = doc.getString("storyImagesJson") ?: "[]",
         novelStatus = doc.getString("novelStatus") ?: "ONGOING",
         releaseFormat = doc.getString("releaseFormat") ?: "MANUSCRIPT",
-        genre = doc.getString("genre") ?: "Romance"
+        genre = doc.getString("genre") ?: "Romance",
+        lastUpdatedTimestamp = doc.getLong("lastUpdatedTimestamp") ?: 0L,
+        lastViewedTimestamp = doc.getLong("lastViewedTimestamp") ?: 0L
       )
     } catch (e: Exception) {
       Log.w("StrawberrycandyRepository", "Failed to parse novel from Firestore: ${e.message}")
@@ -237,7 +239,9 @@ class StrawberrycandyRepository(
       "isOwnerUploaded" to novel.isOwnerUploaded,
       "uploaderEmail" to uploaderEmail,
       "uploaderId" to cleanUserId,
-      "genre" to novel.genre
+      "genre" to novel.genre,
+      "lastUpdatedTimestamp" to novel.lastUpdatedTimestamp,
+      "lastViewedTimestamp" to novel.lastViewedTimestamp
     )
   }
 
@@ -624,8 +628,24 @@ class StrawberrycandyRepository(
     return syncService?.exportNovelsToJsonString(allNovels) ?: "[]"
   }
 
+  suspend fun markNovelAsViewed(novelId: String) {
+    val existing = dao.getNovelById(novelId) ?: return
+    val now = System.currentTimeMillis()
+    if (existing.lastViewedTimestamp < existing.lastUpdatedTimestamp) {
+      val updated = existing.copy(lastViewedTimestamp = now)
+      dao.insertNovel(updated)
+      externalScope.launch {
+        try {
+          val firestore = FirebaseFirestore.getInstance()
+          firestore.collection("novel").document(updated.id).update("lastViewedTimestamp", now).await()
+        } catch (_: Exception) {}
+      }
+    }
+  }
+
   suspend fun recordNovelRead(novelId: String) {
     dao.incrementReadsCount(novelId)
+    markNovelAsViewed(novelId)
   }
 
   suspend fun updateAuthorSlot(slotNumber: Int, authorName: String, penName: String, bio: String) {
@@ -682,9 +702,11 @@ class StrawberrycandyRepository(
     val formattedChapter = "$separator[chapter: $cleanTitle]\n\n$cleanContent"
     val newFullContent = existing.contentText + formattedChapter
     val newTotalPages = maxOf(existing.totalPages + 1, newFullContent.split("\n\n").count { it.isNotBlank() } * 2)
+    val now = System.currentTimeMillis()
     val updated = existing.copy(
       contentText = newFullContent,
-      totalPages = newTotalPages
+      totalPages = newTotalPages,
+      lastUpdatedTimestamp = now
     )
     dao.insertNovel(updated)
     externalScope.launch {
@@ -1425,6 +1447,15 @@ class StrawberrycandyRepository(
       if (slotNum != null && slotNum >= 0) {
         dao.updateSlotPenName(slotNum, cleanName)
       }
+      dao.getReaderProfile(userId)?.let { syncUserProfileToFirestore(it) }
+      return true
+    }
+    return false
+  }
+
+  suspend fun updateReaderAvatarUri(userId: String, avatarUri: String): Boolean {
+    val updatedCount = dao.updateReaderAvatarUri(userId, avatarUri)
+    if (updatedCount > 0) {
       dao.getReaderProfile(userId)?.let { syncUserProfileToFirestore(it) }
       return true
     }

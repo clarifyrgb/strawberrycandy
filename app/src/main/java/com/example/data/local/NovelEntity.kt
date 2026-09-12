@@ -29,4 +29,6 @@ data class NovelEntity(
   val releaseFormat: String = "CHAPTER", // "CHAPTER" or "VOLUME"
   val isR19: Boolean = false, // 19+ age restriction toggle
   val genre: String = "Romance", // Genre tag for categorization and filtering
+  val lastUpdatedTimestamp: Long = 0L,
+  val lastViewedTimestamp: Long = 0L,
 )

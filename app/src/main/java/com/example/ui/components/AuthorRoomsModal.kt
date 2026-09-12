@@ -356,56 +356,6 @@ fun AuthorRoomsModal(
           Spacer(modifier = Modifier.height(14.dp))
         }
 
-        // Dedicated Primary Upload Novel Action Button in Writer's Room (Only shown if Owner or permitted Translator)
-        val isUserUploadPermitted = isOwnerUser || (isTranslatorUser && currentUser?.let { user ->
-          authorSlots.any {
-            it.isPermissionGranted && (
-              it.slotNumber == user.authorSlot ||
-              (user.email.isNotBlank() && it.translatorEmail?.equals(user.email, ignoreCase = true) == true)
-            )
-          }
-        } == true)
-        if (isUserUploadPermitted) {
-          Surface(
-            shape = RoundedCornerShape(14.dp),
-            color = AntiqueGold,
-            shadowElevation = 2.dp,
-            modifier = Modifier
-              .fillMaxWidth()
-              .clickable {
-                val targetSlot = if (isOwnerUser) 0 else (currentUser?.authorSlot ?: 1)
-                onDismiss()
-                onOpenUploadForSlot(targetSlot)
-              }
-              .testTag("author_rooms_primary_upload_button")
-          ) {
-            Row(
-              modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-              verticalAlignment = Alignment.CenterVertically,
-              horizontalArrangement = Arrangement.Center
-            ) {
-              Icon(
-                imageVector = Icons.Outlined.Upload,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(18.dp)
-              )
-              Spacer(modifier = Modifier.width(8.dp))
-              Text(
-                text = "Upload Novel Manuscript",
-                style = MaterialTheme.typography.labelLarge.copy(
-                  fontWeight = FontWeight.Bold,
-                  fontSize = 13.5.sp
-                ),
-                color = Color.White
-              )
-            }
-          }
-          Spacer(modifier = Modifier.height(14.dp))
-        }
-
         // OWNER DIRECT GRANT PANEL: Unmissable at the top of Writer's Rooms
         if (isOwnerUser && onGrantPermissionByEmail != null) {
           Surface(
@@ -598,6 +548,7 @@ fun AuthorRoomsModal(
           isReaderUser = isReaderUser,
           isMyOwnRoom = isOwnerUser,
           currentUserPoints = currentUser?.penNamePoints ?: 0,
+          currentUser = currentUser,
           isEditing = editingSlotNumber == 0,
           editPenName = editPenName,
           editBio = editBio,
@@ -726,6 +677,7 @@ fun AuthorRoomsModal(
             isReaderUser = isReaderUser,
             isMyOwnRoom = isMyOwnSlot,
             currentUserPoints = currentUser?.penNamePoints ?: 0,
+            currentUser = currentUser,
             isEditing = isEditingThis,
             editPenName = editPenName,
             editBio = editBio,
@@ -1031,6 +983,7 @@ private fun TranslatorCardItem(
   isReaderUser: Boolean = false,
   isMyOwnRoom: Boolean = false,
   currentUserPoints: Int = 0,
+  currentUser: ReaderProfileEntity? = null,
   isEditing: Boolean,
   editPenName: String,
   editBio: String,
@@ -1226,7 +1179,8 @@ private fun TranslatorCardItem(
             color = if (rawPenName.isNotBlank() || isOwner) CharcoalText else CharcoalSecondary
           )
 
-          if (isOwnerUser && !isOwner) {
+          val canViewEmail = isOwnerUser || (currentUser?.email != null && slot.translatorEmail?.equals(currentUser.email, ignoreCase = true) == true)
+          if (canViewEmail && !isOwner) {
             Row(
               verticalAlignment = Alignment.CenterVertically,
               modifier = Modifier.padding(top = 2.dp)
@@ -1238,14 +1192,26 @@ private fun TranslatorCardItem(
                 modifier = Modifier.size(12.dp)
               )
               Spacer(modifier = Modifier.width(3.dp))
-              Text(
-                text = if (slot.translatorEmail.isNullOrBlank()) "Gmail: Not assigned" else "Gmail: ${slot.translatorEmail}",
-                style = MaterialTheme.typography.labelSmall.copy(
-                  fontSize = 10.5.sp,
-                  fontWeight = FontWeight.Bold,
-                  color = if (slot.translatorEmail.isNullOrBlank()) Color(0xFFC62828) else CharcoalText
+              val showEmail = isOwnerUser || (currentUser?.email != null && slot.translatorEmail?.equals(currentUser.email, ignoreCase = true) == true)
+              if (showEmail) {
+                Text(
+                  text = if (slot.translatorEmail.isNullOrBlank()) "Gmail: Not assigned" else "Gmail: ${slot.translatorEmail}",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (slot.translatorEmail.isNullOrBlank()) Color(0xFFC62828) else CharcoalText
+                  )
                 )
-              )
+              } else if (!slot.translatorEmail.isNullOrBlank()) {
+                Text(
+                  text = "Status: Assigned Translator",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = AntiqueGold
+                  )
+                )
+              }
               if (slot.translatorEmail.isNullOrBlank() && !isEditing) {
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
@@ -1550,80 +1516,6 @@ private fun TranslatorCardItem(
           }
         }
 
-        // Upload Novel button if owner wants to upload directly into this slot
-        if (slot.isPermissionGranted) {
-          Spacer(modifier = Modifier.height(6.dp))
-          Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End
-          ) {
-            OutlinedButton(
-              onClick = onOpenUpload,
-              shape = RoundedCornerShape(8.dp),
-              border = BorderStroke(1.dp, SubtleBorder),
-              contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-              modifier = Modifier.height(30.dp)
-            ) {
-              Icon(
-                imageVector = Icons.Outlined.Upload,
-                contentDescription = null,
-                tint = AntiqueGold,
-                modifier = Modifier.size(13.dp)
-              )
-              Spacer(modifier = Modifier.width(4.dp))
-              Text("Upload Novel to Room #${slot.slotNumber}", fontSize = 10.sp, color = CharcoalText)
-            }
-          }
-        }
-      } else if (canManage && !isOwner && isTranslatorUser && slot.isPermissionGranted) {
-        // Permitted translator can upload manuscript
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(
-          modifier = Modifier.fillMaxWidth(),
-          horizontalArrangement = Arrangement.End
-        ) {
-          OutlinedButton(
-            onClick = onOpenUpload,
-            shape = RoundedCornerShape(8.dp),
-            border = BorderStroke(1.dp, SubtleBorder),
-            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-            modifier = Modifier.height(28.dp)
-          ) {
-            Icon(
-              imageVector = Icons.Outlined.Upload,
-              contentDescription = null,
-              tint = AntiqueGold,
-              modifier = Modifier.size(11.dp)
-            )
-            Spacer(modifier = Modifier.width(3.dp))
-            Text("Upload Novel", fontSize = 10.sp, color = CharcoalText)
-          }
-        }
-      } else if (canManage && isOwner && (isOwnerUser || isTranslatorUser)) {
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(
-          modifier = Modifier.fillMaxWidth(),
-          horizontalArrangement = Arrangement.End
-        ) {
-          OutlinedButton(
-            onClick = onOpenUpload,
-            shape = RoundedCornerShape(8.dp),
-            border = BorderStroke(1.dp, SubtleBorder),
-            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-            modifier = Modifier.height(28.dp)
-          ) {
-            Icon(
-              imageVector = Icons.Outlined.Upload,
-              contentDescription = null,
-              tint = AntiqueGold,
-              modifier = Modifier.size(11.dp)
-            )
-            Spacer(modifier = Modifier.width(3.dp))
-            Text("Upload Novel", fontSize = 10.sp, color = CharcoalText)
-          }
-        }
-      }
-
       // Managed Room Novels Section
       Spacer(modifier = Modifier.height(10.dp))
       HorizontalDivider(color = SubtleBorder, thickness = 0.5.dp)
@@ -1785,4 +1677,5 @@ private fun TranslatorCardItem(
       }
     }
   }
+}
 }
