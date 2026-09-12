@@ -1044,8 +1044,6 @@ fun AuthModal(
                 onRequestPasswordResetCode(cleanEmail) { result ->
                   isSendingCode = false
                   result.onSuccess {
-                    recoveryCodeInput = ""
-                    recoveryStep = 2
                     recoveryError = null
                     recoveryMessage = "Password reset email sent to $cleanEmail! Please check your Gmail inbox and Spam folder for the reset link."
                   }.onFailure { err ->
@@ -1343,7 +1341,6 @@ fun AuthModal(
                 onRequestPasswordResetCode(cleanEmail) { result ->
                   isSendingCode = false
                   result.onSuccess {
-                    recoveryCodeInput = ""
                     recoveryMessage = "✓ Password reset email resent to $cleanEmail! Please check your Gmail inbox and Spam folder."
                     recoveryError = null
                   }.onFailure { err ->
