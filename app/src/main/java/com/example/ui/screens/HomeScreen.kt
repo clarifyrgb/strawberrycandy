@@ -35,7 +35,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Scaffold
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -216,19 +219,95 @@ fun HomeScreen(
   val canUploadNovel = viewModel.canUploadNovel(activeUser, uiState.authorSlots)
   val hasTranslatorAccess = isSoleOwner || canUploadNovel || (activeUser != null && (activeUser.role.equals("TRANSLATOR", ignoreCase = true) || viewModel.canUploadNovel(activeUser, uiState.authorSlots)))
 
-  Box(
+  Scaffold(
     modifier = modifier
       .fillMaxSize()
-      .background(CreamBackground)
       .statusBarsPadding()
-      .testTag("home_screen_container")
-  ) {
+      .testTag("home_screen_container"),
+    containerColor = CreamBackground,
+    bottomBar = {
+      if (activeUser != null) {
+        Surface(
+          modifier = Modifier
+            .fillMaxWidth()
+            .testTag("pinned_bottom_nav_bar"),
+          color = Color(0xFFFAF8F5),
+          tonalElevation = 16.dp,
+          shadowElevation = 32.dp,
+          border = BorderStroke(1.dp, SubtleBorder)
+        ) {
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .navigationBarsPadding()
+              .padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceAround,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            WattpadNavButton(
+              icon = Icons.Default.Home,
+              label = "Home",
+              isSelected = currentBottomTab == "home",
+              onClick = {
+                currentBottomTab = "home"
+                viewModel.clearNovelSearchQuery()
+              }
+            )
+            WattpadNavButton(
+              icon = Icons.Default.Search,
+              label = "Search",
+              isSelected = currentBottomTab == "search",
+              onClick = {
+                currentBottomTab = "search"
+              }
+            )
+            WattpadNavButton(
+              icon = Icons.Default.MenuBook,
+              label = "Library",
+              isSelected = currentBottomTab == "library",
+              onClick = {
+                currentBottomTab = "library"
+                viewModel.clearNovelSearchQuery()
+              }
+            )
+            if (hasTranslatorAccess) {
+              WattpadNavButton(
+                icon = Icons.Default.Add,
+                label = "Write",
+                isSelected = currentBottomTab == "write",
+                onClick = {
+                  currentBottomTab = "write"
+                  if (isSoleOwner || canUploadNovel) {
+                    selectedUploadSlot = if (isSoleOwner) 0 else (activeUser?.authorSlot ?: 1)
+                    viewModel.openUploadDialog()
+                  } else if (activeUser == null) {
+                    viewModel.openAuthDialog()
+                    viewModel.showSnackbar("Please sign in as Translator or Archive Owner to publish manuscripts")
+                  } else {
+                    viewModel.showSnackbar("Publishing manuscripts is reserved for the Archive Owner and Translators")
+                  }
+                }
+              )
+            }
+            WattpadNavButton(
+              icon = Icons.Default.Notifications,
+              label = "Me",
+              isSelected = currentBottomTab == "me",
+              onClick = {
+                currentBottomTab = "me"
+                viewModel.clearNovelSearchQuery()
+              }
+            )
+          }
+        }
+      }
+    }
+  ) { innerPadding ->
     Column(
       modifier = Modifier
         .fillMaxSize()
         .verticalScroll(rememberScrollState())
-        .navigationBarsPadding()
-        .padding(bottom = 90.dp),
+        .padding(innerPadding),
       horizontalAlignment = Alignment.CenterHorizontally
     ) {
       // 1. Top Utility Header: Reader Sign-in, Author Rooms & Upload actions
@@ -693,17 +772,25 @@ fun HomeScreen(
                     }
                   }
 
-                  Spacer(modifier = Modifier.height(8.dp))
-                  Text(
-                    text = "About: " + when {
-                      isSoleOwner -> "Sole Owner & Curator of the Strawberrycandy Literary Archive."
-                      activeUser.role.equals("TRANSLATOR", ignoreCase = true) -> "Contributing Translator and Author Room Contributor."
-                      else -> "Literary Archive Reader and Chapter Contributor."
-                    },
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic),
-                    color = CharcoalSecondary,
-                    textAlign = TextAlign.Center
-                  )
+                  Spacer(modifier = Modifier.height(10.dp))
+                  OutlinedButton(
+                    onClick = { isAboutModalOpen = true },
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, AntiqueGold),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = AntiqueGold),
+                    modifier = Modifier.fillMaxWidth().testTag("me_about_button")
+                  ) {
+                    Icon(
+                      imageVector = Icons.Outlined.Info,
+                      contentDescription = "About App & Updates",
+                      modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                      text = "About App, Updates & Policy",
+                      style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, color = CharcoalText)
+                    )
+                  }
 
                   Spacer(modifier = Modifier.height(16.dp))
 
@@ -818,6 +905,47 @@ fun HomeScreen(
                 .padding(horizontal = 24.dp, vertical = 8.dp),
               verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
+              val freshReleases = remember(allNovelsList) {
+                allNovelsList.sortedByDescending { it.createdAt }
+              }
+              val topViewed = remember(allNovelsList) {
+                allNovelsList.sortedByDescending { it.readsCount }.take(10)
+              }
+
+              if (freshReleases.isNotEmpty()) {
+                Text(
+                  text = "FRESH RELEASES",
+                  style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp, color = AntiqueGold)
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                LazyRow(
+                  horizontalArrangement = Arrangement.spacedBy(12.dp),
+                  modifier = Modifier.fillMaxWidth()
+                ) {
+                  items(freshReleases, key = { "fresh_${it.id}" }) { novel ->
+                    HorizontalNovelCard(novel = novel, onSelect = { onSelectNovel(novel) }, onToggleFavorite = { viewModel.toggleFavorite(novel.id) })
+                  }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+              }
+
+              if (topViewed.isNotEmpty()) {
+                Text(
+                  text = "TOP 10 MOST VIEWED",
+                  style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp, color = AntiqueGold)
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                LazyRow(
+                  horizontalArrangement = Arrangement.spacedBy(12.dp),
+                  modifier = Modifier.fillMaxWidth()
+                ) {
+                  items(topViewed, key = { "top_${it.id}" }) { novel ->
+                    HorizontalNovelCard(novel = novel, onSelect = { onSelectNovel(novel) }, onToggleFavorite = { viewModel.toggleFavorite(novel.id) })
+                  }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+              }
+
               val categories = listOf("All", "Romance", "Fantasy", "Mystery", "Sci-Fi", "Historical", "Monograph", "Drama", "Poetry")
               var selectedCategory by remember { mutableStateOf("All") }
 
@@ -1004,6 +1132,7 @@ fun HomeScreen(
             }
           }
         }
+        Spacer(modifier = Modifier.height(200.dp))
       }
     }
 
@@ -1512,88 +1641,6 @@ fun HomeScreen(
           }
         }
       )
-    }
-
-    // Wattpad-style Pinned Bottom Navigation Bar (only appears when activeUser != null) - refreshed
-    if (activeUser != null) {
-      Box(
-        modifier = Modifier
-          .fillMaxSize()
-          .navigationBarsPadding(),
-        contentAlignment = Alignment.BottomCenter
-      ) {
-        Surface(
-          modifier = Modifier
-            .fillMaxWidth()
-            .testTag("pinned_bottom_nav_bar"),
-          color = Color(0xFFFAF8F5),
-          tonalElevation = 8.dp,
-          shadowElevation = 16.dp
-        ) {
-          Row(
-            modifier = Modifier
-              .fillMaxWidth()
-              .padding(horizontal = 12.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceAround,
-            verticalAlignment = Alignment.CenterVertically
-          ) {
-            WattpadNavButton(
-              icon = Icons.Default.Home,
-              label = "Home",
-              isSelected = currentBottomTab == "home",
-              onClick = {
-                currentBottomTab = "home"
-                viewModel.clearNovelSearchQuery()
-              }
-            )
-            WattpadNavButton(
-              icon = Icons.Default.Search,
-              label = "Search",
-              isSelected = currentBottomTab == "search",
-              onClick = {
-                currentBottomTab = "search"
-              }
-            )
-            WattpadNavButton(
-              icon = Icons.Default.MenuBook,
-              label = "Library",
-              isSelected = currentBottomTab == "library",
-              onClick = {
-                currentBottomTab = "library"
-                viewModel.clearNovelSearchQuery()
-              }
-            )
-            if (hasTranslatorAccess) {
-              WattpadNavButton(
-                icon = Icons.Default.Add,
-                label = "Write",
-                isSelected = currentBottomTab == "write",
-                onClick = {
-                  currentBottomTab = "write"
-                  if (isSoleOwner || canUploadNovel) {
-                    selectedUploadSlot = if (isSoleOwner) 0 else (activeUser?.authorSlot ?: 1)
-                    viewModel.openUploadDialog()
-                  } else if (activeUser == null) {
-                    viewModel.openAuthDialog()
-                    viewModel.showSnackbar("Please sign in as Translator or Archive Owner to publish manuscripts")
-                  } else {
-                    viewModel.showSnackbar("Publishing manuscripts is reserved for the Archive Owner and Translators")
-                  }
-                }
-              )
-            }
-            WattpadNavButton(
-              icon = Icons.Default.Notifications,
-              label = "Me",
-              isSelected = currentBottomTab == "me",
-              onClick = {
-                currentBottomTab = "me"
-                viewModel.clearNovelSearchQuery()
-              }
-            )
-          }
-        }
-      }
     }
   }
 }
@@ -4157,5 +4204,91 @@ private fun GenreFilterRow(
     }
   }
 }
+
+@Composable
+fun HorizontalNovelCard(
+  novel: com.example.model.NovelWithState,
+  onSelect: () -> Unit,
+  onToggleFavorite: () -> Unit
+) {
+  Card(
+    shape = RoundedCornerShape(12.dp),
+    colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
+    border = BorderStroke(1.dp, SubtleBorder),
+    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+    modifier = Modifier
+      .width(130.dp)
+      .clickable { onSelect() }
+      .testTag("horizontal_novel_${novel.id}")
+  ) {
+    Column(
+      modifier = Modifier.padding(8.dp),
+      horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+      Box(
+        modifier = Modifier
+          .fillMaxWidth()
+          .height(150.dp)
+          .clip(RoundedCornerShape(8.dp))
+          .background(Color(novel.coverColorHex))
+      ) {
+        if (!novel.coverImageUri.isNullOrBlank() && novel.coverImageUri != "null") {
+          AsyncImage(
+            model = java.io.File(novel.coverImageUri!!).takeIf { it.exists() } ?: novel.coverImageUri,
+            contentDescription = novel.title,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+          )
+        } else {
+          Box(
+            modifier = Modifier.fillMaxSize().padding(6.dp),
+            contentAlignment = Alignment.Center
+          ) {
+            Text(
+              text = novel.title.take(10),
+              style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = Color.White),
+              textAlign = TextAlign.Center
+            )
+          }
+        }
+        if (novel.isNewRelease) {
+          Surface(
+            shape = RoundedCornerShape(4.dp),
+            color = AntiqueGold,
+            modifier = Modifier.align(Alignment.TopEnd).padding(4.dp)
+          ) {
+            Text(
+              text = "NEW",
+              style = MaterialTheme.typography.labelSmall.copy(fontSize = 7.sp, fontWeight = FontWeight.Bold, color = Color.White),
+              modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+            )
+          }
+        }
+      }
+      Spacer(modifier = Modifier.height(6.dp))
+      Text(
+        text = novel.title,
+        style = MaterialTheme.typography.titleSmall.copy(
+          fontFamily = FontFamily.Serif,
+          fontWeight = FontWeight.Bold,
+          fontSize = 12.sp
+        ),
+        color = CharcoalText,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        textAlign = TextAlign.Center
+      )
+      Spacer(modifier = Modifier.height(2.dp))
+      Text(
+        text = novel.genre.ifBlank { "General" },
+        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+        color = CharcoalSecondary,
+        textAlign = TextAlign.Center,
+        maxLines = 1
+      )
+    }
+  }
+}
+
 
 

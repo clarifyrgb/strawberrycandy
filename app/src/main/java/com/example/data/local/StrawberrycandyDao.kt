@@ -140,6 +140,9 @@ interface StrawberrycandyDao {
   @Query("DELETE FROM user_reading_state WHERE userId = :userId AND novelId = :novelId")
   suspend fun deleteReadingState(userId: String, novelId: String)
 
+  @Query("DELETE FROM user_reading_state WHERE novelId = :novelId")
+  suspend fun deleteAllReadingStatesForNovel(novelId: String)
+
   // 4-Author Rooms & Access Slots
   @Query("SELECT * FROM author_slots ORDER BY slotNumber ASC")
   fun getAllAuthorSlots(): Flow<List<AuthorSlotEntity>>

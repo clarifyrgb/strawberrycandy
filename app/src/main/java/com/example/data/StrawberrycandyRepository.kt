@@ -1205,6 +1205,7 @@ class StrawberrycandyRepository(
 
   suspend fun removeNovelFromLibrary(userId: String, novelId: String) {
     dao.deleteReadingState(userId, novelId)
+    dao.deleteAllReadingStatesForNovel(novelId)
     try {
       val firestore = FirebaseFirestore.getInstance()
       firestore.collection("users").document(userId).collection("reading_states").document("${userId}_${novelId}").delete().await()
