@@ -1034,7 +1034,7 @@ class StrawberrycandyRepository(
   private data class RateLimitRecord(val timestamps: MutableList<Long> = mutableListOf())
   private val recoveryRateLimitMap = java.util.concurrent.ConcurrentHashMap<String, RateLimitRecord>()
 
-  suspend fun sendPasswordRecoveryCode(email: String): Result<String> {
+  suspend fun sendPasswordRecoveryCode(email: String): Result<Unit> {
     val cleanEmail = email.trim().lowercase()
     if (cleanEmail.isBlank() || !cleanEmail.contains("@")) {
       return Result.failure(IllegalArgumentException("Please enter a valid Gmail address."))
@@ -1056,11 +1056,11 @@ class StrawberrycandyRepository(
     val fbResult = firebaseAuthManager.sendPasswordResetEmail(cleanEmail)
     if (fbResult.isFailure && !isOwner) {
       val err = fbResult.exceptionOrNull()
-      return Result.failure(IllegalArgumentException(err?.message ?: "Failed to send password reset email to $cleanEmail."))
+      return Result.failure(IllegalArgumentException(err?.message ?: "Failed to send password reset email to $cleanEmail. Ensure this email is registered."))
     }
 
     Log.i("StrawberrycandyAuth", "Official Firebase password reset email successfully dispatched to Gmail for $cleanEmail")
-    return Result.success("OK")
+    return Result.success(Unit)
   }
 
   suspend fun resetPasswordWithCode(email: String, code: String, newPassword: String): Result<Unit> {

@@ -102,7 +102,7 @@ fun AuthModal(
   onSignInWithGoogle: (email: String, password: String, name: String, role: String, authorSlot: Int?, isSignUp: Boolean) -> Unit,
   onSignInWithApple: (email: String, password: String, name: String, role: String, authorSlot: Int?, isSignUp: Boolean) -> Unit,
   rememberedAccounts: List<ReaderProfileEntity> = emptyList(),
-  onRequestPasswordResetCode: (email: String, onResult: (Result<String>) -> Unit) -> Unit = { _, _ -> },
+  onRequestPasswordResetCode: (email: String, onResult: (Result<Unit>) -> Unit) -> Unit = { _, _ -> },
   onResetPasswordWithCode: (email: String, code: String, newPassword: String, onResult: (Result<Unit>) -> Unit) -> Unit = { _, _, _, _ -> },
   initialEmail: String = "",
   externalErrorMessage: String? = null,
@@ -1047,9 +1047,9 @@ fun AuthModal(
                     recoveryCodeInput = ""
                     recoveryStep = 2
                     recoveryError = null
-                    recoveryMessage = "Verification passcode sent! Please check your Gmail inbox (and Spam folder) for the 6-digit code."
+                    recoveryMessage = "Password reset email sent to $cleanEmail! Please check your Gmail inbox and Spam folder for the reset link."
                   }.onFailure { err ->
-                    recoveryError = err.message ?: "Could not process password recovery"
+                    recoveryError = err.message ?: "Could not send password reset email"
                   }
                 }
               },
@@ -1344,7 +1344,7 @@ fun AuthModal(
                   isSendingCode = false
                   result.onSuccess {
                     recoveryCodeInput = ""
-                    recoveryMessage = "✓ An official password reset email has been resent to $cleanEmail! Please check your Gmail inbox and Spam folder."
+                    recoveryMessage = "✓ Password reset email resent to $cleanEmail! Please check your Gmail inbox and Spam folder."
                     recoveryError = null
                   }.onFailure { err ->
                     recoveryError = err.message ?: "Failed to resend password reset email to Gmail."

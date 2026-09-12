@@ -614,7 +614,7 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     }
   }
 
-  fun requestPasswordResetCode(email: String, onResult: (Result<String>) -> Unit) {
+  fun requestPasswordResetCode(email: String, onResult: (Result<Unit>) -> Unit) {
     viewModelScope.launch {
       val result = repository.sendPasswordRecoveryCode(email)
       onResult(result)
