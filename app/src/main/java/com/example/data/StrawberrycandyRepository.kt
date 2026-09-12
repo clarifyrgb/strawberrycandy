@@ -857,8 +857,36 @@ class StrawberrycandyRepository(
       )
     }
 
-    if (!hasExistingAccount) {
-      // First time using this email! Register this password as the account password.
+    if (hasExistingAccount) {
+      if (cleanPass == rememberedPass) {
+        val fbAuthRes = firebaseAuthManager.signInOrRegister(cleanEmail, cleanPass)
+        if (fbAuthRes is com.example.data.auth.FirebaseAuthResult.Error) {
+          // If firebase auth failed due to wrong password on remote, but local matched, let's try signing in or registering to sync
+        }
+      } else {
+        // Password does not match remembered password. Verify if Firebase Auth accepts this new password (reset via Gmail link).
+        val fbAuthRes = firebaseAuthManager.signInOrRegister(cleanEmail, cleanPass)
+        if (fbAuthRes is com.example.data.auth.FirebaseAuthResult.Success) {
+          // Firebase accepted the new password (reset via link)! Update remembered pass and Firestore.
+          com.example.data.auth.AuthMemoryStore.rememberCredential(cleanEmail, cleanPass)
+          try {
+            val firestore = FirebaseFirestore.getInstance()
+            firestore.collection("users").document(cleanEmail).set(
+              mapOf("email" to cleanEmail, "passwordHash" to cleanPass),
+              SetOptions.merge()
+            )
+          } catch (_: Exception) {}
+        } else {
+          return Result.failure(
+            IllegalArgumentException("Incorrect password for $cleanEmail. Please enter the correct password or use 'Forgot Password?' to reset it.")
+          )
+        }
+      }
+    } else {
+      val fbAuthRes = firebaseAuthManager.signInOrRegister(cleanEmail, cleanPass)
+      if (fbAuthRes is com.example.data.auth.FirebaseAuthResult.Error) {
+        return Result.failure(IllegalArgumentException(fbAuthRes.message))
+      }
       com.example.data.auth.AuthMemoryStore.rememberCredential(cleanEmail, cleanPass)
       try {
         val firestore = FirebaseFirestore.getInstance()
@@ -872,15 +900,6 @@ class StrawberrycandyRepository(
           SetOptions.merge()
         )
       } catch (_: Exception) {}
-    } else {
-      // Account exists! Strictly verify that cleanPass matches rememberedPass.
-      if (cleanPass != rememberedPass) {
-        return Result.failure(
-          IllegalArgumentException(
-            "Incorrect password for $cleanEmail. Please enter the password you registered with strictly, or use 'Forgot Password?' to reset it."
-          )
-        )
-      }
     }
 
     // Always ensure memory store has this credential saved

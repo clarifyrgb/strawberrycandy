@@ -232,22 +232,13 @@ fun AuthModal(
 
     val hasKnownAccount = matchedAccount != null || savedPass != null
 
-    if (!isSignUpMode && !hasKnownAccount) {
-      localError = "Account not found for $cleanEmail. Please click 'Sign Up' tab first to create your account."
-      return
-    }
-    if (passwordInput.trim().length < 4) {
-      localError = "Password must be at least 4 characters."
-      return
-    }
-
-    if (isSignUpMode && savedPass != null && savedPass.isNotBlank()) {
+    if (isSignUpMode && hasKnownAccount) {
       localError = "An account already exists for $cleanEmail. Please switch to 'Sign In' to enter your password, or use 'Forgot Password?' to reset it."
       return
     }
 
-    if (!isSignUpMode && savedPass != null && savedPass.isNotBlank() && passwordInput.trim() != savedPass) {
-      localError = "Incorrect password for $cleanEmail. Please enter the password you registered strictly, or use 'Forgot Password?' to retrieve it."
+    if (passwordInput.trim().length < 4) {
+      localError = "Password must be at least 4 characters."
       return
     }
 
