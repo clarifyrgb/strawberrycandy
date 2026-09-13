@@ -13,4 +13,6 @@ data class BookmarkHighlightEntity(
   val timestamp: Long = System.currentTimeMillis(),
   val colorHex: Long = 0xFFD4AF37,
   val note: String = "",
+  val startIndex: Int = 0,
+  val endIndex: Int = 0,
 )

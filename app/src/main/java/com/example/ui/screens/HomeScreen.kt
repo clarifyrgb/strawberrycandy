@@ -190,7 +190,6 @@ fun HomeScreen(
   var novelToAddChapterToId by remember { mutableStateOf<String?>(null) }
   var newChapterTitleInput by remember { mutableStateOf("") }
   var newChapterContentInput by remember { mutableStateOf("") }
-  var isReflectionsExpanded by remember { mutableStateOf(false) }
   val myComments by viewModel.myCommentsHistory.collectAsState(initial = emptyList())
 
   val safeIndex = if (novels.isNotEmpty()) selectedIndex.coerceIn(0, novels.size - 1) else 0
@@ -373,8 +372,245 @@ fun HomeScreen(
       } else {
         // Logged-in mode tab routing
         when (currentBottomTab) {
+          "home" -> {
+            Column(
+              modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 8.dp),
+              verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+              val freshReleases = remember(allNovelsList) {
+                allNovelsList.sortedByDescending { it.createdAt }
+              }
+              val topViewed = remember(allNovelsList) {
+                allNovelsList.sortedByDescending { it.readsCount }.take(10)
+              }
+
+              if (freshReleases.isNotEmpty()) {
+                Text(
+                  text = "FRESH RELEASES",
+                  style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp, color = AntiqueGold)
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                LazyRow(
+                  horizontalArrangement = Arrangement.spacedBy(12.dp),
+                  modifier = Modifier.fillMaxWidth()
+                ) {
+                  items(freshReleases, key = { "fresh_${it.id}" }) { novel ->
+                    HorizontalNovelCard(novel = novel, onSelect = { onSelectNovel(novel) }, onToggleFavorite = { viewModel.toggleFavorite(novel.id) })
+                  }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+              }
+
+              if (topViewed.isNotEmpty()) {
+                Text(
+                  text = "TOP 10 MOST VIEWED",
+                  style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp, color = AntiqueGold)
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                LazyRow(
+                  horizontalArrangement = Arrangement.spacedBy(12.dp),
+                  modifier = Modifier.fillMaxWidth()
+                ) {
+                  items(topViewed, key = { "top_${it.id}" }) { novel ->
+                    HorizontalNovelCard(novel = novel, onSelect = { onSelectNovel(novel) }, onToggleFavorite = { viewModel.toggleFavorite(novel.id) })
+                  }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+              }
+
+              val categories = listOf("All", "Romance", "Fantasy", "Mystery", "Sci-Fi", "Historical", "Monograph", "Drama", "Poetry")
+              var selectedCategory by remember { mutableStateOf("All") }
+
+              Row(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+              ) {
+                categories.forEach { cat ->
+                  val isSelected = selectedCategory == cat
+                  Surface(
+                    onClick = { selectedCategory = cat },
+                    shape = RoundedCornerShape(14.dp),
+                    color = if (isSelected) AntiqueGold else SoftCreamPaper,
+                    border = BorderStroke(1.dp, if (isSelected) AntiqueGold else SubtleBorder),
+                    modifier = Modifier.testTag("category_chip_${cat.lowercase()}")
+                  ) {
+                    Text(
+                      text = cat,
+                      style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        fontSize = 11.sp
+                      ),
+                      color = if (isSelected) Color.White else CharcoalText,
+                      modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                  }
+                }
+              }
+
+              val displayedNovels = remember(allNovelsList, selectedCategory) {
+                if (selectedCategory == "All") allNovelsList
+                else allNovelsList.filter { it.genre.equals(selectedCategory, ignoreCase = true) || it.title.contains(selectedCategory, ignoreCase = true) }
+              }
+
+              if (displayedNovels.isEmpty()) {
+                Card(
+                  shape = RoundedCornerShape(16.dp),
+                  colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
+                  border = BorderStroke(1.dp, SubtleBorder),
+                  modifier = Modifier.fillMaxWidth()
+                ) {
+                  Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                  ) {
+                    Text(
+                      text = "No Novels in Category '$selectedCategory'",
+                      style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Serif),
+                      color = CharcoalText
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                      text = "Try selecting 'All' to view all manuscripts posted by translators and the owner.",
+                      style = MaterialTheme.typography.bodySmall,
+                      color = CharcoalSecondary,
+                      textAlign = TextAlign.Center
+                    )
+                  }
+                }
+              } else {
+                val rows = displayedNovels.chunked(2)
+                rows.forEach { rowNovels ->
+                  Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                  ) {
+                    rowNovels.forEach { novel ->
+                      Box(modifier = Modifier.weight(1f)) {
+                        Card(
+                          shape = RoundedCornerShape(16.dp),
+                          colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
+                          border = BorderStroke(1.dp, SubtleBorder),
+                          elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                          modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelectNovel(novel) }
+                            .testTag("home_grid_novel_${novel.id}")
+                        ) {
+                          Column(
+                            modifier = Modifier
+                              .fillMaxWidth()
+                              .padding(10.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                          ) {
+                            Box(
+                              modifier = Modifier
+                                .fillMaxWidth()
+                                .height(185.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(novel.coverColorHex))
+                            ) {
+                              if (!novel.coverImageUri.isNullOrBlank() && novel.coverImageUri != "null") {
+                                AsyncImage(
+                                  model = File(novel.coverImageUri!!).takeIf { it.exists() } ?: novel.coverImageUri,
+                                  contentDescription = novel.title,
+                                  contentScale = ContentScale.Fit,
+                                  modifier = Modifier.fillMaxSize()
+                                )
+                              } else {
+                                Box(
+                                  modifier = Modifier.fillMaxSize().padding(8.dp),
+                                  contentAlignment = Alignment.Center
+                                ) {
+                                  Text(
+                                    text = novel.title.take(12),
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, color = Color.White),
+                                    textAlign = TextAlign.Center
+                                  )
+                                }
+                              }
+
+                              if (novel.isNewRelease) {
+                                Surface(
+                                  shape = RoundedCornerShape(6.dp),
+                                  color = AntiqueGold,
+                                  modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(6.dp)
+                                ) {
+                                  Text(
+                                    text = "NEW",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color.White),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                  )
+                                }
+                              }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Text(
+                              text = novel.title,
+                              style = MaterialTheme.typography.titleSmall.copy(
+                                fontFamily = FontFamily.Serif,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp
+                              ),
+                              color = CharcoalText,
+                              maxLines = 2,
+                              overflow = TextOverflow.Ellipsis,
+                              textAlign = TextAlign.Center
+                            )
+
+                            Spacer(modifier = Modifier.height(2.dp))
+
+                            Text(
+                              text = novel.genre.ifBlank { "General" },
+                              style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                              color = CharcoalSecondary,
+                              textAlign = TextAlign.Center
+                            )
+                          }
+                        }
+
+                        // Favorite Button sibling placed on top of Card
+                        Surface(
+                          onClick = { viewModel.toggleFavorite(novel.id) },
+                          shape = CircleShape,
+                          color = Color.Black.copy(alpha = 0.5f),
+                          modifier = Modifier
+                            .padding(14.dp)
+                            .size(34.dp)
+                            .align(Alignment.TopStart)
+                            .testTag("card_favorite_button_${novel.id}")
+                        ) {
+                          Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Icon(
+                              imageVector = if (novel.isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                              contentDescription = "Favorite",
+                              tint = if (novel.isFavorite) Color(0xFFEF5350) else Color.White,
+                              modifier = Modifier.size(17.dp)
+                            )
+                          }
+                        }
+                      }
+                    }
+                    if (rowNovels.size == 1) {
+                      Spacer(modifier = Modifier.weight(1f))
+                    }
+                  }
+                }
+              }
+            }
+          }
           "updates" -> {
-            val updatedNovels = remember(allNovelsList) { allNovelsList.filter { it.isUpdated || it.lastUpdatedTimestamp > 0 } }
+            val sevenDaysAgo = System.currentTimeMillis() - 7L * 24 * 60 * 60 * 1000
+             val updatedNovels = remember(allNovelsList) {
+               allNovelsList.filter { it.isUpdated || (it.lastUpdatedTimestamp > 0 && it.lastUpdatedTimestamp >= sevenDaysAgo) }
+             }
             Column(
               modifier = Modifier
                 .fillMaxWidth()
@@ -1037,318 +1273,10 @@ fun HomeScreen(
                   }
 
                   Spacer(modifier = Modifier.height(16.dp))
-
-                  Text(
-                    text = "MY REFLECTIONS & COMMENTS HISTORY (${myCommentsHistory.size})",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                      letterSpacing = 1.2.sp,
-                      fontWeight = FontWeight.Bold,
-                      color = AntiqueGold
-                    )
-                  )
-
-                  Spacer(modifier = Modifier.height(8.dp))
-
-                  if (myCommentsHistory.isEmpty()) {
-                    Text(
-                      text = "No reflections or comments recorded yet. Leave notes while reading chapters to see them here.",
-                      style = MaterialTheme.typography.bodySmall,
-                      color = CharcoalSecondary,
-                      textAlign = TextAlign.Center
-                    )
-                  } else {
-                    Column(
-                      modifier = Modifier.fillMaxWidth(),
-                      verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                      myCommentsHistory.forEach { comment ->
-                        val novelTitle = allNovelsList.find { it.id == comment.novelId }?.title ?: "Archival Novel"
-                        Card(
-                          shape = RoundedCornerShape(12.dp),
-                          colors = CardDefaults.cardColors(containerColor = Color.White),
-                          border = BorderStroke(1.dp, SubtleBorder),
-                          modifier = Modifier.fillMaxWidth()
-                        ) {
-                          Column(
-                            modifier = Modifier.padding(10.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                          ) {
-                            Row(
-                              modifier = Modifier.fillMaxWidth(),
-                              horizontalArrangement = Arrangement.SpaceBetween,
-                              verticalAlignment = Alignment.CenterVertically
-                            ) {
-                              Text(
-                                text = novelTitle,
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = AntiqueGold),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f)
-                              )
-                              IconButton(
-                                onClick = { viewModel.deleteComment(comment.id) },
-                                modifier = Modifier.size(24.dp)
-                              ) {
-                                Icon(
-                                  imageVector = Icons.Default.Delete,
-                                  contentDescription = "Delete comment",
-                                  tint = Color(0xFFC62828),
-                                  modifier = Modifier.size(14.dp)
-                                )
-                              }
-                            }
-                            Text(
-                              text = comment.commentText,
-                              style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                              color = CharcoalText
-                            )
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
             }
           }
-          else -> {
-            Column(
-              modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 8.dp),
-              verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-              val freshReleases = remember(allNovelsList) {
-                allNovelsList.sortedByDescending { it.createdAt }
-              }
-              val topViewed = remember(allNovelsList) {
-                allNovelsList.sortedByDescending { it.readsCount }.take(10)
-              }
 
-              if (freshReleases.isNotEmpty()) {
-                Text(
-                  text = "FRESH RELEASES",
-                  style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp, color = AntiqueGold)
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                LazyRow(
-                  horizontalArrangement = Arrangement.spacedBy(12.dp),
-                  modifier = Modifier.fillMaxWidth()
-                ) {
-                  items(freshReleases, key = { "fresh_${it.id}" }) { novel ->
-                    HorizontalNovelCard(novel = novel, onSelect = { onSelectNovel(novel) }, onToggleFavorite = { viewModel.toggleFavorite(novel.id) })
-                  }
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-              }
-
-              if (topViewed.isNotEmpty()) {
-                Text(
-                  text = "TOP 10 MOST VIEWED",
-                  style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp, color = AntiqueGold)
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                LazyRow(
-                  horizontalArrangement = Arrangement.spacedBy(12.dp),
-                  modifier = Modifier.fillMaxWidth()
-                ) {
-                  items(topViewed, key = { "top_${it.id}" }) { novel ->
-                    HorizontalNovelCard(novel = novel, onSelect = { onSelectNovel(novel) }, onToggleFavorite = { viewModel.toggleFavorite(novel.id) })
-                  }
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-              }
-
-              val categories = listOf("All", "Romance", "Fantasy", "Mystery", "Sci-Fi", "Historical", "Monograph", "Drama", "Poetry")
-              var selectedCategory by remember { mutableStateOf("All") }
-
-              Row(
-                modifier = Modifier
-                  .fillMaxWidth()
-                  .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-              ) {
-                categories.forEach { cat ->
-                  val isSelected = selectedCategory == cat
-                  Surface(
-                    onClick = { selectedCategory = cat },
-                    shape = RoundedCornerShape(14.dp),
-                    color = if (isSelected) AntiqueGold else SoftCreamPaper,
-                    border = BorderStroke(1.dp, if (isSelected) AntiqueGold else SubtleBorder),
-                    modifier = Modifier.testTag("category_chip_${cat.lowercase()}")
-                  ) {
-                    Text(
-                      text = cat,
-                      style = MaterialTheme.typography.labelSmall.copy(
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                        fontSize = 11.sp
-                      ),
-                      color = if (isSelected) Color.White else CharcoalText,
-                      modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                    )
-                  }
-                }
-              }
-
-              val displayedNovels = remember(allNovelsList, selectedCategory) {
-                if (selectedCategory == "All") allNovelsList
-                else allNovelsList.filter { it.genre.equals(selectedCategory, ignoreCase = true) || it.title.contains(selectedCategory, ignoreCase = true) }
-              }
-
-              if (displayedNovels.isEmpty()) {
-                Card(
-                  shape = RoundedCornerShape(16.dp),
-                  colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
-                  border = BorderStroke(1.dp, SubtleBorder),
-                  modifier = Modifier.fillMaxWidth()
-                ) {
-                  Column(
-                    modifier = Modifier.padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                  ) {
-                    Text(
-                      text = "No Novels in Category '$selectedCategory'",
-                      style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Serif),
-                      color = CharcoalText
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                      text = "Try selecting 'All' to view all manuscripts posted by translators and the owner.",
-                      style = MaterialTheme.typography.bodySmall,
-                      color = CharcoalSecondary,
-                      textAlign = TextAlign.Center
-                    )
-                  }
-                }
-              } else {
-                val rows = displayedNovels.chunked(2)
-                rows.forEach { rowNovels ->
-                  Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                  ) {
-                    rowNovels.forEach { novel ->
-                      Box(modifier = Modifier.weight(1f)) {
-                        Card(
-                          shape = RoundedCornerShape(16.dp),
-                          colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
-                          border = BorderStroke(1.dp, SubtleBorder),
-                          elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                          modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onSelectNovel(novel) }
-                            .testTag("home_grid_novel_${novel.id}")
-                        ) {
-                          Column(
-                            modifier = Modifier
-                              .fillMaxWidth()
-                              .padding(10.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                          ) {
-                            Box(
-                              modifier = Modifier
-                                .fillMaxWidth()
-                                .height(185.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(novel.coverColorHex))
-                            ) {
-                              if (!novel.coverImageUri.isNullOrBlank() && novel.coverImageUri != "null") {
-                                AsyncImage(
-                                  model = File(novel.coverImageUri!!).takeIf { it.exists() } ?: novel.coverImageUri,
-                                  contentDescription = novel.title,
-                                  contentScale = ContentScale.Fit,
-                                  modifier = Modifier.fillMaxSize()
-                                )
-                              } else {
-                                Box(
-                                  modifier = Modifier.fillMaxSize().padding(8.dp),
-                                  contentAlignment = Alignment.Center
-                                ) {
-                                  Text(
-                                    text = novel.title.take(12),
-                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, color = Color.White),
-                                    textAlign = TextAlign.Center
-                                  )
-                                }
-                              }
-
-                              if (novel.isNewRelease) {
-                                Surface(
-                                  shape = RoundedCornerShape(6.dp),
-                                  color = AntiqueGold,
-                                  modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .padding(6.dp)
-                                ) {
-                                  Text(
-                                    text = "NEW",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color.White),
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                  )
-                                }
-                              }
-                            }
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            Text(
-                              text = novel.title,
-                              style = MaterialTheme.typography.titleSmall.copy(
-                                fontFamily = FontFamily.Serif,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp
-                              ),
-                              color = CharcoalText,
-                              maxLines = 2,
-                              overflow = TextOverflow.Ellipsis,
-                              textAlign = TextAlign.Center
-                            )
-
-                            Spacer(modifier = Modifier.height(2.dp))
-
-                            Text(
-                              text = novel.genre.ifBlank { "General" },
-                              style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                              color = CharcoalSecondary,
-                              textAlign = TextAlign.Center
-                            )
-                          }
-                        }
-
-                        // Favorite Button sibling placed on top of Card
-                        Surface(
-                          onClick = { viewModel.toggleFavorite(novel.id) },
-                          shape = CircleShape,
-                          color = Color.Black.copy(alpha = 0.5f),
-                          modifier = Modifier
-                            .padding(14.dp)
-                            .size(34.dp)
-                            .align(Alignment.TopStart)
-                            .testTag("card_favorite_button_${novel.id}")
-                        ) {
-                          Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                            Icon(
-                              imageVector = if (novel.isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                              contentDescription = "Favorite",
-                              tint = if (novel.isFavorite) Color(0xFFEF5350) else Color.White,
-                              modifier = Modifier.size(17.dp)
-                            )
-                          }
-                        }
-                      }
-                    }
-                    if (rowNovels.size == 1) {
-                      Spacer(modifier = Modifier.weight(1f))
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
         Spacer(modifier = Modifier.height(200.dp))
-      }
-    }
 
     // Auth Modal Dialog
     if (uiState.isAuthDialogOpen) {
@@ -1619,6 +1547,7 @@ fun HomeScreen(
         }
       }
     }
+
 
     // Dedicated Personal Archive Page for a Translator (accessible to anyone)
     if (selectedTranslatorForDetail != null) {
@@ -1904,6 +1833,12 @@ fun HomeScreen(
   }
 }
 
+
+}
+}
+}
+}
+}
 @Composable
 private fun WattpadNavButton(
   icon: androidx.compose.ui.graphics.vector.ImageVector,
@@ -4611,6 +4546,3 @@ fun HorizontalNovelCard(
     }
   }
 }
-
-
-

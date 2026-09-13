@@ -253,11 +253,19 @@ class StrawberrycandyRepository(
         val cloudNovels = snapshot.documents.mapNotNull { doc ->
           parseNovelFromFirestoreDoc(doc)
         }
-        if (cloudNovels.isNotEmpty()) {
-          externalScope.launch {
-            dao.insertNovels(cloudNovels)
-            Log.i("StrawberrycandyRepository", "Synchronized ${cloudNovels.size} novels from Firebase Firestore in real-time.")
+        externalScope.launch {
+          dao.insertNovels(cloudNovels)
+          val remoteIds = cloudNovels.map { it.id }.toSet()
+          val localNovels = dao.getAllNovelsSync()
+          for (localNovel in localNovels) {
+            if (!remoteIds.contains(localNovel.id)) {
+              dao.deleteNovelById(localNovel.id)
+              dao.deleteAllReadingStatesForNovel(localNovel.id)
+              dao.deleteCommentsForNovel(localNovel.id)
+              dao.deleteBookmarksForNovel(localNovel.id)
+            }
           }
+          Log.i("StrawberrycandyRepository", "Synchronized ${cloudNovels.size} novels from Firebase Firestore in real-time.")
         }
       }
       firestore.collection("novel").addSnapshotListener(listener)
@@ -1873,7 +1881,9 @@ class StrawberrycandyRepository(
     quoteText: String,
     paragraphIndex: Int,
     colorHex: Long,
-    note: String = ""
+    note: String = "",
+    startIndex: Int = 0,
+    endIndex: Int = 0
   ): Boolean {
     val existing = dao.findBookmarkByQuote(novelId, quoteText.trim())
     return if (existing != null) {
@@ -1883,7 +1893,7 @@ class StrawberrycandyRepository(
         false
       } else {
         // Change highlight color
-        dao.insertBookmark(existing.copy(colorHex = colorHex, timestamp = System.currentTimeMillis()))
+        dao.insertBookmark(existing.copy(colorHex = colorHex, timestamp = System.currentTimeMillis(), startIndex = startIndex, endIndex = endIndex))
         true
       }
     } else {
@@ -1895,7 +1905,9 @@ class StrawberrycandyRepository(
         paragraphIndex = paragraphIndex,
         timestamp = System.currentTimeMillis(),
         colorHex = colorHex,
-        note = note
+        note = note,
+        startIndex = startIndex,
+        endIndex = endIndex
       )
       dao.insertBookmark(bookmark)
       true

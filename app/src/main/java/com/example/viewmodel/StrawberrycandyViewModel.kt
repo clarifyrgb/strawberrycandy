@@ -1132,10 +1132,12 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     quoteText: String,
     paragraphIndex: Int,
     colorHex: Long,
-    note: String = ""
+    note: String = "",
+    startIndex: Int = 0,
+    endIndex: Int = 0
   ) {
     viewModelScope.launch {
-      val added = repository.saveHighlight(novelId, chapterTitle, quoteText, paragraphIndex, colorHex, note)
+      val added = repository.saveHighlight(novelId, chapterTitle, quoteText, paragraphIndex, colorHex, note, startIndex, endIndex)
       _snackbarMessage.value = if (added) "Line highlighted in your favorite colors" else "Highlight removed"
     }
   }

@@ -710,6 +710,74 @@ fun EditNovelModal(
           )
         }
 
+        val chaptersList = remember(contentText) {
+          val list = mutableListOf<String>()
+          val lines = contentText.lines()
+          for (line in lines) {
+            val trimmed = line.trim()
+            if (trimmed.startsWith("[chapter:") && trimmed.endsWith("]")) {
+              val title = trimmed.removePrefix("[chapter:").removeSuffix("]").trim()
+              list.add(title)
+            }
+          }
+          list
+        }
+
+        if (chaptersList.isNotEmpty()) {
+          Spacer(modifier = Modifier.height(10.dp))
+          Text(
+            text = "MANAGE CHAPTERS (${chaptersList.size}) — Delete Chapter Option",
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp),
+            color = AntiqueGold
+          )
+          Spacer(modifier = Modifier.height(4.dp))
+          Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            chaptersList.forEachIndexed { index, chapterTitle ->
+              Row(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .background(SoftCreamPaper, RoundedCornerShape(8.dp))
+                  .border(0.8.dp, SubtleBorder, RoundedCornerShape(8.dp))
+                  .padding(horizontal = 10.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Text(
+                  text = "Ch. ${index + 1}: $chapterTitle",
+                  style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                  color = CharcoalText,
+                  maxLines = 1,
+                  modifier = Modifier.weight(1f)
+                )
+                if (chaptersList.size > 1) {
+                  IconButton(
+                    onClick = {
+                      val tag = "[chapter:$chapterTitle]"
+                      val idx = contentText.indexOf(tag)
+                      if (idx != -1) {
+                        val nextTagIdx = contentText.indexOf("[chapter:", idx + tag.length)
+                        contentText = if (nextTagIdx != -1) {
+                          contentText.removeRange(idx, nextTagIdx)
+                        } else {
+                          contentText.removeRange(idx, contentText.length)
+                        }
+                      }
+                    },
+                    modifier = Modifier.size(24.dp)
+                  ) {
+                    Icon(
+                      imageVector = Icons.Outlined.Delete,
+                      contentDescription = "Delete Chapter",
+                      tint = Color(0xFFC74350),
+                      modifier = Modifier.size(14.dp)
+                    )
+                  }
+                }
+              }
+            }
+          }
+        }
+
         Spacer(modifier = Modifier.height(16.dp))
 
         // Cover Color Selection

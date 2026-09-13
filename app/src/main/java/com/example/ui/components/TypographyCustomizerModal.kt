@@ -940,8 +940,9 @@ fun TypographyCustomizerModal(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
           ) {
             listOf(
-              Triple("flip", "Page Flipping", "Tap left/right or swipe"),
-              Triple("scroll", "Continuous Scroll", "Smooth vertical reading")
+              Triple("flip", "3D Flip", "Physical curl"),
+              Triple("slide", "Slide", "Horizontal"),
+              Triple("scroll", "Scroll", "Vertical")
             ).forEach { (mode, label, desc) ->
               val isSelected = pageTurnMode == mode
               Surface(

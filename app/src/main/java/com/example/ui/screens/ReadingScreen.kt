@@ -44,9 +44,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
@@ -1055,6 +1059,36 @@ fun ReadingScreen(
           modifier = Modifier
             .fillMaxSize()
             .graphicsLayer(alpha = pageAlpha)
+            .pointerInput(pageTurnMode) {
+              detectTapGestures(
+                onTap = { offset ->
+                  val width = size.width
+                  if (offset.x < width * 0.3f) {
+                    coroutineScope.launch {
+                      try {
+                        val current = lazyListState.firstVisibleItemIndex
+                        val count = lazyListState.layoutInfo.totalItemsCount
+                        if (count > 0) {
+                          lazyListState.animateScrollToItem((current - 6).coerceIn(0, count - 1))
+                        }
+                      } catch (_: Exception) {}
+                    }
+                  } else if (offset.x > width * 0.7f) {
+                    coroutineScope.launch {
+                      try {
+                        val current = lazyListState.firstVisibleItemIndex
+                        val count = lazyListState.layoutInfo.totalItemsCount
+                        if (count > 0) {
+                          lazyListState.animateScrollToItem((current + 6).coerceIn(0, count - 1))
+                        }
+                      } catch (_: Exception) {}
+                    }
+                  } else {
+                    isHudVisible = !isHudVisible
+                  }
+                }
+              )
+            }
             .padding(horizontal = 26.dp, vertical = 8.dp)
             .testTag("reading_lazy_column"),
           horizontalAlignment = Alignment.CenterHorizontally,
@@ -1422,6 +1456,7 @@ fun ReadingScreen(
                             TextAlign.Start
                           }
 
+                        SelectionContainer {
                           if (formatRes.isQuote) {
                             Row(
                               modifier = Modifier
@@ -1467,6 +1502,7 @@ fun ReadingScreen(
                               modifier = Modifier.fillMaxWidth()
                             )
                           }
+                        }
                         }
                       }
                     }

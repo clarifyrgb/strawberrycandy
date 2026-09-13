@@ -87,8 +87,7 @@ import java.util.Locale
 
 private enum class ProfileModalTab {
   MY_SHELF,
-  DETAILS_AND_NAME,
-  COMMENT_HISTORY
+  DETAILS_AND_NAME
 }
 
 private enum class ReaderShelfFilter {
@@ -313,40 +312,6 @@ fun ReaderProfileModal(
                 color = if (selectedTab == ProfileModalTab.DETAILS_AND_NAME) CharcoalText else CharcoalSecondary
               )
             }
-          }
-
-          // Tab 3: Comment History
-          Surface(
-            onClick = { selectedTab = ProfileModalTab.COMMENT_HISTORY },
-            shape = RoundedCornerShape(10.dp),
-            color = if (selectedTab == ProfileModalTab.COMMENT_HISTORY) SoftCreamPaper else Color.Transparent,
-            shadowElevation = if (selectedTab == ProfileModalTab.COMMENT_HISTORY) 2.dp else 0.dp,
-            modifier = Modifier
-              .weight(1f)
-              .testTag("tab_reader_comment_history")
-          ) {
-            Row(
-              modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
-              horizontalArrangement = Arrangement.Center,
-              verticalAlignment = Alignment.CenterVertically
-            ) {
-              Icon(
-                imageVector = Icons.Outlined.ChatBubbleOutline,
-                contentDescription = null,
-                tint = if (selectedTab == ProfileModalTab.COMMENT_HISTORY) AntiqueGold else CharcoalSecondary,
-                modifier = Modifier.size(13.dp)
-              )
-              Spacer(modifier = Modifier.width(4.dp))
-              Text(
-                text = "Comments (${commentsHistory.size})",
-                style = MaterialTheme.typography.labelSmall.copy(
-                  fontWeight = if (selectedTab == ProfileModalTab.COMMENT_HISTORY) FontWeight.Bold else FontWeight.Medium,
-                  fontSize = 10.5.sp
-                ),
-                color = if (selectedTab == ProfileModalTab.COMMENT_HISTORY) CharcoalText else CharcoalSecondary
-              )
-            }
-          }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -985,182 +950,6 @@ fun ReaderProfileModal(
             }
           }
 
-          ProfileModalTab.COMMENT_HISTORY -> {
-            // COMMENT HISTORY SECTION
-            Column(
-              modifier = Modifier.fillMaxWidth(),
-              verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-              Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-              ) {
-                Text(
-                  text = "YOUR CHAPTER REFLECTIONS",
-                  style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 9.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.2.sp
-                  ),
-                  color = AntiqueGold
-                )
-                Text(
-                  text = "${commentsHistory.size} recorded",
-                  style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 9.5.sp,
-                    color = CharcoalTertiary
-                  )
-                )
-              }
-
-              if (commentsHistory.isEmpty()) {
-                Card(
-                  shape = RoundedCornerShape(16.dp),
-                  colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
-                  border = BorderStroke(1.dp, SubtleBorder),
-                  modifier = Modifier.fillMaxWidth()
-                ) {
-                  Column(
-                    modifier = Modifier
-                      .fillMaxWidth()
-                      .padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                  ) {
-                    Icon(
-                      imageVector = Icons.Outlined.ChatBubbleOutline,
-                      contentDescription = null,
-                      tint = AntiqueGold.copy(alpha = 0.6f),
-                      modifier = Modifier.size(36.dp)
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text(
-                      text = "No Reflections Yet",
-                      style = MaterialTheme.typography.titleMedium.copy(
-                        fontFamily = FontFamily.Serif,
-                        fontWeight = FontWeight.Bold
-                      ),
-                      color = CharcoalText
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                      text = "As you read novel chapters, leave your thoughts, reactions, and commentary. Your entire reflection history will be cataloged here.",
-                      style = MaterialTheme.typography.bodySmall.copy(
-                        fontSize = 11.sp,
-                        lineHeight = 16.sp
-                      ),
-                      color = CharcoalSecondary,
-                      textAlign = TextAlign.Center
-                    )
-                  }
-                }
-              } else {
-                commentsHistory.forEach { comment ->
-                  val novelTitle = novelsList.find { it.id == comment.novelId }?.title ?: "Archival Novel"
-                  val formattedDate = formatRealtimeModalDate(comment.timestamp, liveTickerMs)
-                  val isRecent = (liveTickerMs - comment.timestamp) in 0..120_000L
-
-                  Card(
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
-                    border = BorderStroke(1.dp, if (isRecent) AntiqueGold.copy(alpha = 0.4f) else SubtleBorder),
-                    modifier = Modifier.fillMaxWidth()
-                  ) {
-                    Column(
-                      modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp)
-                    ) {
-                      // Novel & Chapter header + Delete button
-                      Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                      ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                          Text(
-                            text = novelTitle,
-                            style = MaterialTheme.typography.labelSmall.copy(
-                              fontWeight = FontWeight.Bold,
-                              fontSize = 11.sp
-                            ),
-                            color = AntiqueGold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                          )
-                          Text(
-                            text = comment.chapterTitle,
-                            style = MaterialTheme.typography.labelSmall.copy(
-                              fontSize = 9.sp,
-                              fontWeight = FontWeight.Medium
-                            ),
-                            color = CharcoalSecondary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                          )
-                        }
-
-                        // Date & Delete button
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                          Text(
-                            text = formattedDate,
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
-                            color = CharcoalTertiary
-                          )
-
-                          Spacer(modifier = Modifier.width(4.dp))
-
-                          IconButton(
-                            onClick = { onDeleteComment(comment.id) },
-                            modifier = Modifier.size(24.dp)
-                          ) {
-                            Icon(
-                              imageVector = Icons.Outlined.Delete,
-                              contentDescription = "Delete comment",
-                              tint = Color(0xFFC62828).copy(alpha = 0.6f),
-                              modifier = Modifier.size(14.dp)
-                            )
-                          }
-                        }
-                      }
-
-                      Spacer(modifier = Modifier.height(6.dp))
-
-                      // Comment Text
-                      Text(
-                        text = "\"${comment.commentText}\"",
-                        style = MaterialTheme.typography.bodySmall.copy(
-                          fontSize = 11.5.sp,
-                          fontFamily = FontFamily.Serif
-                        ),
-                        color = CharcoalText
-                      )
-
-                      if (comment.likesCount > 0) {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                          Icon(
-                            imageVector = Icons.Filled.Favorite,
-                            contentDescription = "Likes",
-                            tint = Color(0xFFC74350),
-                            modifier = Modifier.size(10.dp)
-                          )
-                          Spacer(modifier = Modifier.width(3.dp))
-                          Text(
-                            text = "${comment.likesCount} liked",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                              fontSize = 8.5.sp,
-                              color = Color(0xFFC74350)
-                            )
-                          )
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
         }
 
         Spacer(modifier = Modifier.height(22.dp))
@@ -1222,7 +1011,8 @@ fun ReaderProfileModal(
   }
 }
 
-private fun formatRealtimeModalDate(timestamp: Long, liveNow: Long): String {
+
+fun formatRealtimeModalDate(timestamp: Long, liveNow: Long): String {
   val diff = (liveNow - timestamp).coerceAtLeast(0L)
   val exactTime = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(timestamp))
   val exactDate = SimpleDateFormat("MMM d", Locale.getDefault()).format(Date(timestamp))
@@ -1234,4 +1024,5 @@ private fun formatRealtimeModalDate(timestamp: Long, liveNow: Long): String {
     diff < 172800_000L -> "Yesterday • $exactTime"
     else -> "$exactDate • $exactTime"
   }
+}
 }
