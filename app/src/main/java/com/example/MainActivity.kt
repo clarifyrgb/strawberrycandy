@@ -45,9 +45,19 @@ class MainActivity : ComponentActivity() {
     try {
       android.util.Log.d("MainActivity", "MainActivity onCreate started safely.")
       enableEdgeToEdge()
+      val initialNovelId = intent?.getStringExtra("novelId")
+      val initialChapterTitle = intent?.getStringExtra("chapterTitle")
+      val initialCommentId = intent?.getStringExtra("commentId")
+      val openComments = intent?.getBooleanExtra("openComments", false) ?: false
+
       setContent {
         MyApplicationTheme {
-          StrawberrycandyApp()
+          StrawberrycandyApp(
+            initialNovelId = initialNovelId,
+            initialChapterTitle = initialChapterTitle,
+            initialCommentId = initialCommentId,
+            openComments = openComments
+          )
         }
       }
     } catch (e: Exception) {
@@ -64,15 +74,21 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun StrawberrycandyApp(
   viewModel: StrawberrycandyViewModel = viewModel(),
+  initialNovelId: String? = null,
+  initialChapterTitle: String? = null,
+  initialCommentId: String? = null,
+  openComments: Boolean = false
 ) {
   val uiState by viewModel.uiState.collectAsState()
-  var selectedNovelId by remember { mutableStateOf<String?>(null) }
+  var selectedNovelId by remember { mutableStateOf<String?>(initialNovelId) }
   val snackbarHostState = remember { SnackbarHostState() }
+
+  val snackbarMessage by viewModel.snackbarMessage.collectAsState()
 
   val selectedNovel = uiState.novels.find { it.id == selectedNovelId }
 
-  LaunchedEffect(uiState.message) {
-    uiState.message?.let { msg ->
+  LaunchedEffect(snackbarMessage) {
+    snackbarMessage?.let { msg ->
       snackbarHostState.showSnackbar(msg)
       viewModel.clearSnackbarMessage()
     }
@@ -103,7 +119,9 @@ fun StrawberrycandyApp(
           onToggleFavorite = {
             viewModel.toggleFavorite(currentNovel.id)
           },
-          viewModel = viewModel
+          viewModel = viewModel,
+          initialOpenComments = openComments,
+          initialChapterTitle = initialChapterTitle
         )
       } else {
         HomeScreen(

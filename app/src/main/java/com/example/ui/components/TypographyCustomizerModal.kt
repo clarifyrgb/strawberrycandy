@@ -49,6 +49,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -438,76 +440,7 @@ fun TypographyCustomizerModal(
 
           Spacer(modifier = Modifier.height(18.dp))
 
-          // 1. SECTION: PAGE TURNING STYLE
-          Text(
-            text = "PAGE TURNING STYLE",
-            style = MaterialTheme.typography.labelSmall.copy(
-              fontSize = 9.sp,
-              letterSpacing = 1.4.sp,
-              fontWeight = FontWeight.Bold
-            ),
-            color = CharcoalTertiary
-          )
-          Spacer(modifier = Modifier.height(8.dp))
 
-          Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-          ) {
-            // Continuous Scroll Mode
-            Surface(
-              shape = RoundedCornerShape(14.dp),
-              color = Color(0x1AD4AF37),
-              border = BorderStroke(1.5.dp, AntiqueGold),
-              modifier = Modifier
-                .fillMaxWidth()
-                .testTag("page_mode_scroll")
-            ) {
-              Row(
-                modifier = Modifier.padding(14.dp),
-                verticalAlignment = Alignment.CenterVertically
-              ) {
-                Box(
-                  modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(AntiqueGold),
-                  contentAlignment = Alignment.Center
-                ) {
-                  Icon(
-                    imageVector = Icons.Outlined.SwapVert,
-                    contentDescription = null,
-                    tint = SoftCreamPaper,
-                    modifier = Modifier.size(20.dp)
-                  )
-                }
-                Spacer(modifier = Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                  Text(
-                    text = "Smooth Vertical Scroll Mode",
-                    style = MaterialTheme.typography.titleSmall.copy(
-                      fontSize = 13.sp,
-                      fontWeight = FontWeight.SemiBold
-                    ),
-                    color = CharcoalText
-                  )
-                  Text(
-                    text = "Fluid continuous reading with instant chapter navigation",
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
-                    color = CharcoalSecondary
-                  )
-                }
-                Icon(
-                  imageVector = Icons.Outlined.Check,
-                  contentDescription = null,
-                  tint = AntiqueGold,
-                  modifier = Modifier.size(18.dp)
-                )
-              }
-            }
-          }
-
-          Spacer(modifier = Modifier.height(18.dp))
 
           // 2. SECTION: FONT SIZE (BIGGER / SMALLER)
           Row(
@@ -940,9 +873,9 @@ fun TypographyCustomizerModal(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
           ) {
             listOf(
-              Triple("flip", "3D Flip", "Physical curl"),
-              Triple("slide", "Slide", "Horizontal"),
-              Triple("scroll", "Scroll", "Vertical")
+              Triple("flip", "3D Flip", "Realistic curl"),
+              Triple("slide", "Flat Slide", "Slide turn"),
+              Triple("scroll", "Vertical", "Continuous")
             ).forEach { (mode, label, desc) ->
               val isSelected = pageTurnMode == mode
               Surface(
@@ -955,7 +888,7 @@ fun TypographyCustomizerModal(
                   .testTag("page_turn_mode_$mode")
               ) {
                 Column(
-                  modifier = Modifier.padding(10.dp),
+                  modifier = Modifier.padding(12.dp),
                   horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                   Text(

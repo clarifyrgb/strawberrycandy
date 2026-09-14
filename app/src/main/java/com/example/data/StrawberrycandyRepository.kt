@@ -44,6 +44,8 @@ class StrawberrycandyRepository(
   private val firebaseAuthManager: com.example.data.auth.FirebaseAuthManager = com.example.data.auth.FirebaseAuthManager(),
 ) {
 
+  private val recentlyDeletedNovelIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
   fun getSyncService(): CloudArchiveSyncService? = syncService
   fun getFirebaseStorageService(): com.example.data.remote.FirebaseCloudStorageService? = firebaseStorageService
 
@@ -252,13 +254,13 @@ class StrawberrycandyRepository(
         if (error != null || snapshot == null) return@EventListener
         val cloudNovels = snapshot.documents.mapNotNull { doc ->
           parseNovelFromFirestoreDoc(doc)
-        }
+        }.filter { !recentlyDeletedNovelIds.contains(it.id) }
         externalScope.launch {
           dao.insertNovels(cloudNovels)
           val remoteIds = cloudNovels.map { it.id }.toSet()
           val localNovels = dao.getAllNovelsSync()
           for (localNovel in localNovels) {
-            if (!remoteIds.contains(localNovel.id)) {
+            if (!remoteIds.contains(localNovel.id) || recentlyDeletedNovelIds.contains(localNovel.id)) {
               dao.deleteNovelById(localNovel.id)
               dao.deleteAllReadingStatesForNovel(localNovel.id)
               dao.deleteCommentsForNovel(localNovel.id)
@@ -358,6 +360,7 @@ class StrawberrycandyRepository(
       val snapshot = firestore.collection("novel").get().await()
       if (snapshot != null && !snapshot.isEmpty) {
         val cloudNovels = snapshot.documents.mapNotNull { parseNovelFromFirestoreDoc(it) }
+          .filter { !recentlyDeletedNovelIds.contains(it.id) }
         if (cloudNovels.isNotEmpty()) {
           dao.insertNovels(cloudNovels)
           Log.i("StrawberrycandyRepository", "Fetched ${cloudNovels.size} live novels from Firebase Cloud Firestore.")
@@ -373,7 +376,7 @@ class StrawberrycandyRepository(
     return try {
       val remoteResult = syncService.fetchRemoteNovels()
       if (remoteResult.isSuccess) {
-        val remoteNovels = remoteResult.getOrNull() ?: emptyList()
+        val remoteNovels = remoteResult.getOrNull()?.filter { !recentlyDeletedNovelIds.contains(it.id) } ?: emptyList()
         if (remoteNovels.isNotEmpty()) {
           dao.insertNovels(remoteNovels)
         }
@@ -774,20 +777,84 @@ class StrawberrycandyRepository(
   }
 
   suspend fun deleteNovel(id: String) {
+    // 1. Firebase Realtime Database Deletion (.removeValue() with cascade)
+    try {
+      val rtdb = com.google.firebase.database.FirebaseDatabase.getInstance()
+      rtdb.getReference("novels").child(id).removeValue().await()
+      rtdb.getReference("novel").child(id).removeValue().await()
+      
+      val commentsRef = rtdb.getReference("chapter_comments")
+      val commentsSnap = commentsRef.orderByChild("novelId").equalTo(id).get().await()
+      for (child in commentsSnap.children) {
+        child.ref.removeValue().await()
+      }
+      val chaptersRef = rtdb.getReference("chapters")
+      val chaptersSnap = chaptersRef.orderByChild("novelId").equalTo(id).get().await()
+      for (child in chaptersSnap.children) {
+        child.ref.removeValue().await()
+      }
+      val bookmarksRef = rtdb.getReference("chapter_bookmarks")
+      val bookmarksSnap = bookmarksRef.orderByChild("novelId").equalTo(id).get().await()
+      for (child in bookmarksSnap.children) {
+        child.ref.removeValue().await()
+      }
+      val highlightsRef = rtdb.getReference("highlights")
+      val highlightsSnap = highlightsRef.orderByChild("novelId").equalTo(id).get().await()
+      for (child in highlightsSnap.children) {
+        child.ref.removeValue().await()
+      }
+      Log.i("StrawberrycandyRepository", "Successfully deleted novel $id from Firebase Realtime Database")
+    } catch (e: Exception) {
+      Log.w("StrawberrycandyRepository", "Firebase Realtime Database deleteNovel error: ${e.message}")
+    }
+
+    recentlyDeletedNovelIds.add(id)
     dao.deleteNovelById(id)
     dao.deleteAllReadingStatesForNovel(id)
     dao.deleteCommentsForNovel(id)
     dao.deleteBookmarksForNovel(id)
     externalScope.launch {
+      // 2. Backend Deletion (Firestore Cascade Delete)
       try {
         val firestore = FirebaseFirestore.getInstance()
         firestore.collection("novel").document(id).delete().await()
+        firestore.collection("novels").document(id).delete().await()
+
         val commentsSnap = firestore.collection("chapter_comments").whereEqualTo("novelId", id).get().await()
         for (doc in commentsSnap.documents) {
-          doc.reference.delete()
+          doc.reference.delete().await()
+        }
+        val chaptersSnap = firestore.collection("chapters").whereEqualTo("novelId", id).get().await()
+        for (doc in chaptersSnap.documents) {
+          doc.reference.delete().await()
+        }
+        val bookmarksSnap = firestore.collection("chapter_bookmarks").whereEqualTo("novelId", id).get().await()
+        for (doc in bookmarksSnap.documents) {
+          doc.reference.delete().await()
+        }
+        val highlightsSnap = firestore.collection("highlights").whereEqualTo("novelId", id).get().await()
+        for (doc in highlightsSnap.documents) {
+          doc.reference.delete().await()
         }
       } catch (e: Exception) {
         Log.w("StrawberrycandyRepository", "Firebase Firestore deleteNovel error: ${e.message}")
+      }
+
+      // 3. Firebase Storage File Deletion (Cover, Epub, Manuscript, Metadata)
+      try {
+        val storage = com.google.firebase.storage.FirebaseStorage.getInstance()
+        val ref = storage.reference.child("novels/$id")
+        try { ref.child("metadata.json").delete().await() } catch (_: Exception) {}
+        try { ref.child("manuscript.txt").delete().await() } catch (_: Exception) {}
+        try { ref.child("cover.jpg").delete().await() } catch (_: Exception) {}
+        try {
+          val listResult = ref.listAll().await()
+          for (item in listResult.items) {
+            try { item.delete().await() } catch (_: Exception) {}
+          }
+        } catch (_: Exception) {}
+      } catch (e: Exception) {
+        Log.w("StrawberrycandyRepository", "Firebase Storage deleteNovel error: ${e.message}")
       }
     }
   }
@@ -887,50 +954,31 @@ class StrawberrycandyRepository(
       )
     }
 
-    if (hasExistingAccount) {
-      if (cleanPass == rememberedPass) {
-        val fbAuthRes = firebaseAuthManager.signInOrRegister(cleanEmail, cleanPass)
-        if (fbAuthRes is com.example.data.auth.FirebaseAuthResult.Error) {
-          // If firebase auth failed due to wrong password on remote, but local matched, let's try signing in or registering to sync
-        }
-      } else {
-        // Password does not match remembered password. Verify if Firebase Auth accepts this new password (reset via Gmail link).
-        val fbAuthRes = firebaseAuthManager.signInOrRegister(cleanEmail, cleanPass)
-        if (fbAuthRes is com.example.data.auth.FirebaseAuthResult.Success) {
-          // Firebase accepted the new password (reset via link)! Update remembered pass and Firestore.
-          com.example.data.auth.AuthMemoryStore.rememberCredential(cleanEmail, cleanPass)
-          try {
-            val firestore = FirebaseFirestore.getInstance()
-            firestore.collection("users").document(cleanEmail).set(
-              mapOf("email" to cleanEmail, "passwordHash" to cleanPass),
-              SetOptions.merge()
-            )
-          } catch (_: Exception) {}
-        } else {
-          return Result.failure(
-            IllegalArgumentException("Incorrect password for $cleanEmail. Please enter the correct password or use 'Forgot Password?' to reset it.")
-          )
-        }
+    if (isSignUp) {
+      val fbRes = firebaseAuthManager.signUp(cleanEmail, cleanPass)
+      if (fbRes is com.example.data.auth.FirebaseAuthResult.Error) {
+        return Result.failure(IllegalArgumentException(fbRes.message))
       }
     } else {
-      val fbAuthRes = firebaseAuthManager.signInOrRegister(cleanEmail, cleanPass)
-      if (fbAuthRes is com.example.data.auth.FirebaseAuthResult.Error) {
-        return Result.failure(IllegalArgumentException(fbAuthRes.message))
+      val fbRes = firebaseAuthManager.signIn(cleanEmail, cleanPass)
+      if (fbRes is com.example.data.auth.FirebaseAuthResult.Error) {
+        return Result.failure(IllegalArgumentException(fbRes.message))
       }
-      com.example.data.auth.AuthMemoryStore.rememberCredential(cleanEmail, cleanPass)
-      try {
-        val firestore = FirebaseFirestore.getInstance()
-        firestore.collection("users").document(cleanEmail).set(
-          mapOf(
-            "email" to cleanEmail,
-            "passwordHash" to cleanPass,
-            "role" to role,
-            "createdAt" to System.currentTimeMillis()
-          ),
-          SetOptions.merge()
-        )
-      } catch (_: Exception) {}
     }
+
+    com.example.data.auth.AuthMemoryStore.rememberCredential(cleanEmail, cleanPass)
+    try {
+      val firestore = FirebaseFirestore.getInstance()
+      firestore.collection("users").document(cleanEmail).set(
+        mapOf(
+          "email" to cleanEmail,
+          "passwordHash" to cleanPass,
+          "role" to role,
+          "createdAt" to System.currentTimeMillis()
+        ),
+        SetOptions.merge()
+      )
+    } catch (_: Exception) {}
 
     // Always ensure memory store has this credential saved
     com.example.data.auth.AuthMemoryStore.rememberCredential(cleanEmail, cleanPass)

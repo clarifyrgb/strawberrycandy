@@ -31,10 +31,10 @@ class FirebaseAuthManager {
     get() = currentFirebaseUser?.email
 
   /**
-   * Signs in or registers the user via Firebase Email/Password Authentication.
-   * If the user doesn't exist in Firebase yet, it automatically creates the account.
+   * Signs in the user via Firebase Email/Password Authentication.
+   * Strictly enforces password verification and returns an error if credentials are invalid.
    */
-  suspend fun signInOrRegister(email: String, password: String): FirebaseAuthResult {
+  suspend fun signIn(email: String, password: String): FirebaseAuthResult {
     val cleanEmail = email.trim().lowercase()
     val cleanPass = password.trim()
 
@@ -42,7 +42,6 @@ class FirebaseAuthManager {
       return FirebaseAuthResult.Error("Email and password cannot be blank.")
     }
 
-    // First attempt: Firebase Sign In
     return try {
       val user = suspendCancellableCoroutine<FirebaseUser> { cont ->
         auth.signInWithEmailAndPassword(cleanEmail, cleanPass)
@@ -60,49 +59,32 @@ class FirebaseAuthManager {
       }
       Log.d("FirebaseAuthManager", "Successfully signed in via Firebase Auth: ${user.email}")
       FirebaseAuthResult.Success(user, isNewUser = false)
-    } catch (e: FirebaseAuthInvalidCredentialsException) {
-      // In modern Firebase Identity, INVALID_LOGIN_CREDENTIALS is returned for both
-      // wrong passwords and unregistered accounts. Attempt user creation:
-      Log.i("FirebaseAuthManager", "Sign-in credential check for $cleanEmail, trying user creation or verifying collision...")
-      val createResult = tryCreateAccount(cleanEmail, cleanPass)
-      if (createResult is FirebaseAuthResult.Success) {
-        createResult
-      } else if (createResult is FirebaseAuthResult.Error && (createResult.rawException is FirebaseAuthUserCollisionException || createResult.message.contains("already in use", ignoreCase = true))) {
-        // Account exists in Firebase, so the password was wrong
-        Log.w("FirebaseAuthManager", "Account exists in Firebase, wrong password entered for $cleanEmail")
-        FirebaseAuthResult.Error(
-          message = "Incorrect password for $cleanEmail. If you forgot your password, tap 'Forgot Password?'.",
-          isWrongPassword = true,
-          rawException = e
-        )
-      } else {
-        createResult
-      }
-    } catch (e: FirebaseAuthInvalidUserException) {
-      // User does not exist yet -> create account
-      Log.i("FirebaseAuthManager", "User does not exist in Firebase Auth yet. Creating account: $cleanEmail")
-      tryCreateAccount(cleanEmail, cleanPass)
-    } catch (e: FirebaseAuthUserCollisionException) {
+    } catch (e: Exception) {
+      val msg = e.localizedMessage ?: "Authentication failed."
+      Log.w("FirebaseAuthManager", "Sign in failed for $cleanEmail: $msg", e)
+      val isWrong = e is FirebaseAuthInvalidCredentialsException || e is FirebaseAuthInvalidUserException || msg.contains("password", ignoreCase = true) || msg.contains("credential", ignoreCase = true) || msg.contains("user", ignoreCase = true) || msg.contains("no user record", ignoreCase = true)
       FirebaseAuthResult.Error(
-        message = "An account already exists for $cleanEmail with a different sign-in method.",
+        message = if (isWrong) "Incorrect email or password for $cleanEmail. Please check your credentials or tap 'Forgot Password?'." else msg,
+        isWrongPassword = isWrong,
         rawException = e
       )
-    } catch (e: Exception) {
-      val msg = e.localizedMessage ?: "Firebase authentication failed"
-      Log.e("FirebaseAuthManager", "Firebase Auth general error: $msg", e)
-      // Check if the error is user not found
-      if (msg.contains("no user record") || msg.contains("user-not-found") || msg.contains("USER_NOT_FOUND")) {
-        tryCreateAccount(cleanEmail, cleanPass)
-      } else {
-        FirebaseAuthResult.Error(message = msg, rawException = e)
-      }
     }
   }
 
-  private suspend fun tryCreateAccount(email: String, password: String): FirebaseAuthResult {
+  /**
+   * Registers a new user via Firebase Email/Password Authentication.
+   */
+  suspend fun signUp(email: String, password: String): FirebaseAuthResult {
+    val cleanEmail = email.trim().lowercase()
+    val cleanPass = password.trim()
+
+    if (cleanEmail.isBlank() || cleanPass.isBlank()) {
+      return FirebaseAuthResult.Error("Email and password cannot be blank.")
+    }
+
     return try {
       val newUser = suspendCancellableCoroutine<FirebaseUser> { cont ->
-        auth.createUserWithEmailAndPassword(email, password)
+        auth.createUserWithEmailAndPassword(cleanEmail, cleanPass)
           .addOnSuccessListener { result ->
             val u = result.user
             if (u != null) {
@@ -118,11 +100,9 @@ class FirebaseAuthManager {
       Log.d("FirebaseAuthManager", "Successfully created user in Firebase Auth: ${newUser.email}")
       FirebaseAuthResult.Success(newUser, isNewUser = true)
     } catch (e: Exception) {
-      Log.e("FirebaseAuthManager", "Failed to create Firebase user: ${e.localizedMessage}", e)
-      FirebaseAuthResult.Error(
-        message = e.localizedMessage ?: "Failed to authenticate account with Firebase.",
-        rawException = e
-      )
+      val msg = e.localizedMessage ?: "Failed to create account with Firebase."
+      Log.e("FirebaseAuthManager", "Failed to create Firebase user: $msg", e)
+      FirebaseAuthResult.Error(message = msg, rawException = e)
     }
   }
 

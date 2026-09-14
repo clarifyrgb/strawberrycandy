@@ -11,6 +11,7 @@ import com.example.data.local.NovelEntity
 import com.example.data.local.ReaderProfileEntity
 import com.example.data.local.StrawberrycandyDatabase
 import com.example.data.remote.CloudArchiveSyncService
+import com.example.data.remote.StrawberrycandyMessagingService
 import com.example.model.NovelWithState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -99,10 +100,19 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
   val novelSearchQuery: StateFlow<String> = _novelSearchQuery.asStateFlow()
 
   private val _isAuthDialogOpen = MutableStateFlow(false)
+  val isAuthDialogOpen: StateFlow<Boolean> = _isAuthDialogOpen.asStateFlow()
+
   private val _authErrorMessage = MutableStateFlow<String?>(null)
+  val authErrorMessage: StateFlow<String?> = _authErrorMessage.asStateFlow()
+
   private val _authInitialEmail = MutableStateFlow<String?>(null)
+  val authInitialEmail: StateFlow<String?> = _authInitialEmail.asStateFlow()
+
   private val _isUploadDialogOpen = MutableStateFlow(false)
+  val isUploadDialogOpen: StateFlow<Boolean> = _isUploadDialogOpen.asStateFlow()
+
   private val _isProfileDialogOpen = MutableStateFlow(false)
+  val isProfileDialogOpen: StateFlow<Boolean> = _isProfileDialogOpen.asStateFlow()
   private val _snackbarMessage = MutableStateFlow<String?>(null)
   private val _dismissedAlertNovelId = MutableStateFlow<String?>(null)
 
@@ -167,13 +177,14 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     _isAuthDialogOpen,
     _isUploadDialogOpen,
     _isProfileDialogOpen,
-    _snackbarMessage,
     combine(_authErrorMessage, _dismissedAlertNovelId, _authInitialEmail) { authErr, dismissedId, initEmail ->
       Triple(authErr, dismissedId, initEmail)
     }
-  ) { isAuth, isUpload, isProfile, msg, extra ->
-    listOf(isAuth, isUpload, isProfile, msg, extra.first, extra.second, extra.third)
+  ) { isAuth, isUpload, isProfile, extra ->
+    listOf(isAuth, isUpload, isProfile, extra.first, extra.second, extra.third)
   }
+
+  val snackbarMessage: StateFlow<String?> = _snackbarMessage.asStateFlow()
 
   private val _cloudState = combine(
     _isCloudSyncing,
@@ -214,10 +225,10 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
     val isAuthOpen = dialogList[0] as Boolean
     val isUploadOpen = dialogList[1] as Boolean
     val isProfileOpen = dialogList[2] as Boolean
-    val msg = dialogList[3] as String?
-    val authErr = dialogList[4] as String?
-    val dismissedId = dialogList[5] as String?
-    val initialAuthEmail = dialogList[6] as String?
+    val msg = null as String?
+    val authErr = dialogList[3] as String?
+    val dismissedId = dialogList[4] as String?
+    val initialAuthEmail = dialogList[5] as String?
 
     val isCloudSyncing = cloudList[0] as Boolean
     val lastCloudSyncTime = cloudList[1] as Long
@@ -528,6 +539,7 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
         val isOwnerUser = isOwnerEmail(email)
         val roleLabel = if (isOwnerUser) "Sole Archive Owner" else if (role == "TRANSLATOR") "Translator" else "Reader"
         _snackbarMessage.value = "Signed in as $roleLabel ($email)"
+        StrawberrycandyMessagingService.updateFcmTokenOnServer(email)
       } else {
         val error = result.exceptionOrNull()?.message ?: "Sign in failed"
         if (error == "FORBIDDEN_SIGNUP_DIFFERENT_PASSWORD") {
@@ -564,6 +576,7 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
         val isOwnerUser = isOwnerEmail(email)
         val roleLabel = if (isOwnerUser) "Sole Archive Owner" else if (profile?.role == "TRANSLATOR") "Translator" else "Reader"
         _snackbarMessage.value = "Identified with Google & Firebase Auth as $roleLabel ($email)"
+        StrawberrycandyMessagingService.updateFcmTokenOnServer(email)
       } else {
         val error = result.exceptionOrNull()?.message ?: "Google Sign-In failed"
         _authErrorMessage.value = error
@@ -598,6 +611,7 @@ class StrawberrycandyViewModel(application: Application) : AndroidViewModel(appl
         val isOwnerUser = isOwnerEmail(email)
         val roleLabel = if (isOwnerUser) "Sole Archive Owner" else if (role == "TRANSLATOR") "Translator" else "Reader"
         _snackbarMessage.value = "Signed in as $roleLabel ($email)"
+        StrawberrycandyMessagingService.updateFcmTokenOnServer(email)
       } else {
         val error = result.exceptionOrNull()?.message ?: "Sign in failed"
         if (error == "FORBIDDEN_SIGNUP_DIFFERENT_PASSWORD") {

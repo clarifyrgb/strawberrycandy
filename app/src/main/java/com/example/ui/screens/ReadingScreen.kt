@@ -23,6 +23,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import kotlinx.coroutines.delay
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -62,6 +63,7 @@ import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.LightMode
@@ -179,6 +181,8 @@ fun ReadingScreen(
   onToggleFavorite: () -> Unit = {},
   onSelectNovel: ((NovelWithState) -> Unit)? = null,
   viewModel: StrawberrycandyViewModel? = null,
+  initialOpenComments: Boolean = false,
+  initialChapterTitle: String? = null,
   modifier: Modifier = Modifier,
 ) {
   BackHandler(onBack = onBack)
@@ -311,7 +315,9 @@ fun ReadingScreen(
   var isBookmarksModalOpen by remember { mutableStateOf(false) }
   var isChapterModalOpen by remember { mutableStateOf(false) }
   var isAddChapterModalOpen by remember { mutableStateOf(false) }
-  var viewingDiscussionChapterTitle by remember { mutableStateOf<String?>(null) }
+  var viewingDiscussionChapterTitle by remember {
+    mutableStateOf<String?>(if (initialOpenComments) (initialChapterTitle ?: novel.novel.chapterTitle) else null)
+  }
   var isHudVisible by remember { mutableStateOf(true) }
 
   // Sentence / line highlighting selection state
@@ -382,6 +388,14 @@ fun ReadingScreen(
   val pageAlpha by androidx.compose.animation.core.animateFloatAsState(
     targetValue = if (isPageTurning) 0.15f else 1f,
     animationSpec = tween(durationMillis = 160)
+  )
+  val pageRotationY by androidx.compose.animation.core.animateFloatAsState(
+    targetValue = if (isPageTurning && pageTurnMode == "flip") 22f else 0f,
+    animationSpec = tween(durationMillis = 220)
+  )
+  val pageTranslationX by androidx.compose.animation.core.animateFloatAsState(
+    targetValue = if (isPageTurning && pageTurnMode == "slide") -50f else 0f,
+    animationSpec = tween(durationMillis = 180)
   )
 
   // Initial sync to saved reading progress
@@ -1042,14 +1056,104 @@ fun ReadingScreen(
         modifier = Modifier
           .weight(1f)
           .fillMaxWidth()
-          .pointerInput(Unit) {
+          .pointerInput(pageTurnMode, lazyListState) {
             detectTapGestures(
-              onTap = {
-                isHudVisible = !isHudVisible
+              onTap = { offset ->
+                if (pageTurnMode != "scroll") {
+                  val x = offset.x
+                  val width = size.width
+                  when {
+                    x < width * 0.3f -> {
+                      // Left edge (approx 30%): Previous page
+                      coroutineScope.launch {
+                        isPageTurning = true
+                        delay(50)
+                        val targetIndex = (lazyListState.firstVisibleItemIndex - 6).coerceAtLeast(0)
+                        lazyListState.animateScrollToItem(targetIndex)
+                        isPageTurning = false
+                      }
+                    }
+                    x > width * 0.7f -> {
+                      // Right edge (approx 30%): Next page
+                      coroutineScope.launch {
+                        isPageTurning = true
+                        delay(50)
+                        val targetIndex = (lazyListState.firstVisibleItemIndex + 6).coerceAtMost(novel.storyItems.size)
+                        lazyListState.animateScrollToItem(targetIndex)
+                        isPageTurning = false
+                      }
+                    }
+                    else -> {
+                      // Center (approx 40%): Toggle HUD
+                      isHudVisible = !isHudVisible
+                    }
+                  }
+                } else {
+                  isHudVisible = !isHudVisible
+                }
               }
             )
           }
+          .pointerInput(pageTurnMode, lazyListState) {
+            if (pageTurnMode != "scroll") {
+              var totalDrag = 0f
+              detectHorizontalDragGestures(
+                onDragStart = { totalDrag = 0f },
+                onDragEnd = {
+                  if (totalDrag > 50f) {
+                    // Drag right -> Previous page
+                    coroutineScope.launch {
+                      isPageTurning = true
+                      delay(50)
+                      val targetIndex = (lazyListState.firstVisibleItemIndex - 6).coerceAtLeast(0)
+                      lazyListState.animateScrollToItem(targetIndex)
+                      isPageTurning = false
+                    }
+                  } else if (totalDrag < -50f) {
+                    // Drag left -> Next page
+                    coroutineScope.launch {
+                      isPageTurning = true
+                      delay(50)
+                      val targetIndex = (lazyListState.firstVisibleItemIndex + 6).coerceAtMost(novel.storyItems.size)
+                      lazyListState.animateScrollToItem(targetIndex)
+                      isPageTurning = false
+                    }
+                  }
+                },
+                onHorizontalDrag = { change, dragAmount ->
+                  change.consume()
+                  totalDrag += dragAmount
+                }
+              )
+            }
+          }
       ) {
+        // Visible Page Number Indicator (bottom center)
+        if (pageTurnMode != "scroll") {
+          Box(
+            modifier = Modifier
+              .align(Alignment.BottomCenter)
+              .padding(bottom = 16.dp)
+              .zIndex(10f)
+              .background(
+                color = readerHudBgColor.copy(alpha = 0.9f),
+                shape = RoundedCornerShape(16.dp)
+              )
+              .border(1.dp, AntiqueGold.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
+              .padding(horizontal = 14.dp, vertical = 6.dp)
+          ) {
+            val totalPages = (novel.totalPages.coerceAtLeast((novel.storyItems.size + 5) / 6)).coerceAtLeast(1)
+            val currentPage = estimatedCurrentPage.coerceIn(1, totalPages)
+            Text(
+              text = "Page $currentPage of $totalPages",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = readerTextColor
+              )
+            )
+          }
+        }
         val baseFontSize = 17.5f * fontSizeScale
         val baseLineHeight = 30f * fontSizeScale * lineHeightScale
         val baseParagraphSpacing = (20f * paragraphSpacingScale).dp
@@ -2047,36 +2151,38 @@ fun ReadingScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
               ) {
-                // Previous Page Button
-                OutlinedButton(
-                  onClick = {
-                    coroutineScope.launch {
-                      isPageTurning = true
-                      delay(80)
-                      val targetIndex = (lazyListState.firstVisibleItemIndex - 6).coerceAtLeast(0)
-                      lazyListState.animateScrollToItem(targetIndex)
-                      isPageTurning = false
-                    }
-                  },
-                  shape = RoundedCornerShape(16.dp),
-                  contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                  modifier = Modifier.testTag("prev_page_button")
-                ) {
-                  Icon(
-                    imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = readerTextColor
-                  )
-                  Spacer(modifier = Modifier.width(4.dp))
-                  Text(
-                    text = "Prev",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                      fontSize = 10.sp,
-                      fontWeight = FontWeight.SemiBold
-                    ),
-                    color = readerTextColor
-                  )
+                // Previous Page Button (only visible in continuous scroll mode)
+                if (pageTurnMode == "scroll") {
+                  OutlinedButton(
+                    onClick = {
+                      coroutineScope.launch {
+                        isPageTurning = true
+                        delay(80)
+                        val targetIndex = (lazyListState.firstVisibleItemIndex - 6).coerceAtLeast(0)
+                        lazyListState.animateScrollToItem(targetIndex)
+                        isPageTurning = false
+                      }
+                    },
+                    shape = RoundedCornerShape(16.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                    modifier = Modifier.testTag("prev_page_button")
+                  ) {
+                    Icon(
+                      imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                      contentDescription = null,
+                      modifier = Modifier.size(14.dp),
+                      tint = readerTextColor
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                      text = "Prev",
+                      style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold
+                      ),
+                      color = readerTextColor
+                    )
+                  }
                 }
 
                 // Table of Contents / Chapters button
@@ -2102,36 +2208,38 @@ fun ReadingScreen(
                   }
                 }
 
-                // Next Page Button
-                OutlinedButton(
-                  onClick = {
-                    coroutineScope.launch {
-                      isPageTurning = true
-                      delay(80)
-                      val targetIndex = (lazyListState.firstVisibleItemIndex + 6).coerceAtMost(novel.storyItems.size)
-                      lazyListState.animateScrollToItem(targetIndex)
-                      isPageTurning = false
-                    }
-                  },
-                  shape = RoundedCornerShape(16.dp),
-                  contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                  modifier = Modifier.testTag("next_page_button")
-                ) {
-                  Text(
-                    text = "Next",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                      fontSize = 10.sp,
-                      fontWeight = FontWeight.SemiBold
-                    ),
-                    color = readerTextColor
-                  )
-                  Spacer(modifier = Modifier.width(4.dp))
-                  Icon(
-                    imageVector = Icons.AutoMirrored.Outlined.ArrowForward,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = readerTextColor
-                  )
+                // Next Page Button (only visible in continuous scroll mode)
+                if (pageTurnMode == "scroll") {
+                  OutlinedButton(
+                    onClick = {
+                      coroutineScope.launch {
+                        isPageTurning = true
+                        delay(80)
+                        val targetIndex = (lazyListState.firstVisibleItemIndex + 6).coerceAtMost(novel.storyItems.size)
+                        lazyListState.animateScrollToItem(targetIndex)
+                        isPageTurning = false
+                      }
+                    },
+                    shape = RoundedCornerShape(16.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                    modifier = Modifier.testTag("next_page_button")
+                  ) {
+                    Text(
+                      text = "Next",
+                      style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold
+                      ),
+                      color = readerTextColor
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(
+                      imageVector = Icons.AutoMirrored.Outlined.ArrowForward,
+                      contentDescription = null,
+                      modifier = Modifier.size(14.dp),
+                      tint = readerTextColor
+                    )
+                  }
                 }
               }
             }

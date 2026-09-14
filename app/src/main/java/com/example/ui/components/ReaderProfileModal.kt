@@ -87,6 +87,7 @@ import java.util.Locale
 
 private enum class ProfileModalTab {
   MY_SHELF,
+  COMMENTS_HISTORY,
   DETAILS_AND_NAME
 }
 
@@ -281,7 +282,40 @@ fun ReaderProfileModal(
             }
           }
 
-          // Tab 2: Profile & Edit Name
+          // Tab 2: Comments History
+          Surface(
+            onClick = { selectedTab = ProfileModalTab.COMMENTS_HISTORY },
+            shape = RoundedCornerShape(10.dp),
+            color = if (selectedTab == ProfileModalTab.COMMENTS_HISTORY) SoftCreamPaper else Color.Transparent,
+            shadowElevation = if (selectedTab == ProfileModalTab.COMMENTS_HISTORY) 2.dp else 0.dp,
+            modifier = Modifier
+              .weight(1f)
+              .testTag("tab_reader_comments_history")
+          ) {
+            Row(
+              modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+              horizontalArrangement = Arrangement.Center,
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              Icon(
+                imageVector = Icons.Outlined.ChatBubbleOutline,
+                contentDescription = null,
+                tint = if (selectedTab == ProfileModalTab.COMMENTS_HISTORY) AntiqueGold else CharcoalSecondary,
+                modifier = Modifier.size(13.dp)
+              )
+              Spacer(modifier = Modifier.width(4.dp))
+              Text(
+                text = "Comments",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontWeight = if (selectedTab == ProfileModalTab.COMMENTS_HISTORY) FontWeight.Bold else FontWeight.Medium,
+                  fontSize = 10.5.sp
+                ),
+                color = if (selectedTab == ProfileModalTab.COMMENTS_HISTORY) CharcoalText else CharcoalSecondary
+              )
+            }
+          }
+
+          // Tab 3: Profile & Edit Name
           Surface(
             onClick = { selectedTab = ProfileModalTab.DETAILS_AND_NAME },
             shape = RoundedCornerShape(10.dp),
@@ -312,6 +346,7 @@ fun ReaderProfileModal(
                 color = if (selectedTab == ProfileModalTab.DETAILS_AND_NAME) CharcoalText else CharcoalSecondary
               )
             }
+          }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -568,6 +603,98 @@ fun ReaderProfileModal(
                           )
                         )
                       }
+                    }
+                  }
+                }
+              }
+            }
+          }
+          ProfileModalTab.COMMENTS_HISTORY -> {
+            Text(
+              text = "MY CHAPTER COMMENTS HISTORY",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
+              ),
+              color = AntiqueGold,
+              modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+
+            val userComments = remember(commentsHistory, activeUser) {
+              commentsHistory.filter { 
+                it.readerEmail.equals(activeUser.email, ignoreCase = true) || 
+                it.readerName.equals(currentSafeName, ignoreCase = true) ||
+                it.readerName.equals(activeUser.displayName, ignoreCase = true)
+              }
+            }
+
+            if (userComments.isEmpty()) {
+              Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = Color(0x0C000000),
+                border = BorderStroke(1.dp, SubtleBorder),
+                modifier = Modifier.fillMaxWidth()
+              ) {
+                Text(
+                  text = "No comment history yet. Share your thoughts in chapter discussions!",
+                  style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                  color = CharcoalSecondary,
+                  textAlign = TextAlign.Center,
+                  modifier = Modifier.padding(24.dp)
+                )
+              }
+            } else {
+              Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+              ) {
+                userComments.forEach { comment ->
+                  Card(
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
+                    border = BorderStroke(1.dp, SubtleBorder),
+                    modifier = Modifier.fillMaxWidth()
+                  ) {
+                    Column(
+                      modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp)
+                    ) {
+                      Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                      ) {
+                        Text(
+                          text = comment.chapterTitle.ifBlank { "Chapter Discussion" },
+                          style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 10.sp
+                          ),
+                          color = AntiqueGold
+                        )
+                        IconButton(
+                          onClick = { onDeleteComment(comment.id) },
+                          modifier = Modifier.size(20.dp)
+                        ) {
+                          Icon(
+                            imageVector = Icons.Outlined.Delete,
+                            contentDescription = "Delete Comment",
+                            tint = Color(0xFFC62828),
+                            modifier = Modifier.size(12.dp)
+                          )
+                        }
+                      }
+                      Spacer(modifier = Modifier.height(4.dp))
+                      Text(
+                        text = comment.commentText,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                          fontSize = 11.sp
+                        ),
+                        color = CharcoalText
+                      )
                     }
                   }
                 }
@@ -952,6 +1079,196 @@ fun ReaderProfileModal(
 
         }
 
+        Spacer(modifier = Modifier.height(18.dp))
+
+        // 1. COMMENTS HISTORY SECTION (Must be above uploaded manuscripts)
+        Text(
+          text = "MY COMMENTS HISTORY",
+          style = MaterialTheme.typography.labelSmall.copy(
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp
+          ),
+          color = AntiqueGold,
+          modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+
+        val userComments = remember(commentsHistory, activeUser) {
+          commentsHistory.filter { 
+            it.readerEmail.equals(activeUser.email, ignoreCase = true) || 
+            it.readerName.equals(currentSafeName, ignoreCase = true) ||
+            it.readerName.equals(activeUser.displayName, ignoreCase = true)
+          }
+        }
+
+        if (userComments.isEmpty()) {
+          Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = Color(0x0C000000),
+            border = BorderStroke(1.dp, SubtleBorder),
+            modifier = Modifier.fillMaxWidth()
+          ) {
+            Text(
+              text = "No comment history yet. Share your thoughts in chapter discussions!",
+              style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+              color = CharcoalSecondary,
+              textAlign = TextAlign.Center,
+              modifier = Modifier.padding(16.dp)
+            )
+          }
+        } else {
+          Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+          ) {
+            userComments.take(5).forEach { comment ->
+              Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
+                border = BorderStroke(1.dp, SubtleBorder),
+                modifier = Modifier.fillMaxWidth()
+              ) {
+                Column(
+                  modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp)
+                ) {
+                  Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                  ) {
+                    Text(
+                      text = comment.chapterTitle.ifBlank { "Chapter Discussion" },
+                      style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 10.sp
+                      ),
+                      color = AntiqueGold
+                    )
+                    IconButton(
+                      onClick = { onDeleteComment(comment.id) },
+                      modifier = Modifier.size(20.dp)
+                    ) {
+                      Icon(
+                        imageVector = Icons.Outlined.Delete,
+                        contentDescription = "Delete Comment",
+                        tint = Color(0xFFC62828),
+                        modifier = Modifier.size(12.dp)
+                      )
+                    }
+                  }
+                  Spacer(modifier = Modifier.height(4.dp))
+                  Text(
+                    text = comment.commentText,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                      fontSize = 11.sp
+                    ),
+                    color = CharcoalText
+                  )
+                }
+              }
+            }
+          }
+        }
+
+        Spacer(modifier = Modifier.height(18.dp))
+
+        // 2. UPLOADED MANUSCRIPTS SECTION (Below comments history)
+        Text(
+          text = "MY UPLOADED MANUSCRIPTS",
+          style = MaterialTheme.typography.labelSmall.copy(
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp
+          ),
+          color = AntiqueGold,
+          modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+
+        val userUploads = remember(novelsList, activeUser, isSoleOwner) {
+          novelsList.filter { novel ->
+            val matchesSlot = activeUser.authorSlot != null && novel.authorSlot == activeUser.authorSlot
+            val matchesAuthor = novel.author.equals(currentSafeName, ignoreCase = true) || novel.author.equals(activeUser.displayName, ignoreCase = true)
+            val matchesOwner = isSoleOwner && (novel.authorSlot == 0 || novel.authorSlot > 0)
+            matchesSlot || matchesAuthor || matchesOwner
+          }
+        }
+
+        if (userUploads.isEmpty()) {
+          Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = Color(0x0C000000),
+            border = BorderStroke(1.dp, SubtleBorder),
+            modifier = Modifier.fillMaxWidth()
+          ) {
+            Text(
+              text = "No uploaded manuscripts yet. Use the upload button above to publish your novels.",
+              style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+              color = CharcoalSecondary,
+              textAlign = TextAlign.Center,
+              modifier = Modifier.padding(16.dp)
+            )
+          }
+        } else {
+          Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+          ) {
+            userUploads.forEach { novel ->
+              Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = SoftCreamPaper),
+                border = BorderStroke(1.dp, SubtleBorder),
+                modifier = Modifier.fillMaxWidth()
+              ) {
+                Row(
+                  modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                  horizontalArrangement = Arrangement.SpaceBetween,
+                  verticalAlignment = Alignment.CenterVertically
+                ) {
+                  Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                      text = novel.title,
+                      style = MaterialTheme.typography.labelMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.5.sp
+                      ),
+                      color = CharcoalText
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                      text = "${novel.chapters.size} Chapters • ${novel.genre}",
+                      style = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = 10.sp
+                      ),
+                      color = CharcoalSecondary
+                    )
+                  }
+                  Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Button(
+                      onClick = {
+                        onDismiss()
+                        onSelectNovel(novel)
+                      },
+                      shape = RoundedCornerShape(8.dp),
+                      colors = ButtonDefaults.buttonColors(containerColor = CharcoalText),
+                      contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                      modifier = Modifier.height(28.dp)
+                    ) {
+                      Text("Read", fontSize = 10.sp, color = SoftCreamPaper)
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+
         Spacer(modifier = Modifier.height(22.dp))
 
         // Account Switch & Prominent Sign Out Button
@@ -1024,5 +1341,4 @@ fun formatRealtimeModalDate(timestamp: Long, liveNow: Long): String {
     diff < 172800_000L -> "Yesterday • $exactTime"
     else -> "$exactDate • $exactTime"
   }
-}
 }

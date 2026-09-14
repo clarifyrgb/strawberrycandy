@@ -5,6 +5,8 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -174,6 +176,11 @@ fun HomeScreen(
   val uiState by viewModel.uiState.collectAsState()
   val allNovelsList by viewModel.allNovels.collectAsState()
   val myCommentsHistory by viewModel.myCommentsHistory.collectAsState(initial = emptyList())
+  val isAuthOpen by viewModel.isAuthDialogOpen.collectAsState()
+  val authErr by viewModel.authErrorMessage.collectAsState()
+  val authInitEmail by viewModel.authInitialEmail.collectAsState()
+  val isUploadOpen by viewModel.isUploadDialogOpen.collectAsState()
+  val isProfileOpen by viewModel.isProfileDialogOpen.collectAsState()
   val novels = uiState.novels
   val activeUser = uiState.activeUser
   var selectedIndex by remember { mutableIntStateOf(0) }
@@ -190,6 +197,7 @@ fun HomeScreen(
   var novelToAddChapterToId by remember { mutableStateOf<String?>(null) }
   var newChapterTitleInput by remember { mutableStateOf("") }
   var newChapterContentInput by remember { mutableStateOf("") }
+  var novelPendingDeletionId by remember { mutableStateOf<String?>(null) }
   val myComments by viewModel.myCommentsHistory.collectAsState(initial = emptyList())
 
   val safeIndex = if (novels.isNotEmpty()) selectedIndex.coerceIn(0, novels.size - 1) else 0
@@ -231,13 +239,40 @@ fun HomeScreen(
     }
   }
 
-  Scaffold(
+  val context = LocalContext.current
+  val notifPermissionLauncher = rememberLauncherForActivityResult(
+    contract = ActivityResultContracts.RequestPermission()
+  ) { isGranted ->
+    if (isGranted) {
+      android.util.Log.d("HomeScreen", "Notification permission granted.")
+    } else {
+      android.util.Log.w("HomeScreen", "Notification permission denied.")
+    }
+  }
+
+  LaunchedEffect(activeUser) {
+    if (activeUser != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+      val permission = android.Manifest.permission.POST_NOTIFICATIONS
+      if (androidx.core.content.ContextCompat.checkSelfPermission(context, permission) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+        notifPermissionLauncher.launch(permission)
+      }
+    }
+    if (activeUser != null) {
+      com.example.data.remote.StrawberrycandyMessagingService.updateFcmTokenOnServer(activeUser.email)
+    }
+  }
+
+  Box(
     modifier = modifier
       .fillMaxSize()
-      .statusBarsPadding()
-      .testTag("home_screen_container"),
-    containerColor = CreamBackground,
-    bottomBar = {
+      .testTag("home_screen_container")
+  ) {
+    Scaffold(
+      modifier = Modifier
+        .fillMaxSize()
+        .statusBarsPadding(),
+      containerColor = CreamBackground,
+      bottomBar = {
       if (activeUser != null) {
         Surface(
           modifier = Modifier
@@ -1252,7 +1287,7 @@ fun HomeScreen(
                               }
                               OutlinedButton(
                                 onClick = {
-                                  viewModel.deleteNovel(novel.id)
+                                  novelPendingDeletionId = novel.id
                                 },
                                 modifier = Modifier.height(32.dp),
                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFC62828)),
@@ -1276,13 +1311,19 @@ fun HomeScreen(
             }
           }
 
-        Spacer(modifier = Modifier.height(200.dp))
+  }
+}
+}
+}
+}
+}
 
-    // Auth Modal Dialog
-    if (uiState.isAuthDialogOpen) {
+    // Hoisted Modal Dialogs
+// Auth Modal Dialog
+    if (isAuthOpen) {
       AuthModal(
         onDismiss = { viewModel.closeAuthDialog() },
-        initialEmail = uiState.authInitialEmail ?: "",
+        initialEmail = authInitEmail ?: "",
         onSignInWithGoogle = { email, password, name, role, authorSlot, isSignUp ->
           viewModel.signInWithGoogle(email = email, password = password, displayName = name, role = role, authorSlot = authorSlot, isSignUp = isSignUp)
         },
@@ -1296,7 +1337,7 @@ fun HomeScreen(
         onResetPasswordWithCode = { email, code, newPassword, onResult ->
           viewModel.resetPasswordWithCode(email, code, newPassword, onResult)
         },
-        externalErrorMessage = uiState.authErrorMessage,
+        externalErrorMessage = authErr,
         onClearError = { viewModel.clearAuthError() },
         onSignInWithGoogleCredential = { idToken, email, name, role, authorSlot ->
           viewModel.signInWithGoogleCredential(
@@ -1311,7 +1352,7 @@ fun HomeScreen(
     }
 
     // Reader Profile Modal (Shows points, stats, freely editable name, and comment history)
-    if (uiState.isProfileDialogOpen && activeUser != null) {
+    if (isProfileOpen && activeUser != null) {
       ReaderProfileModal(
         activeUser = activeUser,
         readingCount = uiState.readingCount,
@@ -1515,7 +1556,7 @@ fun HomeScreen(
                         }
                         Button(
                           onClick = {
-                            viewModel.deleteNovel(novel.id)
+                            novelPendingDeletionId = novel.id
                           },
                           colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC62828)),
                           shape = RoundedCornerShape(8.dp),
@@ -1752,7 +1793,7 @@ fun HomeScreen(
     }
 
     // Owner / Author Room Upload Dialog
-    if (uiState.isUploadDialogOpen) {
+    if (isUploadOpen) {
       OwnerUploadDialog(
         authorSlots = uiState.authorSlots,
         initialSlot = selectedUploadSlot,
@@ -1823,22 +1864,61 @@ fun HomeScreen(
           )
         },
         onDeleteNovel = { novelId ->
-          viewModel.deleteNovel(novelId)
-          if (safeIndex >= novels.size - 1 && selectedIndex > 0) {
-            selectedIndex--
+          novelPendingDeletionId = novelId
+        }
+      )
+    }
+
+    if (novelPendingDeletionId != null) {
+      AlertDialog(
+        onDismissRequest = { novelPendingDeletionId = null },
+        title = {
+          Text(
+            text = "Delete Novel Permanently?",
+            style = MaterialTheme.typography.titleMedium.copy(
+              fontWeight = FontWeight.Bold
+            )
+          )
+        },
+        text = {
+          Text(
+            text = "Are you sure you want to delete this novel? This will permanently erase all chapters, comments, and associated files. This action cannot be undone.",
+            style = MaterialTheme.typography.bodyMedium
+          )
+        },
+        confirmButton = {
+          Button(
+            onClick = {
+              val idToDelete = novelPendingDeletionId!!
+              novelPendingDeletionId = null
+              viewModel.deleteNovel(idToDelete)
+              if (safeIndex >= novels.size - 1 && selectedIndex > 0) {
+                selectedIndex--
+              }
+            },
+            colors = ButtonDefaults.buttonColors(
+              containerColor = Color(0xFFC62828),
+              contentColor = Color.White
+            ),
+            shape = RoundedCornerShape(12.dp)
+          ) {
+            Text("Delete")
+          }
+        },
+        dismissButton = {
+          TextButton(
+            onClick = { novelPendingDeletionId = null }
+          ) {
+            Text("Cancel", color = CharcoalSecondary)
           }
         }
       )
     }
-  }
-}
 
 
 }
 }
-}
-}
-}
+
 @Composable
 private fun WattpadNavButton(
   icon: androidx.compose.ui.graphics.vector.ImageVector,
@@ -1981,7 +2061,7 @@ private fun TopUtilityBar(
 
 
       } else {
-        // Guest mode: About + Sign In (Translators room hidden when not signed in)
+        // Guest mode: About button only
         Surface(
           onClick = onOpenAbout,
           shape = RoundedCornerShape(16.dp),
@@ -1991,27 +2071,25 @@ private fun TopUtilityBar(
         ) {
           Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
           ) {
             Icon(
               imageVector = Icons.Outlined.Info,
               contentDescription = "About",
               tint = AntiqueGold,
-              modifier = Modifier.size(12.dp)
+              modifier = Modifier.size(13.dp)
             )
-            Spacer(modifier = Modifier.width(2.dp))
+            Spacer(modifier = Modifier.width(3.dp))
             Text(
               text = "About",
               style = MaterialTheme.typography.labelSmall.copy(
                 fontWeight = FontWeight.Bold,
-                fontSize = 9.5.sp,
+                fontSize = 10.sp,
                 color = CharcoalText
               )
             )
           }
         }
-
-
       }
     }
   }
