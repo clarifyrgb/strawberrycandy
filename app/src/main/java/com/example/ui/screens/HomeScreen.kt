@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import com.example.R
+import com.example.util.resolveCoverModel
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -35,6 +36,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyRow
@@ -51,6 +53,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
@@ -183,9 +186,19 @@ fun HomeScreen(
   val isProfileOpen by viewModel.isProfileDialogOpen.collectAsState()
   val novels = uiState.novels
   val activeUser = uiState.activeUser
+  val userComments = remember(myCommentsHistory, activeUser) {
+    myCommentsHistory.filter { 
+      if (activeUser != null) {
+        it.readerEmail.equals(activeUser.email, ignoreCase = true) || 
+        it.readerName.equals(activeUser.displayName, ignoreCase = true) ||
+        it.readerEmail.isBlank()
+      } else true
+    }
+  }
   var selectedIndex by remember { mutableIntStateOf(0) }
   var isAuthorRoomsModalOpen by remember { mutableStateOf(false) }
   var isAboutModalOpen by remember { mutableStateOf(false) }
+  var isCommentHistoryModalOpen by remember { mutableStateOf(false) }
   var selectedUploadSlot by remember { mutableIntStateOf(0) }
   var selectedTranslatorForDetail by remember { mutableStateOf<AuthorSlotEntity?>(null) }
   var slotToGrantPermission by remember { mutableStateOf<AuthorSlotEntity?>(null) }
@@ -371,6 +384,7 @@ fun HomeScreen(
         activeUser = activeUser,
         isSoleOwner = isSoleOwner,
         canUpload = canUploadNovel,
+        isMeTab = (currentBottomTab == "me"),
         onOpenAuth = { viewModel.openAuthDialog() },
         onSignOut = { viewModel.signOut() },
         onOpenProfile = { viewModel.openProfileDialog() },
@@ -550,8 +564,8 @@ fun HomeScreen(
                             ) {
                               if (!novel.coverImageUri.isNullOrBlank() && novel.coverImageUri != "null") {
                                 AsyncImage(
-                                  model = File(novel.coverImageUri!!).takeIf { it.exists() } ?: novel.coverImageUri,
-                                  contentDescription = novel.title,
+                                  model = resolveCoverModel(novel.coverImageUri),
+            contentDescription = novel.title,
                                   contentScale = ContentScale.Fit,
                                   modifier = Modifier.fillMaxSize()
                                 )
@@ -1008,9 +1022,7 @@ fun HomeScreen(
                     }
                   }
 
-                  Spacer(modifier = Modifier.height(16.dp))
-
-
+                  Spacer(modifier = Modifier.height(10.dp))
 
                    Box(
                      modifier = Modifier
@@ -1167,30 +1179,31 @@ fun HomeScreen(
                   }
 
                   Spacer(modifier = Modifier.height(10.dp))
+
                   OutlinedButton(
-                    onClick = { isAboutModalOpen = true },
+                    onClick = { isCommentHistoryModalOpen = true },
                     shape = RoundedCornerShape(12.dp),
                     border = BorderStroke(1.dp, AntiqueGold),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = AntiqueGold),
-                    modifier = Modifier.widthIn(max = 240.dp).height(34.dp).testTag("me_about_button"),
+                    modifier = Modifier.widthIn(max = 240.dp).height(34.dp).testTag("me_comment_history_button"),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
                   ) {
                     Icon(
-                      imageVector = Icons.Outlined.Info,
-                      contentDescription = "About App & Updates",
-                      modifier = Modifier.size(14.dp)
+                      imageVector = Icons.Default.Chat,
+                      contentDescription = null,
+                      modifier = Modifier.size(14.dp),
+                      tint = AntiqueGold
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                      text = "About App, Updates & Policy",
-                      style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = CharcoalText)
+                      text = "Comment History (${userComments.size})",
+                      style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, color = AntiqueGold)
                     )
                   }
-
                   Spacer(modifier = Modifier.height(16.dp))
 
-
-                  val myUploadedNovels = remember(allNovelsList, activeUser) {
+                  if (hasTranslatorAccess) {
+                    val myUploadedNovels = remember(allNovelsList, activeUser) {
                     allNovelsList.filter { novel ->
                       viewModel.canEditSpecificNovel(novel, activeUser)
                     }
@@ -1263,6 +1276,12 @@ fun HomeScreen(
                               style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                               color = CharcoalSecondary
                             )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                              text = "Views: ${formatStatCount(novel.readsCount)} • Favorites: ${formatStatCount(novel.favoritesCount)}",
+                              style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                              color = AntiqueGold
+                            )
                             Spacer(modifier = Modifier.height(8.dp))
                             Row(
                               modifier = Modifier.fillMaxWidth(),
@@ -1306,8 +1325,9 @@ fun HomeScreen(
                       }
                     }
                   }
+                  }
 
-                  Spacer(modifier = Modifier.height(16.dp))
+
             }
           }
 
@@ -1414,6 +1434,110 @@ fun HomeScreen(
           viewModel.createGitHubReleaseTag(tagName, releaseTitle, releaseNotes, targetBranch, isDraft, alsoUpdateManifest, versionCode, onComplete)
         },
         onDismiss = { isAboutModalOpen = false }
+      )
+    }
+
+    // Comment History Modal Dialog
+    if (isCommentHistoryModalOpen) {
+      AlertDialog(
+        onDismissRequest = { isCommentHistoryModalOpen = false },
+        containerColor = SoftCreamPaper,
+        title = {
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+              imageVector = Icons.Default.Chat,
+              contentDescription = null,
+              tint = AntiqueGold,
+              modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+              text = "My Comment History",
+              style = MaterialTheme.typography.titleMedium.copy(
+                fontFamily = FontFamily.Serif,
+                fontWeight = FontWeight.Bold
+              ),
+              color = CharcoalText
+            )
+          }
+        },
+        text = {
+          if (userComments.isEmpty()) {
+            Text(
+              text = "No comment history yet. Share your thoughts in chapter discussions!",
+              style = MaterialTheme.typography.bodySmall,
+              color = CharcoalSecondary,
+              modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+              textAlign = TextAlign.Center
+            )
+          } else {
+            Column(
+              modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 400.dp)
+                .verticalScroll(rememberScrollState()),
+              verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+              userComments.forEach { comment ->
+                Card(
+                  shape = RoundedCornerShape(12.dp),
+                  colors = CardDefaults.cardColors(containerColor = Color.White),
+                  border = BorderStroke(1.dp, SubtleBorder),
+                  modifier = Modifier.fillMaxWidth()
+                ) {
+                  Column(
+                    modifier = Modifier
+                      .fillMaxWidth()
+                      .padding(12.dp)
+                  ) {
+                    Row(
+                      modifier = Modifier.fillMaxWidth(),
+                      horizontalArrangement = Arrangement.SpaceBetween,
+                      verticalAlignment = Alignment.CenterVertically
+                    ) {
+                      Text(
+                        text = comment.chapterTitle.ifBlank { "Chapter Discussion" },
+                        style = MaterialTheme.typography.labelSmall.copy(
+                          fontWeight = FontWeight.Bold,
+                          fontSize = 11.sp
+                        ),
+                        color = AntiqueGold
+                      )
+                      IconButton(
+                        onClick = { viewModel.deleteComment(comment.id) },
+                        modifier = Modifier.size(24.dp)
+                      ) {
+                        Icon(
+                          imageVector = Icons.Default.Delete,
+                          contentDescription = "Delete Comment",
+                          tint = Color(0xFFC62828),
+                          modifier = Modifier.size(14.dp)
+                        )
+                      }
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                      text = comment.commentText,
+                      style = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = 11.5.sp
+                      ),
+                      color = CharcoalText
+                    )
+                  }
+                }
+              }
+            }
+          }
+        },
+        confirmButton = {
+          Button(
+            onClick = { isCommentHistoryModalOpen = false },
+            colors = ButtonDefaults.buttonColors(containerColor = AntiqueGold),
+            shape = RoundedCornerShape(10.dp)
+          ) {
+            Text("Close", color = Color.White)
+          }
+        }
       )
     }
 
@@ -1961,6 +2085,7 @@ private fun TopUtilityBar(
   activeUser: ReaderProfileEntity?,
   isSoleOwner: Boolean = false,
   canUpload: Boolean = false,
+  isMeTab: Boolean = false,
   onOpenAuth: () -> Unit,
   onSignOut: () -> Unit,
   onOpenProfile: () -> Unit = {},
@@ -1981,23 +2106,6 @@ private fun TopUtilityBar(
       verticalAlignment = Alignment.CenterVertically,
       modifier = Modifier.testTag("app_brand_logo_lockup")
     ) {
-      Surface(
-        shape = RoundedCornerShape(10.dp),
-        color = SoftCreamPaper,
-        border = BorderStroke(1.2.dp, AntiqueGold.copy(alpha = 0.75f)),
-        shadowElevation = 2.dp,
-        modifier = Modifier.size(36.dp)
-      ) {
-        Image(
-          painter = painterResource(id = R.drawable.img_strawberrycandy_launcher),
-          contentDescription = "Strawberrycandy Logo",
-          contentScale = ContentScale.Crop,
-          modifier = Modifier.fillMaxSize()
-        )
-      }
-
-      Spacer(modifier = Modifier.width(8.dp))
-
       Column {
         Text(
           text = "Strawberrycandy",
@@ -2024,9 +2132,9 @@ private fun TopUtilityBar(
     }
 
     // Right: Action Buttons + User Profile
-    Row(
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(4.dp)
+    Column(
+      horizontalAlignment = Alignment.End,
+      verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
       if (activeUser != null) {
         // Translators & Owner Profiles Button (Visible only when signed in)
@@ -2058,10 +2166,9 @@ private fun TopUtilityBar(
             )
           }
         }
+      }
 
-
-      } else {
-        // Guest mode: About button only
+      if (isMeTab) {
         Surface(
           onClick = onOpenAbout,
           shape = RoundedCornerShape(16.dp),
@@ -2427,7 +2534,7 @@ private fun HorizontalNovelCard(
       Box(modifier = Modifier.fillMaxSize()) {
         if (!novel.coverImageUri.isNullOrBlank() && novel.coverImageUri != "null") {
           AsyncImage(
-            model = File(novel.coverImageUri!!).takeIf { it.exists() } ?: novel.coverImageUri,
+            model = resolveCoverModel(novel.coverImageUri),
             contentDescription = novel.title,
             contentScale = ContentScale.Fit,
             modifier = Modifier.fillMaxSize()
@@ -2726,7 +2833,7 @@ private fun HorizontalNovelCard(
         )
         Spacer(modifier = Modifier.width(2.dp))
         Text(
-          text = formatStatCount(novel.readsCount),
+          text = "${formatStatCount(novel.readsCount)} views",
           style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
           color = CharcoalTertiary
         )
@@ -2876,8 +2983,8 @@ private fun SearchResultNovelCard(
         Box(modifier = Modifier.fillMaxSize()) {
           if (!novel.coverImageUri.isNullOrBlank() && novel.coverImageUri != "null") {
             AsyncImage(
-              model = File(novel.coverImageUri!!).takeIf { it.exists() } ?: novel.coverImageUri,
-              contentDescription = novel.title,
+              model = resolveCoverModel(novel.coverImageUri),
+            contentDescription = novel.title,
               contentScale = ContentScale.Crop,
               modifier = Modifier.fillMaxSize()
             )
@@ -3065,8 +3172,8 @@ private fun SelectedNovelSpotlight(
             Box(modifier = Modifier.fillMaxSize()) {
               if (!novel.coverImageUri.isNullOrBlank() && novel.coverImageUri != "null") {
                 AsyncImage(
-                  model = File(novel.coverImageUri!!).takeIf { it.exists() } ?: novel.coverImageUri,
-                  contentDescription = novel.title,
+                  model = resolveCoverModel(novel.coverImageUri),
+            contentDescription = novel.title,
                   contentScale = ContentScale.Crop,
                   modifier = Modifier.fillMaxSize()
                 )
@@ -3314,6 +3421,24 @@ private fun SelectedNovelSpotlight(
                 ),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
+              )
+            }
+
+            Spacer(modifier = Modifier.height(2.dp))
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+              Icon(
+                imageVector = Icons.Outlined.Visibility,
+                contentDescription = null,
+                tint = CharcoalTertiary,
+                modifier = Modifier.size(10.dp)
+              )
+              Text(
+                text = "${formatStatCount(novel.readsCount)} views",
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
+                color = CharcoalTertiary
               )
             }
           }
@@ -3605,7 +3730,7 @@ private fun CuratedCoverGridCard(
         ) {
         if (!novel.coverImageUri.isNullOrBlank() && novel.coverImageUri != "null") {
           AsyncImage(
-            model = File(novel.coverImageUri!!).takeIf { it.exists() } ?: novel.coverImageUri,
+            model = resolveCoverModel(novel.coverImageUri),
             contentDescription = novel.title,
             contentScale = ContentScale.Fit,
             modifier = Modifier.fillMaxSize()
@@ -3736,6 +3861,23 @@ private fun CuratedCoverGridCard(
           maxLines = 1,
           overflow = TextOverflow.Ellipsis
         )
+        Spacer(modifier = Modifier.height(1.dp))
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+          Icon(
+            imageVector = Icons.Outlined.Visibility,
+            contentDescription = null,
+            tint = CharcoalTertiary,
+            modifier = Modifier.size(9.dp)
+          )
+          Text(
+            text = formatStatCount(novel.readsCount),
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
+            color = CharcoalTertiary
+          )
+        }
       }
     }
 
@@ -3909,7 +4051,7 @@ private fun NewReleaseCard(
       ) {
         if (!novel.coverImageUri.isNullOrBlank() && novel.coverImageUri != "null") {
           AsyncImage(
-            model = File(novel.coverImageUri!!).takeIf { it.exists() } ?: novel.coverImageUri,
+            model = resolveCoverModel(novel.coverImageUri),
             contentDescription = novel.title,
             contentScale = ContentScale.Fit,
             modifier = Modifier.fillMaxSize()
@@ -4409,7 +4551,7 @@ private fun RecentlyReadCard(
       ) {
         if (!novel.coverImageUri.isNullOrBlank() && novel.coverImageUri != "null") {
           AsyncImage(
-            model = File(novel.coverImageUri!!).takeIf { it.exists() } ?: novel.coverImageUri,
+            model = resolveCoverModel(novel.coverImageUri),
             contentDescription = novel.title,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize()
@@ -4549,7 +4691,7 @@ fun HorizontalNovelCard(
       ) {
         if (!novel.coverImageUri.isNullOrBlank() && novel.coverImageUri != "null") {
           AsyncImage(
-            model = java.io.File(novel.coverImageUri!!).takeIf { it.exists() } ?: novel.coverImageUri,
+            model = resolveCoverModel(novel.coverImageUri),
             contentDescription = novel.title,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize()

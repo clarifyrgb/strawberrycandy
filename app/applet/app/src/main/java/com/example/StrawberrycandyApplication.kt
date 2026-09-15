@@ -6,14 +6,8 @@ import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 
 class StrawberrycandyApplication : Application() {
-  companion object {
-    lateinit var instance: StrawberrycandyApplication
-      private set
-  }
-
   override fun onCreate() {
     super.onCreate()
-    instance = this
     try {
       Log.d("StrawberrycandyApp", "Initializing application and services...")
       if (FirebaseApp.getApps(this).isEmpty()) {

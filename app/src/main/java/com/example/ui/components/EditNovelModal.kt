@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.example.util.resolveCoverModel
+
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -834,7 +836,7 @@ fun EditNovelModal(
           Row(verticalAlignment = Alignment.CenterVertically) {
             if (coverImageUri != null) {
               AsyncImage(
-                model = File(coverImageUri!!).takeIf { it.exists() } ?: coverImageUri,
+                model = resolveCoverModel(coverImageUri),
                 contentDescription = "Cover Image Preview",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier

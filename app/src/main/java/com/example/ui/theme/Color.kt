@@ -1,6 +1,7 @@
 package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.Typography
 
 // Minimalist Editorial Palette
 val CreamBackground = Color(0xFFFAF7F2)
@@ -19,4 +20,7 @@ val SubtleWatermark = Color(0xFF252422)
 val DarkObsidian = Color(0xFF161514)
 val DarkSurface = Color(0xFF1F1E1D)
 val DarkOnSurface = Color(0xFFEBE7DF)
+
+val Typography = Typography()
+
 
